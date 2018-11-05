@@ -103,7 +103,7 @@ static float dot(const float* v1, const float* v2)
 }
 
 
-void test(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output)
+void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output)
 {
     float normal[3], v1[3], v2[3], toPoint[3]; 
     float dotRN, dotPN; 
