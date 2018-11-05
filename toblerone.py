@@ -1201,7 +1201,7 @@ def _estimateFractions(points, tris, assocs, LUT, FoVsize, supersampler, \
     voxIJKs = voxIJKs.astype(np.float32)
 
     # Shuffle voxel list in place, then prepare the worker function
-    np.random.shuffle(voxList)
+    # np.random.shuffle(voxList)
     workerChunks = _distributeObjects(voxList, __NWORKERS__)
 
     estimateFractionsPartial = functools.partial(__estimateFractionsWorker, \
@@ -1236,7 +1236,7 @@ def __estimateFractionsWorker(points, tris, assocs, LUT, voxIJK, imgSize, \
 
     partialVolumes = np.zeros((len(workerVoxList), 3))
     counter = 0
-    progFactor = (len(workerVoxList) // 10)
+    progFactor = max([(len(workerVoxList) // 10), 1])
 
     for v in workerVoxList: 
 
@@ -1546,6 +1546,7 @@ def toblerone(**kwargs):
         
         print("{} in: ".format(h), end='')
         inList = np.intersect1d(voxList, inLUT[h])
+        #inList = [74606]
         inFracs, inList = _estimateFractions(inPs[h], inTs[h], inAssocs[h], \
             inLUT[h], fullFoVsize, supersampler, inList, normDF)
 
