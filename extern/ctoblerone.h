@@ -14,4 +14,4 @@ char ray_wrapper(float s1, float s2, float s3,
                    float tv31, float tv32, float tv33, 
                    int ax1, int ax2); 
 
-void test(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output);
+void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output);

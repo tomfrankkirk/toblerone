@@ -9,17 +9,11 @@ cdef extern from "tribox.h":
 cdef extern from "ctoblerone.h":
     void ctestManyRayTriangleIntersections(const int* triangles, const float* points, const float* start, const int nTris, const int ax1, const int ax2, char* results)
 
-    int ray_wrapper(float s1, float s2, float s3, 
-                   float tv11, float tv12, float tv13,
-                   float tv21, float tv22, float tv23,
-                   float tv31, float tv32, float tv33, 
-                   int ax1, int ax2)
-
     void testTrianglesVoxelIntersection(int* triangles, float* points, int nTris, float* voxCent, float* voxHalfSize, char* results)
     
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 
-    void test(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output)
+    void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt,const float* ray, int normDF, float* output)
 
 
 @cython.boundscheck(False) 
@@ -118,7 +112,7 @@ def _cyfindRayTriPlaneIntersections(float[:,:] points, int[:,:] tris,
 
     for t in range(nTris):
 
-        toPoint = points[tris[t,0]:] - testPnt
+        toPoint = np.subtract(points[tris[t,0],:], testPnt)
         normal = np.cross(np.subtract(points[tris[t,2],:], points[tris[t,0],:]), 
             np.subtract(points[tris[t,1],:], points[tris[t,0],:]))
         dotRN = np.dot(ray, normal)
@@ -140,7 +134,7 @@ def _cfindRayTriPlaneIntersections(points, tris, float[:] testPnt, float[:] ray,
     cdef np.ndarray[float, ndim=1] fltr = \
         np.zeros(nTris, dtype=np.float32)
 
-    test(&ps[0], &ts[0], nTris, &testPnt[0], &ray[0], normDF, &fltr[0])
+    triPlaneIntersections(&ps[0], &ts[0], nTris, &testPnt[0], &ray[0], normDF, &fltr[0])
     return fltr 
     
 

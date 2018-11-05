@@ -43,7 +43,7 @@ vijk = np.array([30, 30, 20], dtype=np.int32)
 
 # Pure python method, find intersection of ray with many tris
 def rt1():
-    x = t._pTestManyRayTriangleIntersection(ts, ps, pnt, 0, 1)
+    x = t._pTestManyRayTriangleIntersections(ts, ps, pnt, 0, 1)
 
 # Ctyhon method: construct loop over tris in cython, then test each one
 # using the C method 

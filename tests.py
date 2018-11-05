@@ -247,8 +247,9 @@ class Test_Toblerone(unittest.TestCase):
             
         s2r = np.identity(4)
         outDir = 'testdata'
+        outName = 'test_tob_1.0'
         t.toblerone(reference=ref, FSSubDir=FSDir, \
-            struct2ref=s2r, outDir=outDir, \
+            struct2ref=s2r, outDir=outDir, outName=outName, \
             saveAssocs=True)
 
 

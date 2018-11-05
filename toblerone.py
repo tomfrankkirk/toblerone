@@ -17,7 +17,7 @@ import nibabel.nifti2
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 from ctoblerone import _ctestTriangleVoxelIntersection, _cfilterTriangles
-from ctoblerone import _cfindRayTriPlaneIntersections, _cytestManyRayTriangleIntersections, _ctestManyRayTriangleIntersections
+from ctoblerone import _cfindRayTriPlaneIntersections, _cytestManyRayTriangleIntersections, _ctestManyRayTriangleIntersections, _cyfindRayTriPlaneIntersections
 
 __NWORKERS__ = multiprocessing.cpu_count() 
 
@@ -502,7 +502,7 @@ def _findRayTriangleIntersections2D(testPnt, ray, tris, points, axis, normDF):
     """
 
     # Filter triangles that intersect with this ray 
-    fltr = _pTestManyRayTriangleIntersections(tris, points, 
+    fltr = _cytestManyRayTriangleIntersections(tris, points, 
         testPnt, (axis+1)%3, (axis+2)%3)
 
     # And find the multipliers for those that do intersect 
@@ -620,7 +620,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, tris, points, normDF):
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
-    fltr = _pTestManyRayTriangleIntersections(tris, onPlane2d, start, 0, 1)
+    fltr = _cytestManyRayTriangleIntersections(tris, onPlane2d, start, 0, 1)
 
     # For those trianglest that passed, calculate multiplier to point of 
     # intersection
@@ -1352,8 +1352,8 @@ def toblerone(**kwargs):
     outExt = ''
     fname = outName
     while '.' in fname: 
-        fname, e = op.splitext(fname)
         try:
+            fname, e = op.splitext(fname)
             ext = float(e)
         except ValueError: 
             outExt = e
