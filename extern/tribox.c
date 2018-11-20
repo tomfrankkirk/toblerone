@@ -121,7 +121,7 @@ char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const f
     float v0[3],v1[3],v2[3];
     float min,max,d,p0,p1,p2,rad,fex,fey,fez;
     float normal[3],e0[3],e1[3],e2[3];
-    
+        
     /* This is the fastest branch on Sun */
     /* move everything so that the boxcenter is in (0,0,0) */
     SUB(v0,triverts[0],boxcenter);
