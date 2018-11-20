@@ -44,13 +44,6 @@ class Test_Toblerone(unittest.TestCase):
         self.assertTrue(
             np.array_equal(t._affineTransformPoints(ps, a), 2*ps))
 
-    def test_triangleNormal(self):
-        n = t._triangleNormal(ps[ts[0, :], :], NDF)
-        self.assertTrue(np.array_equal(np.array([0, 0, -1]), n))
-        n = t._triangleNormal(2 * ps[ts[0, :], :], NDF)
-        self.assertTrue(np.array_equal(np.array([0, 0, -1]), n))
-        n = t._triangleNormal(ps[ts[0, :], :], -NDF)
-        self.assertTrue(np.array_equal(np.array([0, 0, 1]), n))
 
     def test_filterPoints(self):
         points = np.array([
@@ -89,13 +82,6 @@ class Test_Toblerone(unittest.TestCase):
         dp = t._dotVectorAndMatrix(v, m)
         DP = np.array([0, 1, 0])
         self.assertTrue(np.array_equal(DP, dp))
-
-    def test_rebaseTriangles(self):
-        (lPs, lTs) = t._rebaseTriangles(ps, ts[5:8,:])
-        for k in range(3):
-            self.assertTrue(
-                np.array_equal(ps[ts[k+5,:],:], lPs[lTs[k,:],:])
-            )
 
     def test_sub2ind(self):
         dims = (3,3)
@@ -148,18 +134,6 @@ class Test_Toblerone(unittest.TestCase):
             self.assertTrue(t._ctestTriangleVoxelIntersection(vC, vS, \
                 t3[[k-2,k-1,k],:]))
 
-    def test_rayTriangleIntersection(self):
-        for _ in range(100):
-            start = np.random.rand(3)
-            fltr = t._ctestRayTriangleIntersection(ps[ts[0,:],:], start, 0, 1)
-
-    def test_RayTriangleIntersections2D(self):
-        for _ in range(100):
-            start = np.random.rand(3).astype(np.float32)
-            fltr = t._ctestManyRayTriangleIntersections(ts, ps, start, 0, 1)
-            fltr2 = t._vectorTestRayTriangleIntersection(ts, ps, start, 0, 1)
-            self.assertTrue(np.array_equal(fltr, fltr2))
-            self.assertTrue(np.sum(fltr) == 1)
 
     def test_separatePointClouds(self):
         self.assertTrue(len(t._separatePointClouds(ts)) == 1)
@@ -169,69 +143,16 @@ class Test_Toblerone(unittest.TestCase):
         self.assertTrue(len(t._separatePointClouds(tris)) == 2)
         self.assertTrue(len(t._separatePointClouds(ts[1:7])) == 1)
 
-    def test_findRayTriangleIntersections3D(self):
-        for _ in range(100):
-            start = 1 + 2*(np.random.rand(3) - 0.5)
-            start[2] = 1 
-            end = 1 + 2*(np.random.rand(3) - 0.5)
-            end[2] = -1
-            res = t._findRayTriangleIntersections3D(start, end - start, \
-                ts, ps, NDF)
-            self.assertTrue(res.shape == (1,))
+    
 
     def test_filterTriangles(self):
-        vC = np.zeros(3)
-        vS = 0.25 * np.ones(3)
-        res = t._cfilterTriangles(ts, ps, vC, vS)
+        vC = np.zeros(3, dtype=np.float32)
+        vS = 0.25 * np.ones(3, dtype=np.float32)
+        res = t._cyfilterTriangles(ts, ps, vC, vS)
         self.assertTrue(np.sum(res) == 1)
         vC = np.array([-1,-1,-1], dtype=np.float32)
-        res = t._cfilterTriangles(ts, ps, vC, vS)
+        res = t._cyfilterTriangles(ts, ps, vC, vS)
         self.assertTrue(np.sum(res) == 0)
-
-    def test_findRayTriPlaneIntersections(self):
-        start = np.array([0, 0, -1])
-        ray = np.ones(3)
-        res = t._findRayTriPlaneIntersections(ps, ts, start, ray, NDF)
-        self.assertTrue(res.size == 8)
-
-
-    def test_formAssociations(self): 
-        imgPath = 'testdata/ref1.0.nii'
-        surfPath = 'testdata/L.white.surf.gii'
-        points, tris = tuple(map(lambda o: o.data, \
-                    nibabel.load(surfPath).darrays))
-        imgStruct = nibabel.load(imgPath)
-        FoVsize = imgStruct.header['dim'][1:4]
-        vox2world = imgStruct.affine
-        points = t._affineTransformPoints(points, np.linalg.inv(vox2world))
-        mat = spio.loadmat('testdata/massocs.mat', squeeze_me=True, struct_as_record=True)
-        mAssocsRaw = mat['LinAssocs']
-        massocs = []
-        for e in list(mAssocsRaw):
-            if type(e) is int: 
-                massocs.append([e])
-            else: 
-                massocs.append(e.tolist())
-        mLUT = mat['LinLUT'] - 1
-        mLUT = np.array(np.unravel_index(mLUT, FoVsize, order='F'))
-
-        # Finally assert the overall results are equal
-        pAssocs = t._formAssociations(points, tris, FoVsize)
-        # with open('testdata/passocs.pkl', 'rb') as f: 
-        #     pLUT, pAssocs = pickle.load(f)
-        pLUT = list(pAssocs.keys())
-        pAssocs = list(pAssocs.values())
-        mLUTc = np.ravel_multi_index(mLUT, FoVsize, order='C')
-        assert np.all(np.isin(pLUT, mLUTc)) & (len(pLUT) == mLUTc.size)
-        for i in range(99910, mLUTc.size): 
-            pidx = np.argwhere(pLUT == mLUTc[i])[0][0]
-            masc = np.array(massocs[i]) -1 
-            pasc = pAssocs[pidx]
-            if not (len(masc) == len(pasc)) & (np.all(np.isin(masc, pasc))):
-                vijk = np.unravel_index(pLUT[pidx], FoVsize)
-                diff = set(masc) - set(pasc)
-                for tr in diff: 
-                    t._ctestTriangleVoxelIntersection(vijk, np.ones(3), points[tris[tr,:],:])
 
 
     def test_toblerone(self):
@@ -247,8 +168,8 @@ class Test_Toblerone(unittest.TestCase):
             
         s2r = np.identity(4)
         outDir = 'testdata'
-        outName = 'test_tob_1.0'
-        t.toblerone(reference=ref, FSSubDir=FSDir, \
+        outName = 'py_test_tob_1.0'
+        t.estimatePVs(ref=ref, FSdir=FSDir, \
             struct2ref=s2r, outDir=outDir, outName=outName, \
             saveAssocs=True)
 
