@@ -1324,7 +1324,7 @@ def estimatePVs(**kwargs):
 
     # Structural to reference transformation. Either as array or path
     # to file containing matrix
-    if kwargs.get('struct2ref'):
+    if kwargs.get('struct2ref') is not None:
         if (type(kwargs['struct2ref']) is str):
             kwargs['struct2ref'] = np.fromfile(kwargs['struct2ref'], 
                 dtype=float)
