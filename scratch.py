@@ -37,8 +37,18 @@ pnt = np.random.rand(3).astype(np.float32)
 ray = np.array([1,0,0], dtype=np.float32)
 
 vijk = np.array([30, 30, 20], dtype=np.int32)
+vC = np.array([10, 11, 12], dtype=np.float32)
+vS = np.array([0.3, 0.4, 1], dtype=np.float32)
 
 
+def tv1(): 
+    x = t._pfilterTriangles(ts, ps, vC, vS)
+
+def tv2(): 
+    x = t._cfilterTriangles(ts, ps, vC, vS)
+
+def tv3(): 
+    x = t._cyfilterTriangles(ts, ps, vC, vS)
 
 
 # Pure python method, find intersection of ray with many tris
