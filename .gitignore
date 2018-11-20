@@ -5,3 +5,6 @@ profilestats
 surf_transform
 .vscode 
 *.pyd
+*.o 
+*.pyc
+*.dot
