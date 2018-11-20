@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Toblerone: partial volume estimation on the cortical ribbon
 
 import copy
@@ -9,6 +11,7 @@ import collections
 import os 
 import os.path as op
 import pickle
+import argparse
 
 import numpy as np 
 import nibabel
@@ -17,10 +20,144 @@ import nibabel.nifti2
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 from ctoblerone import _ctestTriangleVoxelIntersection, _cfilterTriangles
-from ctoblerone import _cfindRayTriPlaneIntersections, _cytestManyRayTriangleIntersections, _ctestManyRayTriangleIntersections, _cyfindRayTriPlaneIntersections
+from ctoblerone import _cytestManyRayTriangleIntersections, _cyfilterTriangles
 
 __NWORKERS__ = multiprocessing.cpu_count() 
 
+
+# Class definitions -----------------------------------------------------------
+
+class Hemisphere: 
+    """Class to encapsulate the white and pial surfaces of a hemisphere.
+    Initialise with a side identifier (L/R), the surfaces should be added
+    directly via class to hemi.inSurf / hemi.outSurf
+    """
+
+    def __init__(self, side):
+        self.side = side 
+        self.inSurf = None 
+        self.outSurf = None 
+        return
+
+
+    def surfs(self):
+        """Iterator over the inner/outer surfaces"""
+        return [self.inSurf, self.outSurf]
+
+
+class Surface:
+    """Class to contain a surface's points, triangles and normals matrix. 
+    Normals are calculated upon initialisation, with the appropriate norm 
+    direction flag. LUT and associations are intially set to None but will be 
+    updated later on. Using associations data, a surface can be cast to patch
+    for a particular voxel which reduces computational complexity by 
+    discarding unncessary triangles.
+    """
+
+    def __init__(self, ps, ts, NDF):
+        """ps: points, ts: triangles, NDF: norm direction flag"""
+
+        # Check inputs
+        if ps.shape[1] != 3: 
+            raise RuntimeError("Points matrices should be p x 3")
+
+        if ts.shape[1] != 3: 
+            raise RuntimeError("Triangles matrices should be t x 3")
+            
+        self.points = ps
+        self.tris = ts
+        self.assocs = None 
+        self.LUT = None 
+        self.xProds = NDF * np.cross(
+            ps[ts[:,2],:] - ps[ts[:,0],:], 
+            ps[ts[:,1],:] - ps[ts[:,0],:], 
+            axis=1)
+
+
+    def rebaseTriangles(self, triNums):
+        """Re-express a patch of a larger surface as a new points and triangle matrix pair, indexed from 0. Useful for reducing computational complexity when working with a small
+        patch of a surface where only a few nodes in the points 
+        array are required by the triangles matrix. 
+
+        Args: 
+            triNums: t x 1 list of triangle numbers to rebase. 
+        
+        Returns: 
+            (localPoints, localTris) tuple of re-indexed points/tris. 
+        """
+
+        localPoints = np.empty((0, 3), dtype=np.float32)
+        localTris = np.zeros((len(triNums), 3), dtype=np.int32)
+        pointsLUT = []
+
+        for t in range(len(triNums)):
+            for v in range(3):
+
+                # For each vertex of each tri, check if we
+                # have already processed it in the LUT
+                vtx = self.tris[triNums[t],v]
+                idx = np.argwhere(pointsLUT == vtx)
+
+                # If not in the LUT, then add it and record that
+                # as the new position. Write the missing vertex
+                # into the local points array
+                if not idx.size:
+                    pointsLUT.append(vtx)
+                    idx = len(pointsLUT) - 1
+                    localPoints = np.vstack([localPoints, 
+                        self.points[vtx,:]])
+
+                # Update the local triangle
+                localTris[t,v] = idx
+
+        return (localPoints, localTris)
+
+
+    def toPatch(self, voxIdx):
+        """Return a patch object specific to a voxel given by linear index.
+        Look up the triangles intersecting the voxel, and then load and rebase
+        the points / xprods as required. 
+        """
+
+        triNums = _flattenList(self.assocs[self.LUT == voxIdx])
+        (ps, ts) = self.rebaseTriangles(triNums)
+
+        return Patch(ps, ts, self.xProds[triNums,:])
+
+    
+    def toPatchesForVoxels(self, voxIndices):
+        """Return the patches for the voxels in voxel indices, flattened into 
+        a single set of ps, ts and xprods. 
+        """
+
+        triNums = _flattenList(self.assocs[np.isin(self.LUT, voxIndices)])
+        triNums = list(set(triNums))
+
+        return Patch(self.points, self.tris[triNums,:], 
+            self.xProds[triNums,:])
+
+
+class Patch(Surface):
+    """Subclass of Surface that represents a small patch of surface. 
+    Points, trianlges and xProds are all inherited from the parent surface. 
+    This class should not be directly created but instead instantiated via
+    the Surface.toPatch() / toPatchesForVoxels() methods. 
+    """
+
+    def __init__(self, points, tris, xProds):
+        self.points = points 
+        self.tris = tris
+        self.xProds = xProds 
+
+    def shrink(self, fltr):
+        """Return a shrunk copy of the patch by applying the logical 
+        filter fltr to the calling objects tris and xprods matrices
+        """
+
+        return Patch(self.points, self.tris[fltr,:], self.xProds[fltr,:])
+
+
+# Function definitions --------------------------------------------------------
 
 def _affineTransformPoints(points, affine):
     """Apply affine transformation to set of points.
@@ -41,22 +178,11 @@ def _affineTransformPoints(points, affine):
     return (transfd[0:3,:]).T
 
 
-
-def _triangleNormal(tri, normDirFlag):
-    """Normal to the plane of a triangle. 
-
-    Args: 
-        tri: 3 x 3 matrix of vertices, XYZ along cols 
-        normDirFlag: 1/-1 to denote ordering (1 default)
-
-    Returns:
-        normal: unit inwards normal to the surface
-    """
-
-    normal = normDirFlag * np.cross(tri[2,:] - tri[0,:], 
-        tri[1,:] - tri[0,:])
-    return normal / np.linalg.norm(normal)
-
+def _quickCross(a, b):
+    return np.array([
+        (a[1]*b[2]) - (a[2]*b[1]),
+        (a[2]*b[0]) - (a[0]*b[2]), 
+        (a[0]*b[1]) - (a[1]*b[0])], dtype = np.float32)
 
 
 def _generateVoxelCorners(cent, size):
@@ -117,47 +243,6 @@ def _dotVectorAndMatrix(vec, mat):
 
     return np.sum(mat * vec, axis=1)
 
-
-
-def _rebaseTriangles(points, tris):
-    """Re-express a patch of a larger surface as a new points and triangle matrix pair, indexed from 0. Useful for reducing computational complexity when working with a small
-    patch of a surface where only a few nodes in the points 
-    array are required by the triangles matrix. 
-
-    Args: 
-        points: n x 3 matrix of surface nodes
-        tris: t x 3 matrix of triangle node indices. 
-    
-    Returns: 
-        (localPoints, localTris) tuple of re-indexed points/tris. 
-    """
-
-    localPoints = np.empty((0, 3), dtype=np.float32)
-    localTris = np.zeros(tris.shape, dtype=np.int32)
-    pointsLUT = []
-
-    for t in range(tris.shape[0]):
-        for v in range(3):
-
-            # For each vertex of each tri, check if we
-            # have already processed it in the LUT
-            vtx = tris[t,v]
-            idx = np.argwhere(pointsLUT == vtx)
-            if len(idx) > 1: 
-                print("sdjk")
-
-            # If not in the LUT, then add it and record that
-            # as the new position. Write the missing vertex
-            # into the local points array
-            if not idx.size:
-                pointsLUT.append(vtx)
-                idx = len(pointsLUT) - 1
-                localPoints = np.vstack([localPoints, points[vtx,:]])
-
-            # Update the local triangle
-            localTris[t,v] = idx
-
-    return (localPoints, localTris)
 
 
 
@@ -286,7 +371,7 @@ def _distributeObjects(objs, nWorkers):
 
 
 
-def _formAssociations(points, tris, FoVsize):
+def _formAssociations(surf, FoVsize):
     """Identify which triangles of a surface each voxel. This reduces the
     number of tests that must be performed in the main Toblerone algorithm.
 
@@ -304,15 +389,15 @@ def _formAssociations(points, tris, FoVsize):
     global __NWORKERS__
 
     # Check for negative coordinates: these should have been sripped. 
-    if np.round(np.min(points)) < 0: 
+    if np.round(np.min(surf.points)) < 0: 
         raise RuntimeError("formAssociations: negative coordinate found")
 
-    if np.any(np.round(np.max(points, axis=0)) >= FoVsize): 
+    if np.any(np.round(np.max(surf.points, axis=0)) >= FoVsize): 
         raise RuntimeError("formAssociations: coordinate outside FoV")
 
-    chunks = _distributeObjects(np.arange(tris.shape[0]), __NWORKERS__)
-    workerFunc = functools.partial(_formAssociationsWorker, tris, \
-        points, FoVsize)
+    chunks = _distributeObjects(np.arange(surf.tris.shape[0]), __NWORKERS__)
+    workerFunc = functools.partial(_formAssociationsWorker, surf.tris, \
+        surf.points, FoVsize)
 
     with multiprocessing.Pool(__NWORKERS__) as p:
         allResults = p.map(workerFunc, chunks, chunksize=1)
@@ -331,6 +416,7 @@ def _formAssociations(points, tris, FoVsize):
 
 def _formAssociationsWorker(tris, points, FoVsize, triInds):
     workerResults = {}
+    voxSize = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 
     for t in triInds:
 
@@ -340,67 +426,25 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
         maxVs = np.ceil(np.max(tri, axis=0)).astype(np.int16)
 
         # Loop over the neighbourhood voxels of this bounding box
-        for I in range(minVs[0], maxVs[0] + 1):
-            for J in range(minVs[1], maxVs[1] + 1):
-                for K in range(minVs[2], maxVs[2] + 1):
+        neighbourhood = np.array(list(itertools.product(
+            range(minVs[0], maxVs[0] + 1), 
+            range(minVs[1], maxVs[1] + 1),
+            range(minVs[2], maxVs[2] + 1))), dtype=np.float32)
 
-                    ind = _sub2ind(FoVsize, (I,J,K))
+        for voxel in neighbourhood: 
 
-                    if _ctestTriangleVoxelIntersection([I,J,K], \
-                        np.ones(3, dtype=np.int8), tri):
+            if _ctestTriangleVoxelIntersection(voxel, voxSize, tri):
 
-                        if ind in workerResults:
-                            workerResults[ind].append(t)
-                        else: 
-                            workerResults[ind] = [t]
+                ind = _sub2ind(FoVsize, voxel.astype(np.int16))
+                if ind in workerResults:
+                    workerResults[ind].append(t)
+                else: 
+                    workerResults[ind] = [t]
     
     return workerResults
 
 
-
-def _voxeliseSurfaces(FoVsize, inPs, inTris, outPs, outTris, inAssocs, \
-    inLUT, outAssocs, outLUT, normDF):
-    """Fill the volume contained within the given surfaces using orthographic
-    projection along the X,Y or Z dimension. 
-    See "Simplification and repair of polygonal models using volumetric techniques", Nooruddin & Turk, 2003 for an overview. 
-
-    Args:
-        inPs/outPs: p x 3 matrices of surface nodes
-        inTris/outTris: t x 3 matrices of triangle node indices
-        inAssocs/outAssocs: triangle associations, generated via formAssocs() 
-        normDF: 1/-1 for triangle node ordering (1 default)
-
-    Returns: 
-        mask of dimensions FoV size, 1 = GM, 2 = WM, 3 = CSF, 4 = special
-            error case of outside the pial but inside the white surface 
-            (handled elsewhere)
-    """
-
-
-    dim = np.argmax(np.argsort(FoVsize))
-    with multiprocessing.Pool(__NWORKERS__) as p: 
-        def __createMask(ts, ps, assocs, LUT):
-            return _voxeliseSurfaceAlongDimension(FoVsize, dim, \
-                ts, ps, assocs, LUT, normDF)
-
-        masks = p.starmap(__createMask, [[inTris, outTris], [inPs, outPs], \
-            [inAssocs, outAssocs], [inLUT, outLUT]], chunksize=1)
-
-    inMask = masks[0]; outMask = masks[1]
-    mask = np.zeros(FoVsize, dtype=np.int8)
-    mask[inMask & outMask] = 2
-    mask[outMask & ~inMask] = 1
-    mask[~outMask & ~inMask] = 3
-
-    # Class 4 is used for anatomically impossible voxels, caused by 
-    # imperfections in the FS surfaces (outside pial but inside white)
-    # We will handle these cases elsewhere
-    mask[~outMask & inMask] = 4
-    return mask 
-
-
-
-def _voxeliseSurfaceAlongDimension(FoVsize, dim, tris, points, assocs, LUT, normDF):
+def _voxeliseSurfaceAlongDimension(FoVsize, dim, surf):
     """Fill the volume contained within the surface by projecting rays
     in a given direction. See "Simplification and repair of polygonal models 
     using volumetric techniques", Nooruddin & Turk, 2003 for an overview of 
@@ -409,11 +453,7 @@ def _voxeliseSurfaceAlongDimension(FoVsize, dim, tris, points, assocs, LUT, norm
     Args: 
         FoVsize: 1 x 3 vector of FoV dimensions in which surface is enclosed
         dim: int 0/1/2 dimension along which to project rays
-        tris: t x 3 matrix of triangle node indices
-        points: p x 3 matrix of surface nodes
-        assocs: list of lists recording the triangle associations for voxels
-        LUT: vector look up table between assocs and linear vox indices. 
-        normDF: 1/-1 for triangle node ordering (1 default)
+        surf: complete surface object. 
 
     Returns: 
         logical array of FoV size, true where voxel is contained in surface
@@ -442,12 +482,11 @@ def _voxeliseSurfaceAlongDimension(FoVsize, dim, tris, points, assocs, LUT, norm
 
             # Find all associated triangles lying along this ray
             # and test for intersection
-            triNums = np.vstack(assocs[np.in1d(LUT, voxRange)])
+            patches = surf.toPatchesForVoxels(voxRange)
 
-            if len(triNums):
-                inTs = list(set(triNums))
+            if patches.tris.shape[0]:
                 intersectionMus = _findRayTriangleIntersections2D(startPoint, \
-                    ray, tris[inTs,:], points, dim, normDF)
+                    ray, patches, dim)
 
                 if not intersectionMus.shape[0]:
                     continue
@@ -481,7 +520,7 @@ def _voxeliseSurfaceAlongDimension(FoVsize, dim, tris, points, assocs, LUT, norm
 
 
 
-def _findRayTriangleIntersections2D(testPnt, ray, tris, points, axis, normDF):
+def _findRayTriangleIntersections2D(testPnt, patch, axis):
     """Find intersections between a ray and a patch of surface, testing along
     one coordinate axis only (XYZ). As the triangle intersection test used within
     is 2D only, triangles are first projected down onto a 2D plane normal to the 
@@ -491,56 +530,56 @@ def _findRayTriangleIntersections2D(testPnt, ray, tris, points, axis, normDF):
 
     Args: 
         testPnt: 1 x 3 vector for ray origin
-        ray: 1 x 3 vector of ray direction 
-        triangles: m x 3 matrix of triangle node indices 
-        points: n x 3 matrix of surface nodes for triangles
+        patch: patch object for surface within the voxel
         axis: 0 for X, 1 for Y, 2 for Z, along which to test 
-        normDF: 1/-1 for triangle node ordering (1 default)
 
     Returns: 
         1 x j vector of multipliers along the ray to the points of intersection
     """
 
+    ray = np.zeros(3, dtype=np.float32)
+    ray[axis] = 1 
+
     # Filter triangles that intersect with this ray 
-    fltr = _cytestManyRayTriangleIntersections(tris, points, 
+    fltr = _cytestManyRayTriangleIntersections(patch.tris, patch.points, 
         testPnt, (axis+1)%3, (axis+2)%3)
+    # fltr2 = _cytestManyRayTriangleIntersections(patch.tris, patch.points, 
+    #     testPnt, (axis+1)%3, (axis+2)%3)
+    # assert np.array_equal(fltr, fltr2)
 
     # And find the multipliers for those that do intersect 
-    mus = _findRayTriPlaneIntersections(points, tris[fltr,:], \
-        testPnt, ray, normDF)
+    if np.any(fltr):
+        mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:],
+            patch.xProds[fltr,:], testPnt, ray)
+    else:
+        mus = np.array([])
 
     return mus
 
 
 
 
-def _findRayTriPlaneIntersections(points, tris, testPnt, ray, normDF):
+def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     """Find points of intersection between a ray and the planes defined by a
     set of triangles. As these points may not lie within their respective 
     triangles, these results must be further filtered using 
     vectorTestForRayTriangleIntersection() to identify genuine intersections.
 
     Args:
-        points: p x 3 matrix of surface nodes
-        tris: t x 3 matrix of triangle node indices 
+        planePoints: t x 3 matrix of points lying in each triangle's plane
+        normals: t x 3 matrix of triangle plane normals
         testPnt: 1 x 3 vector of ray origin
         ray: 1 x 3 direction vector of ray
-        normDF: 1/-1 for triangle node ordering (1 default)
 
     Returns: 
         1 x j vector of multipliers along the ray to the points of intersection
     """
 
-    # Compute edge vectors of all triangles and their planar normals
-    e1 = points[tris[:,2],:] - points[tris[:,0],:]
-    e2 = points[tris[:,1],:] - points[tris[:,0],:]
-    normals = normDF * np.cross(e1, e2, axis=1) 
-
     # Compute dot of each normal with the ray
     dotRN = _dotVectorAndMatrix(ray, normals)
 
     # And calculate the multiplier.
-    mu = np.sum((points[tris[:,0],:] - testPnt) * normals, axis=1) / dotRN 
+    mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
 
     return mu 
 
@@ -548,30 +587,18 @@ def _findRayTriPlaneIntersections(points, tris, testPnt, ray, normDF):
 
 def _normalToVector(vec):
     """Return a normal to the given vector"""
-    vec = vec / np.linalg.norm(vec)
 
-    if vec[2] < vec[0]:
+    if np.abs(vec[2]) < np.abs(vec[0]):
         normal = np.array([vec[1], -vec[0], 0])
     else:
         normal = np.array([0, -vec[2], vec[1]])
 
-    # The above can fail if unit cardinal vecs are passed in 
-    if np.all(normal == 0):
-        if np.array_equal(vec, [0, 0, -1]):
-            normal = np.array([0, 1, 0])
-        elif np.array_equal(vec, [-1, 0, 0]):
-            normal = np.array([0, 1, 0])
-        elif np.array_equal(vec, [0, -1, 0]):
-            normal = np.array([1, 0, 0])
-        else: 
-            raise RuntimeError('Normal?')
-        
-    assert np.dot(normal, vec) == 0, 'Normals are not normal'
+    assert not np.dot(normal, vec)
     return normal 
 
 
 
-def _findRayTriangleIntersections3D(testPnt, ray, tris, points, normDF):
+def _findRayTriangleIntersections3D(testPnt, ray, patch):
     """Find points of intersection between a ray and a surface. Triangles
     are projected down onto a 2D plane normal to the ray and then tested for
     intersection using findRayTriangleIntersections2D(). See: 
@@ -581,9 +608,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, tris, points, normDF):
     Args: 
         testPnt: 1 x 3 vector for origin of ray
         ray: 1 x 3 direction vector of ray
-        tris: t x 3 matrix of triangle node indices
-        points: p x 3 matrix of surface nodes
-        normDF: 1/-1 for triangle node ordering (1 default)
+        patch: patch object for surface within the voxel
 
     Returns: 
         1 x j vector of distance multipliers along the ray at each point
@@ -601,15 +626,14 @@ def _findRayTriangleIntersections3D(testPnt, ray, tris, points, normDF):
     # the Z direction in this new projected space) amongst all the triangles in
     # dimensions 1 and 2 (XY). Define a new coordinate system (d unit vectors) 
     # with d3 along the ray, d2 and d1 in plane.
-    d3 = ray / np.linalg.norm(ray)
     d2 = _normalToVector(ray)
-    d1 = np.cross(d2,d3)
+    d1 = _quickCross(d2, ray)
 
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = _dotVectorAndMatrix(d3, points)
-    onPlane = points - np.outer(lmbda, d3)
+    lmbda = _dotVectorAndMatrix(ray, patch.points)
+    onPlane = patch.points - np.outer(lmbda, ray)
     onPlane = onPlane - testPnt
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
@@ -620,19 +644,19 @@ def _findRayTriangleIntersections3D(testPnt, ray, tris, points, normDF):
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
-    fltr = _cytestManyRayTriangleIntersections(tris, onPlane2d, start, 0, 1)
+    fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d, start, 0, 1)
 
     # For those trianglest that passed, calculate multiplier to point of 
     # intersection
-    mus = _findRayTriPlaneIntersections(points, tris[fltr,:], testPnt, \
-        ray, normDF)
+    mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:], 
+        patch.xProds[fltr,:], testPnt, ray)
     
     return mus
 
 
 
-def _fullRayIntersectionTest(testPnt, points, tris, assocs, LUT, \
-    voxIJK, imgSize, normDF):
+def _fullRayIntersectionTest(testPnt, surf, \
+        voxIJK, imgSize):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
     all the triangles of a surface (not the reduced form used elsewhere for 
@@ -641,10 +665,7 @@ def _fullRayIntersectionTest(testPnt, points, tris, assocs, LUT, \
 
     Inputs: 
         testPnt: 1 x 3 vector for point under test
-        points: p x 3 matrix of surface nodes
-        tris: t x 3 matrix of triangle node indices
-        assocs: list of lists recordining triangle voxel associations
-        LUT: a LUT used for indexing voxel indices into the assocs list
+        surf: complete surface object
         voxIJK: the IJK subscripts of the voxel in which the testPnt lies
         imgSize: the dimensions of the image in voxels
         normDF: 1/-1 for triangle node ordering (1 default)
@@ -654,19 +675,14 @@ def _fullRayIntersectionTest(testPnt, points, tris, assocs, LUT, \
     """
 
     # Get the voxel indices that lie along the ray (inc the current vox)
-    subs = np.zeros((imgSize[0], 3), dtype=np.int32)
-    subs[:,0] = np.arange(0, imgSize[0])
-    subs[:,1] = voxIJK[1]
-    subs[:,2] = voxIJK[2]
+    dim = np.argmin(imgSize)
+    subs = np.tile(voxIJK, (imgSize[dim], 1)).astype(np.int32)
+    subs[:,dim] = np.arange(0, imgSize[dim])
     inds = _sub2ind(imgSize, (subs[:,0], subs[:,1], subs[:,2]))
 
     # Form the ray and fetch all appropriate triangles from assocs data
-    ray = np.array([1, 0, 0], dtype=np.float32)
-    axisTris = _flattenList(assocs[np.isin(LUT, inds)])
-    axisTris = list(set(axisTris))
-    axisTris = tris[axisTris,:]
-    intXs = _findRayTriangleIntersections2D(testPnt, ray, axisTris, \
-        points, 0, normDF)
+    patches = surf.toPatchesForVoxels(inds)
+    intXs = _findRayTriangleIntersections2D(testPnt, patches, dim)
 
     # Classify according to parity of intersections. If odd number of ints
     # found between -inf and the point under test, then it is inside
@@ -675,20 +691,16 @@ def _fullRayIntersectionTest(testPnt, points, tris, assocs, LUT, \
 
 
 
-# @numba.jit(nopython=True)
-def _reducedRayIntersectionTest(testPnts, tris, triPoints, rootPoint,\
-    normDF, flip):
+def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
     """Shortened form of the full ray intersection test, working with only 
     a small patch of surface. Determine if test points are contained or 
     not within the patch. 
 
     Args: 
-        testPnt: p x 3 matrix of points to test
-        tris: t x 3 matrix of triangle node indices
-        triPoints: n x 3 matrix of surface nodes
+        testPnts: p x 3 matrix of points to test
+        patch: patch object for surface within the voxel
         rootPoint: 1 x 3 vector for a point to which all rays used for 
             testing will be drawn from point under test
-        normDF: 1/-1 for triangle node ordering (1 default)
         flip: bool flag, false if the root point is OUTSIDE the surface
     
     Returns: 
@@ -696,7 +708,7 @@ def _reducedRayIntersectionTest(testPnts, tris, triPoints, rootPoint,\
     """
 
     # If no tris passed in throw error
-    if not tris.shape[0]:
+    if not patch.tris.shape[0]:
         raise RuntimeError("No triangles to test against")
     
     # Each point will be tested by drawing a ray to the root point and 
@@ -708,32 +720,41 @@ def _reducedRayIntersectionTest(testPnts, tris, triPoints, rootPoint,\
         pnt = testPnts[p,:]
         ray = rootPoint - pnt
 
-        # Find intersections, if they exist classify according to parity. 
-        # Note the following logic assumes the rootPoint is inisde, ie, 
-        # flip is false, if this is not the case then we will simply invert
-        # the results at the end. 
-        intMus = _findRayTriangleIntersections3D(pnt, ray, tris, \
-            triPoints, normDF)
-
-        if intMus.shape[0]:
-
-            # Filter down to intersections in the range (0,1)
-            intMus = intMus[(intMus < 1) & (intMus > 0)]
-
-            # if no ints in this reduced range then point is inside
-            # because an intersection would otherwise be guaranteed
-            if not intMus.shape[0]:
-                flags[p] = True 
-
-            # If even number, then point inside
-            else: 
-                flags[p] = not(intMus.shape[0] % 2)
-            
-        # Finally, if there were no intersections at all then the point is
-        # also inside (given the root point is also inside, if the test pnt
-        # was outside there would necessarily be an intersection)
+        # If the root point and test point are the same, then the ray
+        # is zeros and shares the same classification as the root pt. 
+        # Only proceed if the ray is non-zero
+        if not np.any(ray):
+            shouldAppend = True 
+        
         else: 
-            flags[p] = True 
+
+            # Find intersections, if they exist classify according to parity. 
+            # Note the following logic assumes the rootPoint is inisde, ie, 
+            # flip is false, if this is not the case then we will simply invert
+            # the results at the end. 
+            intMus = _findRayTriangleIntersections3D(pnt, ray, patch)
+
+            if intMus.shape[0]:
+
+                # Filter down to intersections in the range (0,1)
+                intMus = intMus[(intMus < 1) & (intMus > 0)]
+
+                # if no ints in this reduced range then point is inside
+                # because an intersection would otherwise be guaranteed
+                if not intMus.shape[0]:
+                    shouldAppend = True 
+
+                # If even number, then point inside
+                else: 
+                    shouldAppend = not(intMus.shape[0] % 2)
+                
+            # Finally, if there were no intersections at all then the point is
+            # also inside (given the root point is also inside, if the test pnt
+            # was outside there would necessarily be an intersection)
+            else: 
+                shouldAppend = True 
+        
+        flags[p] = shouldAppend
     
     # Flip results if required
     if flip:
@@ -743,26 +764,25 @@ def _reducedRayIntersectionTest(testPnts, tris, triPoints, rootPoint,\
 
 
 
-def _findTrianglePlaneIntersections(tris, points, voxCent, voxSize):
+def _findTrianglePlaneIntersections(patch, voxCent, voxSize):
     """Find the points of intersection of all triangle edges with the 
     planar faces of the voxel. 
 
     Args: 
-        tris: t x 3 matrix of triangle node indices
-        points: p x 3 matrix of surface nodes
+        patch: patch object for surface within the voxel
         voxCent: 1 x 3 vector of voxel centre
         voxSize: 1 x 3 vector of voxel dimensions
 
     Returns: 
         n x 3 matrix of n intersection coordinates 
     """
-    if not tris.shape[0]:
+    if not patch.tris.shape[0]:
         return np.zeros((0,3))
 
-    # Form all the edge vectors of the voxel cube, strip out repeats
-    edges = np.hstack((np.vstack((tris[:,2], tris[:,1])), \
-        np.vstack((tris[:,1], tris[:,0])), \
-        np.vstack((tris[:,0], tris[:,2])))).T 
+    # Form all the edge vectors of the patch, strip out repeats
+    edges = np.hstack((np.vstack((patch.tris[:,2], patch.tris[:,1])), \
+        np.vstack((patch.tris[:,1], patch.tris[:,0])), \
+        np.vstack((patch.tris[:,0], patch.tris[:,2])))).T 
 
     nonrepeats = np.empty((0,2), dtype=np.int16)
     for k in range(edges.shape[0]):
@@ -780,8 +800,8 @@ def _findTrianglePlaneIntersections(tris, points, voxCent, voxSize):
 
         for k in [-1, 1]: 
             pPlane = voxCent + (k/2 * pNormal * voxSize[dim])
-            pStart = points[edges[:,0],:]
-            edgeVecs = points[edges[:,1],:] - points[edges[:,0],:]
+            pStart = patch.points[edges[:,0],:]
+            edgeVecs = patch.points[edges[:,1],:] - patch.points[edges[:,0],:]
 
             # Sneaky trick here: because planar normals are aligned with the 
             # coord axes we don't need to do a full dot product, just extract
@@ -797,15 +817,13 @@ def _findTrianglePlaneIntersections(tris, points, voxCent, voxSize):
 
 
 
-def _findVoxelSurfaceIntersections(tris, points, vertices, normDF):
+def _findVoxelSurfaceIntersections(patch, vertices):
     """Find points of intersection between edge and body vectors of a voxel
     with surface. Also detects folds along any of these vectors.
 
     Args: 
-        tris: t x 3 matrix of triangle node indices
-        points: p x 3 matrix of surface nodes
+        patch: patch object for surface within the voxel
         vertices: vertices of the voxel
-        normDF: 1/-1 for triangle node ordering (1 default)
     
     Returns: 
         (intersects, fold) tuple: intersects the points of intersection, 
@@ -817,7 +835,7 @@ def _findVoxelSurfaceIntersections(tris, points, vertices, normDF):
     fold = False 
 
     # If nothing to test, silently return 
-    if not tris.shape[0]:
+    if not patch.tris.shape[0]:
         return (intersects, fold)
 
     # 8 vertices correspond to 12 edge vectors along exterior edges and 
@@ -832,7 +850,7 @@ def _findVoxelSurfaceIntersections(tris, points, vertices, normDF):
     for e in range(16):
         edge = edges[e,:]
         pnt = vertices[origins[e],:]
-        intMus = _findRayTriangleIntersections3D(pnt, edge, tris, points, normDF)
+        intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
         if intMus.shape[0]:
             intPnts = pnt + np.outer(intMus, edge)
@@ -918,8 +936,8 @@ def _adjustFLIRT(source, reference, transform):
     return (outAff @ np.linalg.inv(srcAff))
 
 
-def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
-    imgSize, supersampler, normDF):
+def _estimateVoxelFraction(surf, voxIJK, voxIdx,
+    imgSize, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -950,8 +968,8 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
         else: 
             return 0
 
-    def __classifyVoxelViaRecursion(ps, ts, voxCent, voxSize, normDF, \
-        containedFlag):
+    def __classifyVoxelViaRecursion(patch, voxCent, voxSize, \
+            containedFlag):
         """Classify a voxel entirely via recursion (not using any 
         convex hulls)
         """
@@ -962,8 +980,8 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
         sX = np.arange(1 / (2 * super2), 1, 1 / super2) - 0.5
         sX, sY, sZ = np.meshgrid(sX, sX, sX)
         subVoxCents = np.vstack((sX.flatten(), sY.flatten(), sZ.flatten())).T
-        flags = _reducedRayIntersectionTest(subVoxCents, ts, ps, voxCent, \
-            normDF, ~containedFlag)
+        flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
+            ~containedFlag)
 
         return (np.sum(flags) / Nsubs2)
 
@@ -1013,33 +1031,34 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
     # The main function, here we go... ----------------------------------------
 
     verbose = False
-    print(voxIdx)
+    # print(voxIdx)
 
     # Hardcode voxel size as we now work in voxel coords. Intialise results
     voxSize = np.array([1,1,1], dtype=np.int8)
-    inFraction = 0
+    inFraction = 0.0
 
     # Set up the subvoxel sizes and vols. 
-    samplr = supersampler 
     subVoxSize = (voxSize / supersampler).astype(np.float32)
     subVoxVol = np.prod(subVoxSize).astype(np.float32)
-    subVox2World = np.array([
-        [1/samplr[0], 0, 0, voxIJK[0] + (1-samplr[0])/(2*samplr[0])], \
-        [0, 1/samplr[1], 0, voxIJK[1] + (1-samplr[1])/(2*samplr[1])], \
-        [0, 0, 1/samplr[2], voxIJK[2] + (1-samplr[2])/(2*samplr[2])], \
-        [0, 0, 0, 1]
-    ])
 
     # Rebase triangles and points for this voxel
-    ps, ts = _rebaseTriangles(allPoints, \
-        allTris[_flattenList(assocs[LUT == voxIdx]), :])
+    patch = surf.toPatch(voxIdx)
 
     # Test all subvox corners now and store the results for later
     allCorners = __getAllSubVoxCorners(supersampler, voxIJK, voxSize)
-    voxCentFlag = _fullRayIntersectionTest(voxIJK, allPoints, allTris, \
-        assocs, LUT, voxIJK, imgSize, normDF)
-    allCornerFlags = _reducedRayIntersectionTest(allCorners, ts, ps, \
-            voxIJK, normDF, ~voxCentFlag)
+    voxCentFlag = _fullRayIntersectionTest(voxIJK, surf, voxIJK, imgSize)
+    allCornerFlags = _reducedRayIntersectionTest(allCorners, patch, \
+        voxIJK, ~voxCentFlag)
+
+    # Test all subvox centres now and store the results for later
+    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
+    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
+    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
+    [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
+    allCents = np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T \
+        + voxIJK
+    allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK, \
+        ~voxCentFlag)
 
 
     # Subvoxel loop starts here -----------------------------------------------
@@ -1048,54 +1067,56 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
 
         # Get the centre and corners, prepare the sanity check
         subVoxClassified = False
-        sijk = np.array([_ind2sub(supersampler, s)])
-        subVoxCent = np.squeeze(_affineTransformPoints(sijk, subVox2World))
-        cornerIndices = __fetchSubVoxCornerIndices(s, supersampler)
-        corners = allCorners[cornerIndices,:]
-
-        # Set the flag for the subVoxCent to serve as the root point
-        subVoxFlag = _fullRayIntersectionTest(subVoxCent, allPoints, allTris, \
-            assocs, LUT, voxIJK, imgSize, normDF)
+        subVoxCent = allCents[s,:]
+        subVoxFlag = allCentFlags[s]
 
         # Do any triangles intersect the subvox?
-        triFltr = _cfilterTriangles(ts, ps, subVoxCent, subVoxSize)
+        triFltr = _cyfilterTriangles(patch.tris, patch.points, subVoxCent, 
+            subVoxSize)
 
         # CASE 1 --------------------------------------------------------------
 
         # If no triangles intersect the subvox then whole-tissue classification
         # using the flip flags that were set by fullRayIntersectTest()
         if not np.any(triFltr): 
+
             if verbose: print("Whole subvox assignment")
-            
-            inFraction += (subVoxFlag * subVoxVol)        
+            inFraction += (int(subVoxFlag) * subVoxVol)        
             subVoxClassified = True 
 
         # CASE 2: some triangles intersect the subvox -------------------------
 
         else: 
+
+            # Shrink the patch appropriately, load corner flags 
+            smallPatch = patch.shrink(triFltr)
+            cornerIndices = __fetchSubVoxCornerIndices(s, supersampler)
+            corners = allCorners[cornerIndices,:]
             cornerFlags = allCornerFlags[cornerIndices] 
 
             # Check for subvoxel edge intersections with the local patch of
             # triangles and for folds
             edgeIntXs, fold = _findVoxelSurfaceIntersections( \
-                ts[triFltr,:], ps, corners, normDF)
+                smallPatch, corners)
 
             # Separate points within the voxel into distinct clouds, to check
             # for multiple surface intersection
-            groups = _separatePointClouds(ts[triFltr,:])
+            groups = _separatePointClouds(smallPatch.tris)
 
             # If neither surface is folded within the subvox and there 
             # are no multiple intersections, we can form hulls. 
             if (not fold) & (len(groups) < 2):
 
                 # Filter down surface nodes that are in the subvox
-                localPs = ps[np.unique(ts[triFltr,:]),:]
+                localPs = patch.points[np.unique(smallPatch.tris),:]
+                localPs = localPs[_filterPoints(localPs, subVoxCent, 
+                    subVoxSize)]
                 
                 # Gather points together in preparation for forming 
                 # hulls (the corners will be added just beforehand)
                 hullPts = np.vstack( (localPs, edgeIntXs, \
-                    _findTrianglePlaneIntersections(ts[triFltr,:], \
-                    ps, subVoxCent, subVoxSize)) )
+                    _findTrianglePlaneIntersections(smallPatch, \
+                    subVoxCent, subVoxSize)) )
 
                 if verbose: print('Hulls: mixed in/out')
 
@@ -1124,8 +1145,8 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
 
                 V = __safeFormHull(hullPts)
                 if not V: 
-                    L2fraction = __classifyVoxelViaRecursion(ps, ts, \
-                        subVoxCent, subVoxSize, normDF, subVoxFlag)
+                    L2fraction = __classifyVoxelViaRecursion(smallPatch, \
+                        subVoxCent, subVoxSize, subVoxFlag)
                     inFraction += (subVoxVol * L2fraction) 
                 else:
                     inFraction += np.matmul(classes, [V, (subVoxVol - V)])       
@@ -1144,8 +1165,8 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
                     if verbose & fold:
                         print("Fold detected, using recursion")
 
-                    L2fraction = __classifyVoxelViaRecursion(ps, ts, subVoxCent, \
-                        subVoxSize, normDF, subVoxFlag)
+                    L2fraction = __classifyVoxelViaRecursion(smallPatch, subVoxCent, \
+                        subVoxSize, subVoxFlag)
                     inFraction += (L2fraction * subVoxVol)
                     subVoxClassified = True 
             
@@ -1157,21 +1178,21 @@ def _estimateVoxelFraction(allPoints, allTris, assocs, LUT, voxIJK, voxIdx,
 
     # END of subvoxel loop ----------------------------------------------------
       
-    if inFraction > 1.00000001:
+    if inFraction > 1.000001:
         raise RuntimeError('Fraction exceeds 1')
-    return inFraction 
+
+    if inFraction < 0:
+        raise RuntimeError('Negative fraction in', voxIdx)
+
+    return np.minimum(1, inFraction)
 
 
-
-def _estimateFractions(points, tris, assocs, LUT, FoVsize, supersampler, \
+def _estimateFractions(surf, FoVsize, supersampler, \
     voxList, normDF):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
-        points: surface nodes for either surface
-        tris: triangles for either surface
-        assocs: list of lists recording triangle/voxel associations
-        LUT: mapping between linear voxel index and posn with assocs
+        surf: complete surface object. 
         FoVsize: dimensions of voxel grid required to contain surfaces, 
             to which the voxels in voxList are indexed. 
         supersampler: 1 x 3 vector of supersampling factor
@@ -1183,12 +1204,6 @@ def _estimateFractions(points, tris, assocs, LUT, FoVsize, supersampler, \
         matrix of size prod(FoV) x 2, where the first column  
     """
 
-    # Check inputs
-    if points.shape[1] != 3: 
-        raise RuntimeError("Points matrices should be p x 3")
-
-    if tris.shape[1] != 3: 
-        raise RuntimeError("Triangles matrices should be t x 3")
 
     if FoVsize.size != 3: 
         raise RuntimeError("FoV size should be a 1 x 3 vector")
@@ -1200,29 +1215,23 @@ def _estimateFractions(points, tris, assocs, LUT, FoVsize, supersampler, \
     voxIJKs = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
     voxIJKs = voxIJKs.astype(np.float32)
 
-    # Shuffle voxel list in place, then prepare the worker function
-    # np.random.shuffle(voxList)
     workerChunks = _distributeObjects(voxList, __NWORKERS__)
-
     estimateFractionsPartial = functools.partial(__estimateFractionsWorker, \
-        points, tris, assocs, LUT, voxIJKs, FoVsize, supersampler, normDF)
+        surf, voxIJKs, FoVsize, supersampler)
 
-    # with multiprocessing.Pool(__NWORKERS__) as p: 
-    #     workerResults = p.starmap(estimatePVsPartial, [workerChunks, \
-    #     range(__NWORKERS__)])
+    with multiprocessing.Pool(__NWORKERS__) as p: 
+        workerFractions = p.starmap(estimateFractionsPartial, 
+            zip(workerChunks, range(__NWORKERS__)), chunksize=1)
 
-    workerFractions = list(map(estimateFractionsPartial, workerChunks, \
-        range(__NWORKERS__)))
+    # workerFractions = list(map(estimateFractionsPartial, workerChunks, \
+    #     range(__NWORKERS__)))
 
     # Aggregate the results back together. 
-    fractions = np.hstack(workerFractions)
+    fractions = np.concatenate(workerFractions)
 
     # Sanity check: did all voxels in toEstimate get processeed?
-    if not all(np.any(fractions >= 0, axis=1)):
+    if not np.all(fractions >= 0):
         raise RuntimeError("Not all voxels in voxList processed.")
-
-    if np.any(fractions < 0): 
-        raise RuntimeError("Negative fraction returned.")
 
     if np.any(fractions > 1):
         raise RuntimeError("Fraction greater than 1 returned.")
@@ -1231,32 +1240,35 @@ def _estimateFractions(points, tris, assocs, LUT, FoVsize, supersampler, \
 
 
 
-def __estimateFractionsWorker(points, tris, assocs, LUT, voxIJK, imgSize, \
-        supersampler, normDF, workerVoxList, workerNumber):
+def __estimateFractionsWorker(surf, voxIJK, imgSize, \
+        supersampler, workerVoxList, workerNumber):
+    try:
+        partialVolumes = np.zeros((len(workerVoxList), 1), dtype=np.float32)
+        counter = 0
+        progFactor = max([(len(workerVoxList) // 10), 1])
 
-    partialVolumes = np.zeros((len(workerVoxList), 3))
-    counter = 0
-    progFactor = max([(len(workerVoxList) // 10), 1])
+        for v in workerVoxList: 
 
-    for v in workerVoxList: 
+            if (workerNumber == 0) & (counter % progFactor == 0): 
+                print("{}..".format(round(10 * counter / progFactor)), \
+                end='', flush=True)
 
-        if (workerNumber == 0) & (counter % progFactor == 0): 
-            print("{}..".format(round(10 * counter / progFactor)), \
-            end='', flush=True)
-
-        # Load voxel centre, estimate vols, and rescale to PVs
-        voxijk = voxIJK[v,:]
-        fraction = _estimateVoxelFraction(points, tris, assocs, LUT, \
-            voxijk, v, imgSize, supersampler, normDF)
+            # Load voxel centre, estimate vols, and rescale to PVs
+            voxijk = voxIJK[v,:]
+            fraction = _estimateVoxelFraction(surf, \
+                voxijk, v, imgSize, supersampler)
+            
+            partialVolumes[counter] = fraction
+            counter += 1 
         
-        partialVolumes[counter,:] = fraction
-        counter += 1 
-    
-    return partialVolumes
+        return partialVolumes
+
+    except Exception as e:
+        return e
 
 
 
-def toblerone(**kwargs):
+def estimatePVs(**kwargs):
     """Estimate partial volumes on the cortical ribbon"""
 
     verbose = True 
@@ -1264,62 +1276,76 @@ def toblerone(**kwargs):
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
-    if 'FSSubDir' in kwargs:
-        FSSubDir = op.join(kwargs['FSSubDir'], 'surf')
+    if 'FSdir' in kwargs:
+        FSdir = op.join(kwargs['FSdir'], 'surf')
         
-        if not op.isdir(FSSubDir):
+        if not op.isdir(FSdir):
             raise RuntimeError("Subject's surf/ directory does not exist")
 
-        kwargs['LWS'] = op.join(FSSubDir, 'lh.white')
-        kwargs['LPS'] = op.join(FSSubDir, 'lh.pial')
-        kwargs['RWS'] = op.join(FSSubDir, 'rh.white')
-        kwargs['RPS'] = op.join(FSSubDir, 'rh.pial')
+        kwargs['LWS'] = op.join(FSdir, 'lh.white')
+        kwargs['LPS'] = op.join(FSdir, 'lh.pial')
+        kwargs['RWS'] = op.join(FSdir, 'rh.white')
+        kwargs['RPS'] = op.join(FSdir, 'rh.pial')
 
     # Define the hemispheres we will be working with and check surfaces exist. 
     # Check file formats
     hemispheres = []
     if (kwargs.get('LWS') is not None) & (kwargs.get('LPS') is not None): 
-        hemispheres.append('L')
-        assert all(map(op.isfile, (kwargs['LPS'], kwargs['LWS']))), \
-            "LWS/LPS surface does not exist"
+        hemispheres.append(Hemisphere('L'))
+        if not all(map(op.isfile, (kwargs['LPS'], kwargs['LWS']))):
+            raise RuntimeError("LWS/LPS surface does not exist")
         surfExt = op.splitext(kwargs['LWS'])[-1]
-    if (kwargs.get('RWS') is not None) & (kwargs.get('RPS') is not None): 
-        hemispheres.append('R')
-        assert all(map(op.isfile, (kwargs['RPS'], kwargs['RWS']))), \
-            "RWS/RPS surface does not exist"
-        surfExt = op.splitext(kwargs['RWS'])[-1]
-    assert len(hemispheres), "Specify at least one hemisphere's surfaces (eg LWS/LPS)"
 
-    # Manual surface offset, in which all checks disabled. 
-    if 'cRAS' in kwargs: 
-        assert kwargs['cRAS'].shape == (1,3), "cRAS must be a 1x3 vector"
-    else: 
-        cRAS = None 
+    if (kwargs.get('RWS') is not None) & (kwargs.get('RPS') is not None): 
+        hemispheres.append(Hemisphere('R'))
+        if not all(map(op.isfile, (kwargs['RPS'], kwargs['RWS']))):
+            raise RuntimeError("RWS/RPS surface does not exist")
+        surfExt = op.splitext(kwargs['RWS'])[-1]
+
+    if not len(hemispheres):
+        raise RuntimeError("Specify at least one hemisphere's surfaces (eg LWS/LPS)")
+
 
     # Reference image path 
-    assert ('reference' in kwargs), "Path to reference image must be given"
-    assert op.isfile(kwargs['reference']), "Reference image does not exist"
-    inExt = op.splitext(kwargs['reference'])[-1]
-    assert inExt in [".nii", ".gz", ".mgh", ".mgz"], \
-        "Reference must be in the following formats: nii, nii.gz, mgh, mgz"
-    if '.nii.gz' in kwargs['reference']:
+    if not 'ref' in kwargs:
+        raise RuntimeError("Path to reference image must be given")
+
+    if not op.isfile(kwargs['ref']):
+        raise RuntimeError("Reference image does not exist")
+
+    inExt = op.splitext(kwargs['ref'])[-1]
+    if not inExt in [".nii", ".gz", ".mgh", ".mgz"]:
+        raise RuntimeError("Reference must be in the \
+        following formats: nii, nii.gz, mgh, mgz")
+
+    if '.nii.gz' in kwargs['ref']:
         inExt = '.nii.gz'
 
-    # Structural to reference transformation 
-    if 'struct2ref' in kwargs:
+
+    # Structural to reference transformation. Either as array or path
+    # to file containing matrix
+    if kwargs.get('struct2ref'):
         if (type(kwargs['struct2ref']) is str):
-            kwargs['struct2ref'] = np.fromfile(kwargs['struct2ref'], dtype=float)
-        assert kwargs['struct2ref'].shape == (4,4), "struct2ref must be a 4x4 matrix"
+            kwargs['struct2ref'] = np.fromfile(kwargs['struct2ref'], 
+                dtype=float)
+    else: 
+        warnings.warn("No structural to reference transform given. Assuming identity.")
+        kwargs['struct2ref'] = np.identity(4)
+
+    if not kwargs['struct2ref'].shape == (4,4):
+        raise RuntimeError("struct2ref must be a 4x4 matrix")
 
     # Is this a FLIRT transform? If so we need to do some clever preprocessing
-    if 'flirt' in kwargs:
-        assert ('structural' in kwargs), "If using a FLIRT transform, the path to the \
-            structural image must also be given"
-        assert op.isfile(kwargs['structural']), "If using a FLIRT transform, the path to the \
-            structural image must also be given"
+    if kwargs.get('flirt'):
+        if not 'struct' in kwargs:
+            raise RuntimeError("If using a FLIRT transform, the path to the \
+                structural image must also be given")
+        if not op.isfile(kwargs['struct']):
+            raise RuntimeError("Structural image does not exist")
+
 
     # Read in input image properties 
-    imgObj = nibabel.load(kwargs['reference'])
+    imgObj = nibabel.load(kwargs['ref'])
     voxSize = (imgObj.header['pixdim'])[1:4]
     imgSize = (imgObj.header['dim'])[1:4]
     vox2world = imgObj.affine
@@ -1327,14 +1353,14 @@ def toblerone(**kwargs):
 
     # Prepare output directory. If given then create it 
     # If not then use the input image dir
-    if 'outDir' in kwargs: 
-        if not op.isdir(kwargs['outDir']):
-            os.mkdir(kwargs['outDir'])
+    if kwargs.get('outdir'):
+        if not op.isdir(kwargs['outdir']):
+            os.mkdir(kwargs['outdir'])
     else: 
-        kwargs['outDir'] = op.dirname(kwargs['reference'])
+        kwargs['outdir'] = op.dirname(kwargs['ref'])
 
     # Create output dir for transformed surfaces
-    transSurfDir = op.join(kwargs['outDir'], 'surf_transform')
+    transSurfDir = op.join(kwargs['outdir'], 'surf_transform')
     if not op.isdir(transSurfDir):
         os.mkdir(transSurfDir)
     
@@ -1344,46 +1370,32 @@ def toblerone(**kwargs):
     
     # Prepare the output filename. If not given then we pull it 
     # from the reference
-    if 'outName' in kwargs:
-        outName = kwargs['outName']
+    if  kwargs.get('name'):
+        name = kwargs['name']
     else:  
-        outName = op.split(kwargs['reference'])[-1]
+        name = op.split(kwargs['ref'])[-1]
 
     outExt = ''
-    fname = outName
-    while '.' in fname: 
-        try:
-            fname, e = op.splitext(fname)
-            ext = float(e)
-        except ValueError: 
-            outExt = e
-            ext = None
-        if type(ext) is float: 
-            fname + ".{:g}".format(ext)
-            break 
+    fname = name
+    while ('.nii' in fname) | ('.nii.gz' in fname): 
+        fname, e = op.splitext(fname)
+        outExt = e + outExt
     
     if outExt == '': 
         outExt = inExt 
     
-    maskName = outName + "_surfmask"
-    assocsName = fname + "_assocs"
-    outPath = op.join(kwargs['outDir'], fname + outExt)
-    maskPath = op.join(kwargs['outDir'], maskName + outExt)
-    assocsPath = op.join(kwargs['outDir'], assocsName + '.pkl')
+    name = fname
+    maskName = name + "_surfmask"
+    assocsName = name + "_assocs"
+    assocsPath = op.join(kwargs['outdir'], assocsName + '.pkl')
 
-    # Debug tools 
-    if 'solution' in kwargs: 
-        sol = nibabel.load(kwargs['solution'])
-        sol = sol.get_fdata()
-        sol = np.reshape(sol, (-1, 3))
-    else:
-        sol = [] 
 
     # Load surface geometry information 
     # If FS binary format, we can read cRAS straight out of the meta dict.
+    cRAS = None
     if cRAS is None: 
         if surfExt != '.gii':
-            surfName = hemispheres[0] + 'PS'
+            surfName = hemispheres[0].side + 'PS'
             _, _, meta = tuple(nibabel.freesurfer.io.read_geometry(\
                         kwargs[surfName], read_metadata=True))
             cRAS = meta['cras']
@@ -1401,10 +1413,9 @@ def toblerone(**kwargs):
         print("Transformation matrix will be applied:\n", transform)
     
     # Load all surfaces and transform into reference voxel space
-    inPs = {}; outPs = {}; inTs = {}; outTs = {}
     for h in hemispheres: 
         for s in ['P', 'W']: 
-            surfName = h + s + 'S'
+            surfName = h.side + s + 'S'
 
             if surfExt != '.gii':
                 ps, ts = tuple(nibabel.freesurfer.io.read_geometry(\
@@ -1419,21 +1430,21 @@ def toblerone(**kwargs):
             ps = ps.astype(np.float32)
 
             # Final indexing checks
-            assert (np.min(ts) == 0) & (np.max(ts) == ps.shape[0] - 1), \
-                "Vertex/triangle indexing incorrect"
+            if not (np.min(ts) == 0) & (np.max(ts) == ps.shape[0] - 1):
+                raise RuntimeError("Vertex/triangle indexing incorrect")
 
-            # Load the ps/ts into their respective dicts
-            if s == 'P':
-                outPs[h] = ps; outTs[h] = ts
-            else: 
-                inPs[h] = ps; inTs[h] = ts 
+            # Write the surface into the hemisphere obj
+            surf = Surface(ps, ts, normDF)
+            if s == 'P': h.outSurf = surf 
+            else: h.inSurf = surf 
 
 
     # FoV and associations loop -----------------------------------------------
 
     # Check the FoV of the reference image against the extents of the surfaces
     # Warn if FoV does not contain whole surface
-    s1 = outPs[hemispheres[0]]; s2 = outPs[hemispheres[-1]]
+    s1 = hemispheres[0].outSurf.points
+    s2 = hemispheres[-1].outSurf.points
     if (np.any(s1 < -1) | np.any(s1 > imgSize-1) | \
         np.any(s2 < -1) |  np.any(s2 > imgSize-1)):
         print("Warning: the FoV of the reference image does not cover the", 
@@ -1459,13 +1470,12 @@ def toblerone(**kwargs):
     # are within range of the full FoV
     if np.any(FoVoffset != 0):
         for h in hemispheres:
-            for s in ["inPs", "outPs"]: 
-                surf = s + '[\'' + h + '\']'
-                exec(surf + '=' + surf + '+ FoVoffset')
+            for s in h.surfs(): 
+                s.points = s.points + FoVoffset
 
-                assert np.all(np.floor(np.min(eval(surf), axis=0)) >= 0), \
+                assert np.all(np.floor(np.min(s.points, axis=0)) >= 0), \
                     "FoV offset does not remove negative coordinates"
-                assert np.all(np.ceil(np.max(eval(surf), axis=0)) < \
+                assert np.all(np.ceil(np.max(s.points, axis=0)) < \
                     fullFoVsize), "Full FoV does not contain all surface coordinates"
 
     # Form (or read in) associations
@@ -1474,49 +1484,63 @@ def toblerone(**kwargs):
     stamp = np.matmul(kwargs['struct2ref'], world2vox)
     inAssocs = {}; outAssocs = {} 
     recomputeAssocs = False 
+
+    # Associations have been pre-computed 
     if op.isfile(assocsPath):
         print("Loading pre-computed associations found in the output", \
             "directory:", assocsPath)
 
         with open(assocsPath, 'rb') as f:
 
-            oldStamp, inAssocs, outAssocs = pickle.load(f)
+            oldStamp, inAssocsDict, outAssocsDict = pickle.load(f)
             if not np.array_equal(oldStamp, stamp): 
                 raise RuntimeError("Pre-loaded associations stamp does not match", \
                     "surface/image geometry. Delete the associations.")
         
         # Check the loaded assocs are good to go (not nones)
         for h in hemispheres: 
-            if not ((inAssocs[h] is not None) & (outAssocs[h] is not None)):
+            if not ((inAssocsDict[h.side] is not None) & (outAssocsDict[h.side] is not None)):
                 print("Loaded associations are not complete, will recompute.")
                 recomputeAssocs = True 
-
+            
+        # If so, unpack the associations into their keys (LUT) and values. 
+            else:
+                h.inSurf.LUT = np.array(list(inAssocsDict[h.side].keys()), dtype=np.int32)
+                h.outSurf.LUT = np.array(list(outAssocsDict[h.side].keys()), dtype=np.int32)
+                h.inSurf.assocs = np.array(list(inAssocsDict[h.side].values()))
+                h.outSurf.assocs = np.array(list(outAssocsDict[h.side].values()))
+    
+    # Associations need computing
     elif (recomputeAssocs) or not (op.isfile(assocsPath)): 
-        if 'saveAssocs' in kwargs: 
+        if 'saveassocs' in kwargs: 
             print("Forming voxel associations, saving to:", assocsPath)
         else: 
             print("Forming voxel associations")
 
         # Initialise all these as none and overwrite them with true values if the 
         # hemispheres are available to do so 
+        if 'saveassocs' in kwargs: 
+              inAssocsDict = {}; outAssocsDict = {}
+
         for h in hemispheres: 
-            inAssocs[h] = _formAssociations(inPs[h], inTs[h], fullFoVsize)
-            outAssocs[h] = _formAssociations(outPs[h], outTs[h], fullFoVsize)
+            inAssocs, outAssocs = list(map(_formAssociations, h.surfs(), 
+                [fullFoVsize, fullFoVsize]))
+            h.inSurf.LUT = np.array(list(inAssocs.keys()), dtype=np.int32)
+            h.inSurf.assocs = list(inAssocs.values())
+            h.outSurf.LUT = np.array(list(outAssocs.keys()), dtype=np.int32)
+            h.outSurf.assocs = list(outAssocs.values())
 
-        if 'saveAssocs' in kwargs: 
+            if 'saveassocs' in kwargs: 
+                inAssocsDict[h.side] = inAssocs
+                outAssocsDict[h.side] = outAssocs 
+
+        if 'saveassocs' in kwargs: 
             with open(assocsPath, 'wb') as f: 
-                pickle.dump((stamp, inAssocs, outAssocs), f)
+                pickle.dump((stamp, inAssocsDict, outAssocsDict), f)
 
-    # Unpack the associations into their keys (LUT) and values. 
-    inLUT = {}; outLUT = {} 
-    for h in hemispheres: 
-        inLUT[h] = list(inAssocs[h].keys())
-        outLUT[h] = list(outAssocs[h].keys())
-        inAssocs[h] = np.array(list(inAssocs[h].values()))
-        outAssocs[h] = np.array(list(outAssocs[h].values()))
 
     # And now pass off to the actual toblerone estimation
-    supersampler = (np.ceil(2 * voxSize) +1).astype(np.int8)
+    supersampler = np.ceil(2 * voxSize).astype(np.int8)
     print("Supersampling factor set at:", supersampler)
 
     # Generate the list of voxels to be processed. Start with the set of all
@@ -1536,63 +1560,58 @@ def toblerone(**kwargs):
     voxList = _sub2ind(fullFoVsize, (voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]))
 
     # Process each hemisphere
-    PVs = {}
     for h in hemispheres:
 
-        if np.any(np.max(np.abs(inPs[h])) > np.max(np.abs(outPs[h]))):
+        if np.any(np.max(np.abs(h.inSurf.points)) > np.max(np.abs(h.outSurf.points))):
             raise RuntimeWarning("Inner surface vertices appear to be further",\
                 "from the origin than the outer vertices. Are the surfaces in",\
                 "the correct order?")
         
-        print("{} in: ".format(h), end='')
-        inList = np.intersect1d(voxList, inLUT[h])
-        #inList = [74606]
-        inFracs, inList = _estimateFractions(inPs[h], inTs[h], inAssocs[h], \
-            inLUT[h], fullFoVsize, supersampler, inList, normDF)
+        # Estimate fractions against the inner surface
+        print("{} in: ".format(h.side), end='')
+        inList = np.intersect1d(voxList, h.inSurf.LUT).astype(np.int32)
+        inFracs, inList = _estimateFractions(h.inSurf, fullFoVsize, supersampler, inList, normDF)
 
-        print("{}out: ".format(h))
-        outList = np.intersect1d(voxList, outLUT[h])
-        outFracs, outList = _estimateFractions(outPs[h], outTs[h], \
-            outAssocs[h], outLUT[h], fullFoVsize, supersampler, outList, normDF)
+        # Estimate fractions against the outer surface
+        print("{}out: ".format(h.side), end='')
+        outList = np.intersect1d(voxList, h.outSurf.LUT).astype(np.int32)
+        outFracs, outList = _estimateFractions(h.outSurf, fullFoVsize, supersampler, outList, normDF)
         
+        # Estimate bool masks against both surfaces. 
         voxelisePartial = functools.partial(_voxeliseSurfaceAlongDimension, \
-            FoVsize=fullFoVsize, dim=0, normDF=normDF)
+            FoVsize=fullFoVsize, dim=0)
 
+        # Parallel mode
         # with multiprocessing.Pool(min(2, __NWORKERS__)) as p:
-        #     fills = p.starmap(voxelisePartial, [inTs[h], outTs[h]], \
-        #         [inPs[h], outPs[h]], [inAssocs[h], outAssocs[h]], \
-        #         [inLUT[h], outLUT[h]])
+        #     fills = p.map(voxelisePartial, h.surfs))
 
-
-        fills = list(map(voxelisePartial, [inTs[h], outTs[h]], \
-            [inPs[h], outPs[h]], [inAssocs[h], outAssocs[h]], \
-            [inLUT[h], outLUT[h]]))
-
-
+        # Single threaded mode
+        fills = list(map(voxelisePartial, h.surfs))
         inFilled, outFilled = fills 
 
+        # Write the fractions on top of the binary masks. 
         inFractions = (inFilled.flatten()).astype(np.float32)
         inFractions[inList] = inFracs 
-
         outFractions = (outFilled.flatten()).astype(np.float32)
         outFractions[outList] = outFracs
 
+        # Combine estimates from each surface into whole hemi PV estimates
         hemiPVs = np.zeros((np.prod(fullFoVsize), 3))
         hemiPVs[:,1] = inFractions 
         hemiPVs[:,0] = np.maximum(0, outFractions - inFractions)
         hemiPVs[:,2] = 1 - np.sum(hemiPVs[:,0:2], axis=1)
 
-        PVs[h] = hemiPVs
+        # And write into the hemisphere object. 
+        h.PVs = hemiPVs
 
     # Merge the fill masks by giving priority to GM, then WM, then CSF.
-    if hemispheres == ['L']:
-        outPVs = PVs['L']
-    elif hemispheres == ['R']:
-        outPVs = PVs['R']
+    if len(hemispheres) == 1:
+        outPVs = hemispheres[0].PVs
     else:
-        outPVs[:,0] = np.minimum(1, PVs['R'][:,0] + PVs['L'][:,0])
+        h1, h2 = hemispheres
+        outPVs[:,0] = np.minimum(1, h1.PVs[:,0] + h2.PVs[:,0])
         outPVs[:,1] = np.minimum(1 - outPVs[:,0], \
-            PVs['R'][:,1] + PVs['L'][:,1])
+            h1.PVs[:,1] + h2.PVs[:,1])
         outPVs[:,2] = 1 - np.sum(outPVs[:,0:2], axis=1)
 
     # Sanity checks
@@ -1603,10 +1622,11 @@ def toblerone(**kwargs):
 
     # Form the surface mask (3D logical) as any voxel containing GM or 
     # intersecting the cortex (these definitions should always be equivalent)
-    assocsMask = np.zeros(outPVs.shape, dtype=bool)
-    assocsFltr = list(functools.reduce(lambda a, b: np.union1d(a,b), 
-        (inLUT.values()).join(outLUT.values())))
-    assocsMask[assocsFltr] = True 
+    assocsMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
+    for h in hemispheres:
+        for s in h.surfs: 
+            assocsMask[s.LUT] = True
+    assocsMask[outPVs[:,0] > 0] = True 
 
     # Reshape images back into 4D or 3D images
     outPVs = np.reshape(outPVs, (fullFoVsize[0], fullFoVsize[1], \
@@ -1622,13 +1642,22 @@ def toblerone(**kwargs):
         FoVoffset[2] : FoVoffset[2] + imgSize[2] ]
 
     # Finally, form the NIFTI objects and save the images. 
-    print("Saving PVs to", outPath)
+    print("Saving PVs to", kwargs['outdir'])
     PVhdr = copy.deepcopy(imgObj.header)
-    PVhdr['dim'][0] = 4
-    PVhdr['dim'][4] = 3
-    PVobj = nibabel.nifti2.Nifti2Image(outPVs, imgObj.affine, header=PVhdr)
-    nibabel.save(PVobj, outPath)
+    tissues = ['GM', 'WM', 'NB']
+    if kwargs.get('nostack'):
+        for t in range(3):
+            PVobj = nibabel.nifti2.Nifti2Image(outPVs[:,:,:,t], 
+                imgObj.affine, header=PVhdr)
+            outPath = op.join(kwargs['outdir'], fname + tissues[t] + outExt)
+            nibabel.save(PVobj, outPath)
+    else:
+        PVhdr['dim'][0] = 4
+        PVhdr['dim'][4] = 3
+        PVobj = nibabel.nifti2.Nifti2Image(outPVs, imgObj.affine, header=PVhdr)
+        nibabel.save(PVobj, outPath)
 
+    maskPath = op.join(kwargs['outdir'], maskName + outExt)
     print("Saving surface mask to", maskPath)
     maskHdr = copy.deepcopy(imgObj.header)
     maskObj = nibabel.nifti2.Nifti2Image(assocsMask, imgObj.affine, \
@@ -1639,183 +1668,180 @@ def toblerone(**kwargs):
 
 
 
+def _testTriangleVoxelIntersection(voxCent, voxSize, tri): 
+    """Test if triangle intersects voxel, return bool flag
 
+    Args: 
+        voxCent: 1 x 3 vector voxel centre
+        voxSize: 1 x 3 vector vox dimensions. NB original implementation
+            expects *half* voxel sizes, this expects *full* sizes
+        tri: 3 x 3 matrix of voxel coordinates XYZ along cols 
 
-# Deprecated 
-# def _testTriangleVoxelIntersection(voxCent, voxSize, tri): 
-#     """Test if triangle intersects voxel, return bool flag
+    This is a direct MATLAB port of the code available at:
+    http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt
+    """
 
-#     Args: 
-#         voxCent: 1 x 3 vector voxel centre
-#         voxSize: 1 x 3 vector vox dimensions. NB original implementation
-#             expects *half* voxel sizes, this expects *full* sizes
-#         tri: 3 x 3 matrix of voxel coordinates XYZ along cols 
+    # Main function body ---------------
 
-#     This is a direct MATLAB port of the code available at:
-#     http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt
-#     """
+    # Rescale voxel size and shift coordinates to cent
+    voxSize = voxSize / 2 
+    v0 = tri[0,:] - voxCent
+    v1 = tri[1,:] - voxCent
+    v2 = tri[2,:] - voxCent
 
-#     # Main function body ---------------
+    # Edge vecs
+    e0 = v1 - v0
+    e1 = v2 - v1
+    e2 = v0 - v2
 
-#     # Rescale voxel size and shift coordinates to cent
-#     voxSize = voxSize / 2 
-#     v0 = tri[0,:] - voxCent
-#     v1 = tri[1,:] - voxCent
-#     v2 = tri[2,:] - voxCent
+    # Bullet 3 tests
+    flag = False
+    fex = np.abs(e0[0])
+    fey = np.abs(e0[1])
+    fez = np.abs(e0[2])
+    if not (__axistestX01(e0[2], e0[1], fez, fey, v0, v2, voxSize) & \
+        __axistestY02(e0[2], e0[0], fez, fex, v0, v2, voxSize) & \
+        __axistestZ12(e0[1], e0[0], fey, fex, v1, v2, voxSize)):
+        return flag 
 
-#     # Edge vecs
-#     e0 = v1 - v0
-#     e1 = v2 - v1
-#     e2 = v0 - v2
+    fex = np.abs(e1[0])
+    fey = np.abs(e1[1])
+    fez = np.abs(e1[2])
+    if not (__axistestX01(e1[2], e1[1], fez, fey, v0, v2, voxSize) & \
+        __axistestY02(e1[2], e1[0], fez, fex, v0, v2, voxSize) & \
+        __axistestZ0(e1[1], e1[0], fey, fex, v0, v1, voxSize)):
+        return flag 
 
-#     # Bullet 3 tests
-#     flag = False
-#     fex = np.abs(e0[0])
-#     fey = np.abs(e0[1])
-#     fez = np.abs(e0[2])
-#     if not (__axistestX01(e0[2], e0[1], fez, fey, v0, v2, voxSize) & \
-#         __axistestY02(e0[2], e0[0], fez, fex, v0, v2, voxSize) & \
-#         __axistestZ12(e0[1], e0[0], fey, fex, v1, v2, voxSize)):
-#         return flag 
-
-#     fex = np.abs(e1[0])
-#     fey = np.abs(e1[1])
-#     fez = np.abs(e1[2])
-#     if not (__axistestX01(e1[2], e1[1], fez, fey, v0, v2, voxSize) & \
-#         __axistestY02(e1[2], e1[0], fez, fex, v0, v2, voxSize) & \
-#         __axistestZ0(e1[1], e1[0], fey, fex, v0, v1, voxSize)):
-#         return flag 
-
-#     fex = np.abs(e2[0])
-#     fey = np.abs(e2[1])
-#     fez = np.abs(e2[2])
-#     if not (__axistestX2(e2[2], e2[1], fez, fey, v0, v1, voxSize) & \
-#         __axistestY1(e2[2], e2[0], fez, fex, v0, v1, voxSize) & \
-#         __axistestZ12(e2[1], e2[0], fey, fex, v1, v2, voxSize)):
-#         return flag 
+    fex = np.abs(e2[0])
+    fey = np.abs(e2[1])
+    fez = np.abs(e2[2])
+    if not (__axistestX2(e2[2], e2[1], fez, fey, v0, v1, voxSize) & \
+        __axistestY1(e2[2], e2[0], fez, fex, v0, v1, voxSize) & \
+        __axistestZ12(e2[1], e2[0], fey, fex, v1, v2, voxSize)):
+        return flag 
         
-#     # Bullet 1 tests
-#     mi, ma = __findMinMax((v0[0], v1[0], v2[0]))
-#     if ((mi > voxSize[0]) | (ma < -voxSize[0])): 
-#         return flag 
+    # Bullet 1 tests
+    mi, ma = __findMinMax((v0[0], v1[0], v2[0]))
+    if ((mi > voxSize[0]) | (ma < -voxSize[0])): 
+        return flag 
 
-#     mi, ma = __findMinMax((v0[1], v1[1], v2[1]))
-#     if ((mi > voxSize[1]) | (ma < -voxSize[1])): 
-#         return flag
+    mi, ma = __findMinMax((v0[1], v1[1], v2[1]))
+    if ((mi > voxSize[1]) | (ma < -voxSize[1])): 
+        return flag
 
-#     mi, ma = __findMinMax((v0[2], v1[2], v2[2]))
-#     if ((mi > voxSize[2]) | (ma < -voxSize[2])): 
-#         return flag 
+    mi, ma = __findMinMax((v0[2], v1[2], v2[2]))
+    if ((mi > voxSize[2]) | (ma < -voxSize[2])): 
+        return flag 
 
-#     # Bullet 2 tests
-#     normal = np.cross(e0, e1)
-#     d = -np.dot(normal, v0)
-#     if not __planeBoxOverlap(normal, d, voxSize):
-#         return flag
+    # Bullet 2 tests
+    normal = np.cross(e0, e1)
+    d = -np.dot(normal, v0)
+    if not __planeBoxOverlap(normal, d, voxSize):
+        return flag
     
-#     return True 
+    return True 
 
 
 
-# def __planeBoxOverlap(normal, d, box):
-#     vmin = np.array([0,0,0], dtype=float)
-#     vmax = np.array([0,0,0], dtype=float)
+def __planeBoxOverlap(normal, d, box):
+    vmin = np.array([0,0,0], dtype=float)
+    vmax = np.array([0,0,0], dtype=float)
 
-#     for q in range(3):
-#         if normal[q] > 0.0:
-#             vmin[q] = -box[q]
-#             vmax[q] = box[q]
-#         else:
-#             vmin[q] = box[q]
-#             vmax[q] = -box[q]
+    for q in range(3):
+        if normal[q] > 0.0:
+            vmin[q] = -box[q]
+            vmax[q] = box[q]
+        else:
+            vmin[q] = box[q]
+            vmax[q] = -box[q]
 
-#     if (np.dot(normal, vmin) + d > 0.0):
-#         return False
-#     if (np.dot(normal, vmax) + d >= 0.0): 
-#         return True 
+    if (np.dot(normal, vmin) + d > 0.0):
+        return False
+    if (np.dot(normal, vmax) + d >= 0.0): 
+        return True 
     
-#     return False 
+    return False 
 
 
 
-# def __findMinMax(seta): 
-#     return np.array([np.min(seta), np.max(seta)])
+def __findMinMax(seta): 
+    return np.array([np.min(seta), np.max(seta)])
 
 
 
-# def __axistestX01(a, b, fa, fb, v0, v2, voxSize):
-#     p0 = a*v0[1] - b*v0[2]
-#     p2 = a*v2[1] - b*v2[2]
-#     mi, ma = __findMinMax([p0, p2])
-#     rad = (fa * voxSize[1]) + (fb * voxSize[2])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestX01(a, b, fa, fb, v0, v2, voxSize):
+    p0 = a*v0[1] - b*v0[2]
+    p2 = a*v2[1] - b*v2[2]
+    mi, ma = __findMinMax([p0, p2])
+    rad = (fa * voxSize[1]) + (fb * voxSize[2])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def __axistestX2(a, b, fa, fb, v0, v1, voxSize):
-#     p0 = a*v0[1] - b*v0[2]
-#     p1 = a*v1[1] - b*v1[2]
-#     mi, ma = __findMinMax([p0, p1])
-#     rad = (fa * voxSize[1]) + (fb * voxSize[2])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestX2(a, b, fa, fb, v0, v1, voxSize):
+    p0 = a*v0[1] - b*v0[2]
+    p1 = a*v1[1] - b*v1[2]
+    mi, ma = __findMinMax([p0, p1])
+    rad = (fa * voxSize[1]) + (fb * voxSize[2])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def __axistestY02(a, b, fa, fb, v0, v2, voxSize):
-#     p0 = -a*v0[0] + b*v0[2]
-#     p2 = -a*v2[0] + b*v2[2]
-#     mi, ma = __findMinMax([p0, p2])
-#     rad = (fa * voxSize[0]) + (fb * voxSize[2])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestY02(a, b, fa, fb, v0, v2, voxSize):
+    p0 = -a*v0[0] + b*v0[2]
+    p2 = -a*v2[0] + b*v2[2]
+    mi, ma = __findMinMax([p0, p2])
+    rad = (fa * voxSize[0]) + (fb * voxSize[2])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def __axistestY1(a, b, fa, fb, v0, v1, voxSize):
-#     p0 = -a*v0[0] + b*v0[2]
-#     p1 = -a*v1[0] + b*v1[2]
-#     mi, ma = __findMinMax([p0, p1])
-#     rad = (fa * voxSize[0]) + (fb * voxSize[2])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestY1(a, b, fa, fb, v0, v1, voxSize):
+    p0 = -a*v0[0] + b*v0[2]
+    p1 = -a*v1[0] + b*v1[2]
+    mi, ma = __findMinMax([p0, p1])
+    rad = (fa * voxSize[0]) + (fb * voxSize[2])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def __axistestZ12(a, b, fa, fb, v1, v2, voxSize):
-#     p1 = a*v1[0] - b*v1[1]
-#     p2 = a*v2[0] - b*v2[1]
-#     mi, ma = __findMinMax([p1, p2])
-#     rad = (fa * voxSize[0]) + (fb * voxSize[1])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestZ12(a, b, fa, fb, v1, v2, voxSize):
+    p1 = a*v1[0] - b*v1[1]
+    p2 = a*v2[0] - b*v2[1]
+    mi, ma = __findMinMax([p1, p2])
+    rad = (fa * voxSize[0]) + (fb * voxSize[1])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def __axistestZ0(a, b, fa, fb, v0, v1, voxSize): 
-#     p0 = a*v0[0] - b*v0[1]
-#     p1 = a*v1[0] - b*v1[1]
-#     mi, ma = __findMinMax([p0, p1])
-#     rad = (fa * voxSize[0]) + (fb * voxSize[1])
-#     return ~((mi > rad) | (ma < -rad))
+def __axistestZ0(a, b, fa, fb, v0, v1, voxSize): 
+    p0 = a*v0[0] - b*v0[1]
+    p1 = a*v1[0] - b*v1[1]
+    mi, ma = __findMinMax([p0, p1])
+    rad = (fa * voxSize[0]) + (fb * voxSize[1])
+    return ~((mi > rad) | (ma < -rad))
 
 
 
-# def _oldfilterTriangles(tris, points, voxCent, voxSize):
-#     """Logical filter triangles inside specified voxel
+def _pfilterTriangles(tris, points, voxCent, voxSize):
+    """Logical filter triangles inside specified voxel
 
-#     Args: 
-#         tris: t x 3 matrix of triangle node indices
-#         points: p x 3 matrix of surface nodes
-#         voxCent: 1 x 3 vector voxel centre
-#         voxSize: 1 x 3 vector voxel size
+    Args: 
+        tris: t x 3 matrix of triangle node indices
+        points: p x 3 matrix of surface nodes
+        voxCent: 1 x 3 vector voxel centre
+        voxSize: 1 x 3 vector voxel size
     
-#     Returns
-#         t x 1 vector of bool values, true if tri intersects voxel
-#     """
+    Returns
+        t x 1 vector of bool values, true if tri intersects voxel
+    """
 
-#     fltr = np.zeros(tris.shape[0], dtype=bool)
-#     for t in range(tris.shape[0]):
-#         fltr[t] = tribox_wrapper(voxCent, voxSize, \
-#             points[tris[t,:],:])
+    fltr = np.zeros(tris.shape[0], dtype=bool)
+    for t in range(tris.shape[0]):
+        fltr[t] = _testTriangleVoxelIntersection(voxCent, voxSize, \
+            points[tris[t,:],:])
 
-#     return fltr 
+    return fltr 
 
 
 def _pTestManyRayTriangleIntersections(tris, points, start, ax1, ax2):
@@ -1885,3 +1911,59 @@ def _pTestManyRayTriangleIntersections(tris, points, start, ax1, ax2):
         j = i 
 
     return flags
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        description="Toblerone: partial volume estimation on the \
+        cortical ribbon. All arguments should be provided as key-value pairs.",
+    )
+
+    parser.add_argument('--ref', type=str, help="Path to reference image for \
+        which PV estimates are required", required=True)
+
+    parser.add_argument('--FSdir', type=str, 
+        help="Path to FS subject directory, from which all surfaces will be \
+        loaded from the /surf subdirectory. Alternative to LWS,LPS etc", 
+        required=False)
+
+    parser.add_argument('--LWS', type=str, help="Path to left white surface",
+        required=False)
+    parser.add_argument('--LPS', type=str, help="Path to left pial surface", 
+        required=False)
+    parser.add_argument('--RWS', type=str, help="Path to right white surface", 
+        required=False)        
+    parser.add_argument('--RPS', type=str, help="Path to right pial surface", 
+        required=False)
+
+    parser.add_argument('--struct2ref', type=str, help="Path to \
+        transformation matrix from structural space (surfaces) to reference. \
+        NB if using a FLIRT transform, set the --flirt flag", 
+        required=False) 
+
+    parser.add_argument('--flirt', action='store_true', help="Set if the \
+        struct2ref transform is from FLIRT. --struct must also be provided")
+
+    parser.add_argument('--struct', type=str, help="Path to structural image \
+        from which surfaces were generated. Only required for --flirt \
+        transforms", required=False)
+
+    parser.add_argument('--outdir', type=str, help="Path to output directory. \
+        Default is that of the reference image", required=False)
+
+    parser.add_argument('--name', type=str, help="Name of output file. If \
+        not given, will use the reference filename with suffix _tob", 
+        required=False)
+
+    parser.add_argument('--nostack', action='store_true', dest='noStack',
+        help='Store outputs as separate images for GM/WM/non-brain', 
+        required=False)
+
+    parser.add_argument('--saveassocs', help='Debug tool', 
+        action='store_true', required=False)
+
+    args = vars(parser.parse_args())
+
+    estimatePVs(**args)
+    
