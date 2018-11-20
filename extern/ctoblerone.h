@@ -15,3 +15,5 @@ char ray_wrapper(float s1, float s2, float s3,
                    int ax1, int ax2); 
 
 void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output);
+
+void testManyTriangleVoxelIntersections(int *tris, float *points, float *vC, float *hS, int nTris, char *results); 

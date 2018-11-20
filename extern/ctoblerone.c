@@ -47,26 +47,6 @@ void ctestManyRayTriangleIntersections(const int* triangles, const float* points
 }
 
 
-
-void testTrianglesVoxelIntersection(const int* triangles, const float* points, int nTris, const float* voxCent, const float* voxHalfSize, char* results)
-{
-    float tri[3][3]; 
-    int t, d; 
-
-    for (t = 0; t < nTris; t++)
-    {
-        for (d =0; d < 3; d++)
-        {
-            tri[0][d] = points[(3* triangles[0]) + d]; 
-            tri[1][d] = points[(3* triangles[1]) + d]; 
-            tri[2][d] = points[(3* triangles[2]) + d]; 
-        }
-        results[t] = triBoxOverlap(voxCent, voxHalfSize, tri); 
-        triangles += 3; 
-    }
-}
-
-
 char ray_wrapper(float s1, float s2, float s3, 
                    float tv11, float tv12, float tv13,
                    float tv21, float tv22, float tv23,
@@ -135,5 +115,25 @@ void triPlaneIntersections(const float* points, const int* tris, int nTris, cons
 
 
 
+void testManyTriangleVoxelIntersections(int *tris, float *points, float *vC, float *hS, int nTris, char *results)
+{
+    float tri[3][3]; 
 
+    for(int t = 0; t < nTris; t++)
+    {
+        const float *p1 = &points[3* tris[0]];
+        const float *p2 = &points[3* tris[1]];
+        const float *p3 = &points[3* tris[2]];
+
+        for (int d = 0; d < 3; d++)
+        {
+            tri[0][d] = p1[d]; 
+            tri[1][d] = p2[d]; 
+            tri[2][d] = p3[d]; 
+        }
+
+        results[t] = triBoxOverlap(vC, hS, tri); 
+        tris += 3; 
+    }
+}
 
