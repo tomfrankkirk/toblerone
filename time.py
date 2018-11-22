@@ -20,19 +20,17 @@ def doToblerone():
 
     else:
         # ref = '/Users/tom/Data/HCPExampleData/103818/T1w/Processed/ref1.0.nii'
-        # LWS = '/Users/tom/Data/HCPExampleData/103818/T1w/Native/103818.L.white.native.surf.gii'
+        # LWS = '/Users/tom/Data/HCPExampleData/103818/T1w/Natpyive/103818.L.white.native.surf.gii'
         # LPS = '/Users/tom/Data/HCPExampleData/103818/T1w/Native/103818.L.pial.native.surf.gii'
         pass
 
     ref = 'testdata/perfusionNative1.nii'
-    FSDir = 'testdata'
-        
     s2r = np.identity(4)
     outDir = 'testdata'
-    outName = 'test_tob_1.0'
-    t.toblerone(reference=ref, FSSubDir=FSDir, \
-        struct2ref=s2r, outDir=outDir, outName=outName, \
-        saveAssocs=True)
+    outName = 'py_test_tob_1.0'
+    t.estimatePVs(ref=ref, FSdir='testdata',
+        struct2ref=s2r, outdir=outDir, name=outName, \
+        saveassocs=True)
 
 
 if __name__ == '__main__':
