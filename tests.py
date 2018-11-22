@@ -155,6 +155,46 @@ class Test_Toblerone(unittest.TestCase):
         self.assertTrue(np.sum(res) == 0)
 
 
+
+    def test_estimateFractions(self):
+
+        refimg = nibabel.load('testdata/infractions.nii')
+        mfracs = np.squeeze(refimg.get_fdata())
+        imgSize = mfracs.shape
+
+        ps, ts = nibabel.freesurfer.io.read_geometry('testdata/lh.white')
+        world2vox = np.linalg.inv(refimg.affine)
+        ps = t._affineTransformPoints(ps, world2vox).astype(np.float32)
+        ts = ts.astype(np.int32)
+
+        surf = t.Surface(ps, ts)
+        supersampler = np.array([2,2,2])
+
+        # Form the associations for this 
+        assocspath = 'testdata/sphassocs.pkl'
+        if op.isfile(assocspath):
+            with open(assocspath, 'rb') as f:
+                assocs = pickle.load(f)
+
+        else: 
+            assocs = t._formAssociations(surf, mfracs.shape)
+            with open(assocspath, 'wb') as f:
+                pickle.dump(assocs, f)
+
+        surf.LUT = np.array(list(assocs.keys()), dtype=np.int32)
+        surf.assocs = np.array(list(assocs.values()))
+        
+        for v in surf.LUT:
+
+            ijk = np.array(t._ind2sub(imgSize, v))
+            sln = mfracs[ijk[0], ijk[1], ijk[2]]
+            f = t._estimateVoxelFraction(surf, ijk.astype(np.float32), 
+                v, imgSize, supersampler)
+            if (np.abs(sln - f) > 0.01):
+                t._estimateVoxelFraction(surf, ijk.astype(np.float32), 
+                    v, imgSize, supersampler)
+                
+
     def test_toblerone(self):
         if False:
             ref = 'E:/HCP100/references/reference1.0.nii'
@@ -162,16 +202,16 @@ class Test_Toblerone(unittest.TestCase):
             LPS = 'E:/HCP100/103818/T1w/Native/103818.L.pial.native.surf.gii'
             RWS = 'E:/HCP100/103818/T1w/Native/103818.R.white.native.surf.gii'
             RPS = 'E:/HCP100/103818/T1w/Native/103818.R.pial.native.surf.gii'
+            soln = 'E:/HCP100/103818/T1w/Processed/tob_1.nii'
 
         ref = 'testdata/perfusionNative1.nii'
-        FSDir = 'testdata'
             
         s2r = np.identity(4)
         outDir = 'testdata'
         outName = 'py_test_tob_1.0'
-        t.estimatePVs(ref=ref, FSdir=FSDir, \
-            struct2ref=s2r, outDir=outDir, outName=outName, \
-            saveAssocs=True)
+        t.estimatePVs(ref=ref, FSdir='testdata',
+            struct2ref=s2r, outdir=outDir, name=outName, \
+            saveassocs=True)
 
 
 if __name__ == '__main__':
