@@ -8,3 +8,4 @@ surf_transform
 *.o 
 *.pyc
 *.dot
+.DS_Store
