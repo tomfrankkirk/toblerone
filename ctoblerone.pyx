@@ -6,18 +6,8 @@ import cython
 cdef extern from "tribox.h":
     char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
 
-    char tribox_wrapper(float bc1, float bc2, float bc3, float fs1, float fs2, float fs3, float tv11, float tv12, float tv13, float tv21, float tv22, float tv23, float tv31, float tv32, float tv33)
-
 cdef extern from "ctoblerone.h":
-    void ctestManyRayTriangleIntersections(const int* triangles, const float* points, const float* start, const int nTris, const int ax1, const int ax2, char* results)
-
-    void testTrianglesVoxelIntersection(int* triangles, float* points, int nTris, float* voxCent, float* voxHalfSize, char* results)
-    
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
-
-    void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt,const float* ray, int normDF, float* output)
-
-    void testManyTriangleVoxelIntersections(int *tris, float *points, float *vC, float *hS, int nTris, char *results)
 
 
 @cython.boundscheck(False) 
@@ -36,25 +26,6 @@ def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
 
     return bool(triBoxOverlap(&vC[0], &hS[0], &verts[0]))
 
-
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-def _cfilterTriangles(tris, points, vC, vS):
-    
-    cdef float[:] voxCent = vC 
-    cdef np.ndarray[int, ndim=1] ts = tris.flatten()
-    cdef np.ndarray[float, ndim=1] ps = points.flatten()
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=bool)
-    cdef int nTris = tris.shape[0]
-    cdef float[:] halfSize = vS
-    for i in range(3):
-        halfSize[i] = halfSize[i]/2 
-
-    testManyTriangleVoxelIntersections(
-        &ts[0], &ps[0], &voxCent[0], &halfSize[0], nTris, &fltr[0]
-    )
-
-    return fltr 
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
@@ -113,86 +84,116 @@ def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start,
 
     return fltr 
 
-def tribox(float bc1, float bc2, float bc3, 
-        float fs1, float fs2, float fs3,
-        float tv11, float tv12, float tv13,
-        float tv21, float tv22, float tv23,
-        float tv31, float tv32, float tv33):
-
-    
-    return tribox_wrapper( bc1,  bc2,  bc3, 
-                    fs1,  fs2,  fs3,
-                    tv11,  tv12,  tv13,
-                    tv21,  tv22,  tv23,
-                    tv31,  tv32,  tv33)
 
 
 
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-def _ctestManyRayTriangleIntersections(tris, points, float[:] start,
-                                   int ax1, int ax2):
 
-    cdef int[:] ts = tris.flatten()
-    cdef float[:] ps = points.flatten()
-    cdef int nTris = tris.shape[0]
+
+
+
+
+
+
+
+
+
+
+
+# The below are in progress 
+
+
+
+cdef cynormalToVector(float[:] vec):
+    if np.abs(vec[2]) < np.abs(vec[0]):
+        normal = np.array([vec[1], -vec[0], 0])
+    else:
+        normal = np.array([0, -vec[2], vec[1]])
+
+    return normal.astype(np.float32)
+
+cdef cyquickCross(float[:] a, float[:] b):
+    return np.array([
+        (a[1]*b[2]) - (a[2]*b[1]),
+        (a[2]*b[0]) - (a[0]*b[2]), 
+        (a[0]*b[1]) - (a[1]*b[0])], dtype = np.float32)    
+
+
+cdef cydotVectorAndMatrix(float[:] vec, float[:,:] mat):
+    return np.sum(np.multiply(vec, mat), axis=1)
+
+cdef intersections3D(testPnt, ray, ps, ts, xps):
+
+    cdef float[:] d2 = cynormalToVector(ray)
+    cdef float[:] d1 = cyquickCross(d2, ray)
+
+    cdef float[:] lmbda = cydotVectorAndMatrix(ray, ps)
+    cdef np.ndarray[float, ndim=2] onPlane = \
+        np.subtract(np.subtract(ps, np.outer(lmbda, ray)), testPnt)
+
+    cdef np.ndarray[float, ndim=2] onPlane2D = np.array([
+        cydotVectorAndMatrix(d1, onPlane), 
+        cydotVectorAndMatrix(d2, onPlane),
+        np.zeros(onPlane.shape[0])], dtype=np.float32)
+
+    cdef np.ndarray[float, ndim=1] start = np.zeros(3, dtype=np.float32)
     cdef np.ndarray[char, ndim=1, cast=True] fltr = \
-        np.zeros(nTris, dtype=np.bool)
+        _cytestManyRayTriangleIntersections(ts, onPlane2D.T, 
+        start, 0, 1)
 
-    ctestManyRayTriangleIntersections(&ts[0], &ps[0], &start[0], 
-        nTris, ax1, ax2, &fltr[0])
-    return fltr
+    cdef np.ndarray[int] intersects = np.flatnonzero(fltr).astype(np.int32)
 
+    cdef Py_ssize_t t, c 
+    cdef float[:] mus = np.zeros(intersects.size, dtype=np.float32)
 
-# Cython method: loop over triangles in cython and do the maths there. 
-def _cyfindRayTriPlaneIntersections(float[:,:] points, int[:,:] tris, 
-    float[:] testPnt, float[:] ray):
+    for t in intersects: 
+        mus[c] = np.multiply(np.subtract(ps[ts[t,0],:], testPnt), xps[t,:]) / np.dot(ray, xps[t,:])
+        c += 1   
 
-    cdef Py_ssize_t t, a, b, c, d 
-    cdef Py_ssize_t nTris = tris.shape[0]
-    cdef float[:] e1 = np.empty(3, dtype=np.float32)
-    cdef float[:] e2 = np.empty(3, dtype=np.float32)
-    cdef float[:] normal = np.empty(3, dtype=np.float32)
-    cdef float[:] toPoint = np.empty(3, dtype=np.float32)
-    cdef float dotRN, mu
-    cdef np.ndarray[float, ndim=1] mus = np.empty(nTris, dtype=np.float32) 
-
-    for t in range(nTris):
-
-        toPoint = np.subtract(points[tris[t,0],:], testPnt)
-        normal = np.cross(np.subtract(points[tris[t,2],:], points[tris[t,0],:]), 
-            np.subtract(points[tris[t,1],:], points[tris[t,0],:]))
-        dotRN = np.dot(ray, normal)
-
-        if dotRN:
-            mus[t] = np.dot(toPoint, normal) / dotRN
-        else:
-            mus[t] = 0.0
-
-    return mus
+    return mus 
 
 
-# Pure C method: loop and do vector maths in C. 
-def _cfindRayTriPlaneIntersections(points, tris, float[:] testPnt, float[:] ray, normDF):
+def redTest(np.ndarray[float, ndim=2] testPnts, 
+            np.ndarray[float, ndim=2] ps, 
+            np.ndarray[int, ndim=2] ts, 
+            np.ndarray[float, ndim=2] xps, 
+            float[:] rootPoint, 
+            char flip):
 
-    cdef int nTris = tris.shape[0]
-    cdef float[:] ps = points.flatten()
-    cdef int[:] ts = tris.flatten()
-    cdef np.ndarray[float, ndim=1] fltr = \
-        np.zeros(nTris, dtype=np.float32)
+    cdef np.ndarray[char, ndim=1, cast=True] flags = \
+        np.zeros(testPnts.shape[0], dtype=bool)
 
-    triPlaneIntersections(&ps[0], &ts[0], nTris, &testPnt[0], &ray[0], normDF, &fltr[0])
-    return fltr 
+    cdef np.ndarray[float, ndim=2] rays = \
+        np.subtract(rootPoint, testPnts)
 
+    cdef np.ndarray[float] intMus 
+        
+    cdef np.ndarray[char, ndim=1, cast=True] inRange 
 
+    cdef Py_ssize_t p 
 
+    for p in range(testPnts.shape[0]):
 
+        if not np.any(rays[p,:]):
+            flags[p] = True 
+            continue 
+        
+        else: 
 
+            intMus = intersections3D(testPnts[p,:], rays[p,:], ps, 
+                ts, xps)
 
+            if intMus.shape[0]:
+                inRange = np.logical_and(intMus < 1, intMus > 0)
 
+                if not np.any(inRange):
+                    flags[p] = True 
+                
+                else: 
+                    flags[p] = not(inRange.size % 2)
+                    
+            else: 
+                flags[p] = True 
 
-
-
-
-
-
+    if flip:
+        return ~flags
+    return flags 
