@@ -2,6 +2,17 @@
 #include <math.h>
 #include "tribox.h"
 
+static void cross(const float* v1, const float* v2, float* out)
+{
+    out[0] = (v1[1] * v2[2]) - (v1[2] * v2[1]);
+    out[1] = (v1[2] * v2[0]) - (v1[0] * v2[2]);
+    out[2] = (v1[0] * v2[1]) - (v1[1] * v2[0]);
+}
+
+static float dot(const float* v1, const float* v2)
+{
+    return (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2]);
+}
 
 char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 {
@@ -28,24 +39,6 @@ char testRayTriangleIntersection(const float tri[3][3], const float start[3], in
     return intersection;
 }
 
-void ctestManyRayTriangleIntersections(const int* triangles, const float* points, const float* start, const int nTris, const int ax1, const int ax2, char* results)
-{
-    float tri[3][3]; 
-    int t, d; 
-
-    for (t = 0; t < nTris; t++)
-    {
-        for (d = 0; d < 3; d++)
-        {
-            tri[0][d] = points[(3* triangles[0]) + d]; 
-            tri[1][d] = points[(3* triangles[1]) + d]; 
-            tri[2][d] = points[(3* triangles[2]) + d]; 
-        }
-        results[t] = testRayTriangleIntersection(tri, start, ax1, ax2); 
-        triangles += 3; 
-    }
-}
-
 
 char ray_wrapper(float s1, float s2, float s3, 
                    float tv11, float tv12, float tv13,
@@ -70,17 +63,7 @@ char ray_wrapper(float s1, float s2, float s3,
 }   
 
 
-static void cross(const float* v1, const float* v2, float* out)
-{
-    out[0] = (v1[1] * v2[2]) - (v1[2] * v2[1]);
-    out[1] = (v1[2] * v2[0]) - (v1[0] * v2[2]);
-    out[2] = (v1[0] * v2[1]) - (v1[1] * v2[0]);
-}
 
-static float dot(const float* v1, const float* v2)
-{
-    return (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2]);
-}
 
 
 void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output)
@@ -113,27 +96,4 @@ void triPlaneIntersections(const float* points, const int* tris, int nTris, cons
     }
 }
 
-
-
-void testManyTriangleVoxelIntersections(int *tris, float *points, float *vC, float *hS, int nTris, char *results)
-{
-    float tri[3][3]; 
-
-    for(int t = 0; t < nTris; t++)
-    {
-        const float *p1 = &points[3* tris[0]];
-        const float *p2 = &points[3* tris[1]];
-        const float *p3 = &points[3* tris[2]];
-
-        for (int d = 0; d < 3; d++)
-        {
-            tri[0][d] = p1[d]; 
-            tri[1][d] = p2[d]; 
-            tri[2][d] = p3[d]; 
-        }
-
-        results[t] = triBoxOverlap(vC, hS, tri); 
-        tris += 3; 
-    }
-}
 
