@@ -4,9 +4,11 @@ import collections
 import random 
 import itertools
 import functools
-from numba import jit 
 import toblerone as t 
 import pickle
+import sys 
+import threading
+import time 
 
 import nibabel
 import nibabel.freesurfer.io
@@ -15,7 +17,7 @@ import nibabel.nifti2
 
 surf = '../FSonFSLData/FSoutput/surf/lh.pial'
 ps, ts = tuple(nibabel.freesurfer.io.read_geometry(surf))
-assocsPth = '../FSonFSLData/FSoutput/test_tob_1_assocs.pkl'
+assocsPth = 'testdata/py_test_tob_1.0_assocs.pkl'
 
 with open(assocsPth, 'rb') as f: 
     oldStamp, inAssocs, outAssocs = pickle.load(f)
@@ -31,6 +33,11 @@ ps = ps.astype(np.float32)
 tris = ts.astype(np.int32)
 
 ts = tris[0:300,:]
+xps = np.cross(ps[ts[:,2],:] - ps[ts[:,0],:], 
+    ps[ts[:,1],:] - ps[ts[:,0],:], axis=1)
+
+s = t.Patch(ps, ts, xps)
+
 
 imgSize = np.array([64,64,28], dtype=np.int16)
 pnt = np.random.rand(3).astype(np.float32)
@@ -66,16 +73,16 @@ def rt3():
 
 # Pure python method. 
 def rtp1():
-    x = t._findRayTriPlaneIntersections(ps, ts, pnt, ray, 1)
+    x = t._findRayTriPlaneIntersections(ps[ts[:,0]], 
+        xps, pnt, ray)
 
-# Pure C method: loop and do vector maths in C. 
-def rtp2():
-    x = t._cfindRayTriPlaneIntersections(ps, ts, pnt, ray, 1)
+def find3D1(): 
+    x = t._findRayTriangleIntersections3D(pnt, ray, s)
 
-# Cython method: loop over triangles in cython and do the maths there. 
-def rtp3(): 
-    x = t._cyfindRayTriPlaneIntersections(ps, ts, pnt, ray, 1)
+def find3D2(): 
+    x = t._cyfindRayTriangleIntersections3D(pnt, ray, s)
 
-# Pure python method. 
-def frt():
-    x = t._fullRayIntersectionTest(pnt, ps, tris, inAssocs, inLUT, vijk, imgSize, 1)
+
+testpnts = 5 * np.random.rand(100,3).astype(np.float32)
+def red(): 
+    return t.redTest(testpnts, ps, ts, xps, pnt, False)
