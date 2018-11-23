@@ -1231,7 +1231,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     voxIJKs = voxIJKs.astype(np.float32)
 
     # Prepare partial function application for the estimation
-    workerChunks = _distributeObjects(voxList, 20 * NWORKERS)
+    workerChunks = _distributeObjects(voxList, 50)
     workerFractions = []
     estimateFractionsPartial = functools.partial(_estimateFractionsWorker, \
         surf, voxIJKs, FoVsize, supersampler)
@@ -1253,7 +1253,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
                 estimateFractionsPartial(workerChunks[chunk]))
 
     # Aggregate the results back together. 
-    if any(map(lambda r: type(r) is not np.ndarray, workerFractions)):
+    if any(map(lambda r: isinstance(r, Exception), workerFractions)):
         raise RuntimeError("Exception was raised during worker estimation")
 
     fractions = np.concatenate(workerFractions)
@@ -1393,6 +1393,8 @@ def estimatePVs(**kwargs):
         name = kwargs['name']
     else:  
         name = op.split(kwargs['ref'])[-1]
+        name, inExt = op.splitext(name)
+        name += '_tob'
 
     outExt = ''
     fname = name
@@ -1592,7 +1594,7 @@ def estimatePVs(**kwargs):
 
             fracs = []; vlists = []
             for s, d in zip(h.surfs(), ['in', 'out']):
-                descriptor = "{} {}".format(h.side, d)
+                descriptor = " {} {}".format(h.side, d)
                 slist = np.intersect1d(voxList, s.LUT).astype(np.int32)
                 f = _estimateFractions(s, fullFoVsize, supersampler, 
                     slist, descriptor)
@@ -1702,251 +1704,6 @@ def estimatePVs(**kwargs):
     nibabel.save(maskObj, maskPath)
 
     return # We are done. 
-
-
-
-def _testTriangleVoxelIntersection(voxCent, voxSize, tri): 
-    """Test if triangle intersects voxel, return bool flag
-
-    Args: 
-        voxCent: 1 x 3 vector voxel centre
-        voxSize: 1 x 3 vector vox dimensions. NB original implementation
-            expects *half* voxel sizes, this expects *full* sizes
-        tri: 3 x 3 matrix of voxel coordinates XYZ along cols 
-
-    This is a direct MATLAB port of the code available at:
-    http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt
-    """
-
-    # Main function body ---------------
-
-    # Rescale voxel size and shift coordinates to cent
-    voxSize = voxSize / 2 
-    v0 = tri[0,:] - voxCent
-    v1 = tri[1,:] - voxCent
-    v2 = tri[2,:] - voxCent
-
-    # Edge vecs
-    e0 = v1 - v0
-    e1 = v2 - v1
-    e2 = v0 - v2
-
-    # Bullet 3 tests
-    flag = False
-    fex = np.abs(e0[0])
-    fey = np.abs(e0[1])
-    fez = np.abs(e0[2])
-    if not (__axistestX01(e0[2], e0[1], fez, fey, v0, v2, voxSize) & \
-        __axistestY02(e0[2], e0[0], fez, fex, v0, v2, voxSize) & \
-        __axistestZ12(e0[1], e0[0], fey, fex, v1, v2, voxSize)):
-        return flag 
-
-    fex = np.abs(e1[0])
-    fey = np.abs(e1[1])
-    fez = np.abs(e1[2])
-    if not (__axistestX01(e1[2], e1[1], fez, fey, v0, v2, voxSize) & \
-        __axistestY02(e1[2], e1[0], fez, fex, v0, v2, voxSize) & \
-        __axistestZ0(e1[1], e1[0], fey, fex, v0, v1, voxSize)):
-        return flag 
-
-    fex = np.abs(e2[0])
-    fey = np.abs(e2[1])
-    fez = np.abs(e2[2])
-    if not (__axistestX2(e2[2], e2[1], fez, fey, v0, v1, voxSize) & \
-        __axistestY1(e2[2], e2[0], fez, fex, v0, v1, voxSize) & \
-        __axistestZ12(e2[1], e2[0], fey, fex, v1, v2, voxSize)):
-        return flag 
-        
-    # Bullet 1 tests
-    mi, ma = __findMinMax((v0[0], v1[0], v2[0]))
-    if ((mi > voxSize[0]) | (ma < -voxSize[0])): 
-        return flag 
-
-    mi, ma = __findMinMax((v0[1], v1[1], v2[1]))
-    if ((mi > voxSize[1]) | (ma < -voxSize[1])): 
-        return flag
-
-    mi, ma = __findMinMax((v0[2], v1[2], v2[2]))
-    if ((mi > voxSize[2]) | (ma < -voxSize[2])): 
-        return flag 
-
-    # Bullet 2 tests
-    normal = np.cross(e0, e1)
-    d = -np.dot(normal, v0)
-    if not __planeBoxOverlap(normal, d, voxSize):
-        return flag
-    
-    return True 
-
-
-
-def __planeBoxOverlap(normal, d, box):
-    vmin = np.array([0,0,0], dtype=float)
-    vmax = np.array([0,0,0], dtype=float)
-
-    for q in range(3):
-        if normal[q] > 0.0:
-            vmin[q] = -box[q]
-            vmax[q] = box[q]
-        else:
-            vmin[q] = box[q]
-            vmax[q] = -box[q]
-
-    if (np.dot(normal, vmin) + d > 0.0):
-        return False
-    if (np.dot(normal, vmax) + d >= 0.0): 
-        return True 
-    
-    return False 
-
-
-
-def __findMinMax(seta): 
-    return np.array([np.min(seta), np.max(seta)])
-
-
-
-def __axistestX01(a, b, fa, fb, v0, v2, voxSize):
-    p0 = a*v0[1] - b*v0[2]
-    p2 = a*v2[1] - b*v2[2]
-    mi, ma = __findMinMax([p0, p2])
-    rad = (fa * voxSize[1]) + (fb * voxSize[2])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def __axistestX2(a, b, fa, fb, v0, v1, voxSize):
-    p0 = a*v0[1] - b*v0[2]
-    p1 = a*v1[1] - b*v1[2]
-    mi, ma = __findMinMax([p0, p1])
-    rad = (fa * voxSize[1]) + (fb * voxSize[2])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def __axistestY02(a, b, fa, fb, v0, v2, voxSize):
-    p0 = -a*v0[0] + b*v0[2]
-    p2 = -a*v2[0] + b*v2[2]
-    mi, ma = __findMinMax([p0, p2])
-    rad = (fa * voxSize[0]) + (fb * voxSize[2])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def __axistestY1(a, b, fa, fb, v0, v1, voxSize):
-    p0 = -a*v0[0] + b*v0[2]
-    p1 = -a*v1[0] + b*v1[2]
-    mi, ma = __findMinMax([p0, p1])
-    rad = (fa * voxSize[0]) + (fb * voxSize[2])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def __axistestZ12(a, b, fa, fb, v1, v2, voxSize):
-    p1 = a*v1[0] - b*v1[1]
-    p2 = a*v2[0] - b*v2[1]
-    mi, ma = __findMinMax([p1, p2])
-    rad = (fa * voxSize[0]) + (fb * voxSize[1])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def __axistestZ0(a, b, fa, fb, v0, v1, voxSize): 
-    p0 = a*v0[0] - b*v0[1]
-    p1 = a*v1[0] - b*v1[1]
-    mi, ma = __findMinMax([p0, p1])
-    rad = (fa * voxSize[0]) + (fb * voxSize[1])
-    return ~((mi > rad) | (ma < -rad))
-
-
-
-def _pfilterTriangles(tris, points, voxCent, voxSize):
-    """Logical filter triangles inside specified voxel
-
-    Args: 
-        tris: t x 3 matrix of triangle node indices
-        points: p x 3 matrix of surface nodes
-        voxCent: 1 x 3 vector voxel centre
-        voxSize: 1 x 3 vector voxel size
-    
-    Returns
-        t x 1 vector of bool values, true if tri intersects voxel
-    """
-
-    fltr = np.zeros(tris.shape[0], dtype=bool)
-    for t in range(tris.shape[0]):
-        fltr[t] = _testTriangleVoxelIntersection(voxCent, voxSize, \
-            points[tris[t,:],:])
-
-    return fltr 
-
-
-def _pTestManyRayTriangleIntersections(tris, points, start, ax1, ax2):
-    """Vectorised version of testForIntersectionByAxis(). 
-    This is a 2D test only. Although the triangles can be defined in 3D, 
-    the test is performed in one dimension only (the one not specified
-    by ax1 and ax2), the dimension along which the ray lies (the ray must
-    be zero in ax1 and ax2). See findIntersections3D() for a general 
-    3D implementation of this function. 
-
-    Args:
-        triangles: m x 3 matrix of triangle nodes
-        points: n x 3 matrix of surface nodes for triangles 
-        start: 1 x 3 vector from which the ray used for testing originates (the
-            ray by definition is defined in only the ax3 dimension so it need not 
-            be explicitly specified here)
-        ax1, ax2: the other axes along which the ray DOES NOT travel 
-
-    Returns: 
-        logical filter of triangles intersected by ray
-           
-    With thanks to Tim Coalson for his adaptation of PNPOLY, for which 
-    this is a direct MATLAB port. See: 
-    https://github.com/Washington-University/workbench/blob/master/src/Files/SignedDistanceHelper.cxx#L510
-    https://wrf.ecse.rpi.edu//Research/Short_Notes/pnpoly.html
-    """
-
-    szTs = tris.shape 
-    flags = np.zeros(szTs[0], dtype=bool)
-    
-    # Loop variables 
-    TIs = np.zeros(szTs[0], dtype=np.int16)
-    TJs = np.zeros(szTs[0], dtype=np.int16)
-    j = 2
-
-    for i in range(3):
-
-        # This logical filter replaces the if statement at the top level. We 
-        # maintain the behaviour by constraining the below operations to
-        # points that pass this test
-        disc = np.not_equal(points[tris[:,i], ax1] < start[ax1], \
-            points[tris[:,j], ax1] < start[ax1])
-
-        fltr = (points[tris[:,i], ax1] < points[tris[:,j], ax1])
-        TIs[fltr] = i
-        TJs[fltr] = j 
-        TIs[~fltr] = j
-        TJs[~fltr] = i 
-
-        # TIs / TJs are column subscripts for each row of logical matrices
-        # (one for each row). Form a tuple pair of arrays for indexing, where
-        # the first element is 1:N of row numbers, second are col numbers
-        TIidx = (np.arange(szTs[0]), TIs)
-        TJidx = (np.arange(szTs[0]), TJs)
-        divs = (points[tris[TIidx], ax1] - points[tris[TJidx], ax1])
-        
-        fltr = (divs == 0)
-        divs[fltr] = 1
-
-        flips = ((points[tris[TIidx], ax2] - points[tris[TJidx], ax2]) \
-                / divs) * (start[ax1] - points[tris[TJidx], ax1]) \
-                + points[tris[TJidx], ax2] > start[ax2]
-
-        # Apply the flip for points that pass both tests, update loop var
-        flags[flips & disc] = ~flags[flips & disc]
-        j = i 
-
-    return flags
 
 
 if __name__ == '__main__':
