@@ -17,12 +17,14 @@ import numpy as np
 import nibabel
 import nibabel.freesurfer.io
 import nibabel.nifti2
+import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles
 from ctoblerone import _cytestManyRayTriangleIntersections
 
-__NWORKERS__ = multiprocessing.cpu_count() 
+NWORKERS = multiprocessing.cpu_count() 
+BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Class definitions -----------------------------------------------------------
 
@@ -68,8 +70,8 @@ class Surface:
             
         self.points = ps
         self.tris = ts
-        self.assocs = None 
-        self.LUT = None 
+        self.assocs = []
+        self.LUT = []
         self.xProds = np.cross(
             ps[ts[:,2],:] - ps[ts[:,0],:], 
             ps[ts[:,1],:] - ps[ts[:,0],:], 
@@ -396,8 +398,6 @@ def _formAssociations(surf, FoVsize):
             a LUT used to index between associations table and vox index. 
     """
 
-    global __NWORKERS__
-
     # Check for negative coordinates: these should have been sripped. 
     if np.round(np.min(surf.points)) < 0: 
         raise RuntimeError("formAssociations: negative coordinate found")
@@ -405,13 +405,13 @@ def _formAssociations(surf, FoVsize):
     if np.any(np.round(np.max(surf.points, axis=0)) >= FoVsize): 
         raise RuntimeError("formAssociations: coordinate outside FoV")
 
-    chunks = _distributeObjects(np.arange(surf.tris.shape[0]), __NWORKERS__)
+    chunks = _distributeObjects(np.arange(surf.tris.shape[0]), NWORKERS)
     workerFunc = functools.partial(_formAssociationsWorker, surf.tris, \
         surf.points, FoVsize)
 
-    # with multiprocessing.Pool(__NWORKERS__) as p:
-    #     allResults = p.map(workerFunc, chunks, chunksize=1)
-    allResults = list(map(workerFunc, chunks))
+    with multiprocessing.Pool(NWORKERS) as p:
+        allResults = p.map(workerFunc, chunks, chunksize=1)
+    # allResults = list(map(workerFunc, chunks))
 
     # Flatten results down from each worker. Iterate only over the keys
     # present in each dict. Use a default dict of empty [] to hold results
@@ -805,8 +805,13 @@ def _findTrianglePlaneIntersections(patch, voxCent, voxSize):
 
         for k in [-1, 1]: 
             pPlane = voxCent + (k/2 * pNormal * voxSize[dim])
-            pStart = patch.points[edges[:,0],:]
+
+            # Form the edge vectors and filter out those with zero component
+            # in this dimension
             edgeVecs = patch.points[edges[:,1],:] - patch.points[edges[:,0],:]
+            fltr = np.flatnonzero(edgeVecs[:,dim])
+            edgeVecs = edgeVecs[fltr,:]
+            pStart = patch.points[edges[fltr,0],:]
 
             # Sneaky trick here: because planar normals are aligned with the 
             # coord axes we don't need to do a full dot product, just extract
@@ -1201,7 +1206,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
 
 
 def _estimateFractions(surf, FoVsize, supersampler, \
-    voxList):
+    voxList, descriptor):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
@@ -1225,16 +1230,27 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     voxIJKs = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
     voxIJKs = voxIJKs.astype(np.float32)
 
-    workerChunks = _distributeObjects(voxList, 10 * __NWORKERS__)
+    # Prepare partial function application for the estimation
+    workerChunks = _distributeObjects(voxList, 20 * NWORKERS)
+    workerFractions = []
     estimateFractionsPartial = functools.partial(_estimateFractionsWorker, \
         surf, voxIJKs, FoVsize, supersampler)
 
-    # with multiprocessing.Pool(__NWORKERS__) as p: 
-    #     for i, _ in enumerate(p.imap(estimateFractionsPartial, 
-    #         workerChunks, chunksize=1)): 
-    #         sys.stdout.write('\r %i' % i)
+    # Parallel processing, tqdm provides the progress bar
+    if True:
+        with multiprocessing.Pool(NWORKERS) as p: 
+            for _, r in enumerate(tqdm.tqdm(
+                p.imap(estimateFractionsPartial, workerChunks), 
+                total=len(workerChunks), desc=descriptor, 
+                bar_format=BAR_FORMAT, ascii=True)):
+                workerFractions.append(r)
 
-    workerFractions = list(map(estimateFractionsPartial, workerChunks))
+    # Serial processing, again with progress bar.
+    else: 
+        for chunk in tqdm.trange(len(workerChunks), 
+            desc=descriptor, bar_format=BAR_FORMAT, ascii=True):
+            workerFractions.append(
+                estimateFractionsPartial(workerChunks[chunk]))
 
     # Aggregate the results back together. 
     if any(map(lambda r: type(r) is not np.ndarray, workerFractions)):
@@ -1251,12 +1267,6 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
     return fractions
 
-
-            # if (workerNumber == 0) & (counter % progFactor == 0): 
-            #     queue.put(round(10 * counter / progFactor))
-
-            #     # print("{}..".format(round(10 * counter / progFactor)), \
-            #     # end='', flush=True)
 
 def _estimateFractionsWorker(surf, voxIJK, imgSize, \
         supersampler, workerVoxList):
@@ -1580,23 +1590,22 @@ def estimatePVs(**kwargs):
         # Estimate fractions against the inner surface
         if not kwargs.get('hard'):
 
-            print("{} in: ".format(h.side), end='')
-            inList = np.intersect1d(voxList, h.inSurf.LUT).astype(np.int32)
-            inFracs = _estimateFractions(h.inSurf, fullFoVsize, supersampler, 
-                inList)
+            fracs = []; vlists = []
+            for s, d in zip(h.surfs(), ['in', 'out']):
+                descriptor = "{} {}".format(h.side, d)
+                slist = np.intersect1d(voxList, s.LUT).astype(np.int32)
+                f = _estimateFractions(s, fullFoVsize, supersampler, 
+                    slist, descriptor)
+                fracs.append(f)
+                vlists.append(slist)
 
-            # Estimate fractions against the outer surface
-            print("{}out: ".format(h.side), end='')
-            outList = np.intersect1d(voxList, h.outSurf.LUT).astype(np.int32)
-            outFracs = _estimateFractions(h.outSurf, fullFoVsize, supersampler, 
-                outList)
         
         # Estimate bool masks against both surfaces. 
         voxelisePartial = functools.partial(_voxeliseSurfaceAlongDimension, \
             fullFoVsize, 0)
 
         # Parallel mode
-        with multiprocessing.Pool(min(2, __NWORKERS__)) as p:
+        with multiprocessing.Pool(min(2, NWORKERS)) as p:
             fills = p.map(voxelisePartial, h.surfs())
 
         # Single threaded mode
@@ -1608,8 +1617,8 @@ def estimatePVs(**kwargs):
         outFractions = (outFilled.flatten()).astype(np.float32)
 
         if not kwargs.get('hard'):
-            inFractions[inList] = inFracs 
-            outFractions[outList] = outFracs
+            inFractions[vlists[0]] = fracs[0] 
+            outFractions[vlists[1]] = fracs[1]
 
         # Combine estimates from each surface into whole hemi PV estimates
         hemiPVs = np.zeros((np.prod(fullFoVsize), 3), dtype=np.float32)
