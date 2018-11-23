@@ -202,16 +202,12 @@ class Test_Toblerone(unittest.TestCase):
             LPS = 'E:/HCP100/103818/T1w/Native/103818.L.pial.native.surf.gii'
             RWS = 'E:/HCP100/103818/T1w/Native/103818.R.white.native.surf.gii'
             RPS = 'E:/HCP100/103818/T1w/Native/103818.R.pial.native.surf.gii'
-            soln = 'E:/HCP100/103818/T1w/Processed/tob_1.nii'
 
-        ref = 'testdata/perfusionNative1.nii'
+        ref = 'testdata/FS/aslref.nii'
             
         s2r = np.identity(4)
-        outDir = 'testdata'
-        outName = 'py_test_tob_1.0'
-        t.estimatePVs(ref=ref, FSdir='testdata',
-            struct2ref=s2r, outdir=outDir, name=outName, \
-            saveassocs=True)
+        t.estimatePVs(ref=ref, FSdir='testdata/FS',
+            struct2ref=s2r, saveassocs=True)
 
 
 if __name__ == '__main__':
