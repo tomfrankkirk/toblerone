@@ -9,3 +9,6 @@ surf_transform
 *.pyc
 *.dot
 .DS_Store
+/testdata/FS/*tob*
+*.png 
+ctoblerone.c
