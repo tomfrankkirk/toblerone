@@ -1297,7 +1297,6 @@ def estimatePVs(**kwargs):
 
     verbose = True 
 
-
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
     if 'FSdir' in kwargs:
@@ -1350,8 +1349,23 @@ def estimatePVs(**kwargs):
     # to file containing matrix
     if kwargs.get('struct2ref') is not None:
         if (type(kwargs['struct2ref']) is str):
-            kwargs['struct2ref'] = np.fromfile(kwargs['struct2ref'], 
-                dtype=float)
+            _, matExt = op.splitext(kwargs['struct2ref'])
+
+            try: 
+                if matExt == '.txt':
+                    matrix = np.loadtxt(kwargs['struct2ref'], 
+                        dtype=np.float32)
+                elif matExt in ['.npy', 'npz', '.pkl']:
+                    matrix = np.load(kwargs['struct2ref'])
+                else: 
+                    matrix = np.fromfile(kwargs['struct2ref'], 
+                        dtype=np.float32)
+            except Exception as e:
+                warnings.warn("""Could not load struct2ref matrix. 
+                    File should be any type valid with numpy.load().""")
+                raise e 
+            kwargs['struct2ref'] = matrix
+
     else: 
         warnings.warn("No structural to reference transform given. Assuming identity.")
         kwargs['struct2ref'] = np.identity(4)
@@ -1366,6 +1380,8 @@ def estimatePVs(**kwargs):
                 structural image must also be given")
         if not op.isfile(kwargs['struct']):
             raise RuntimeError("Structural image does not exist")
+        kwargs['struct2ref'] = _adjustFLIRT(kwargs['struct'], kwargs['ref'], 
+            kwargs['struct2ref'])
 
 
     # Read in input image properties 
@@ -1383,9 +1399,10 @@ def estimatePVs(**kwargs):
         kwargs['outdir'] = op.dirname(kwargs['ref'])
 
     # Create output dir for transformed surfaces
-    transSurfDir = op.join(kwargs['outdir'], 'surf_transform')
-    if not op.isdir(transSurfDir):
-        os.mkdir(transSurfDir)
+    if kwargs.get('savesurfs'):
+        transSurfDir = op.join(kwargs['outdir'], 'surf_transform')
+        if not op.isdir(transSurfDir):
+            os.mkdir(transSurfDir)
     
     # Prepare the output filename. If not given then we pull it 
     # from the reference
@@ -1413,8 +1430,7 @@ def estimatePVs(**kwargs):
 
     # Load surface geometry information 
     # If FS binary format, we can read cRAS straight out of the meta dict.
-    cRAS = None
-    if cRAS is None: 
+    if kwargs.get('cRAS') is None: 
         if surfExt != '.gii':
             surfName = hemispheres[0].side + 'PS'
             _, _, meta = tuple(nibabel.freesurfer.io.read_geometry(\
@@ -1437,18 +1453,33 @@ def estimatePVs(**kwargs):
     for h in hemispheres: 
         for s in ['P', 'W']: 
             surfName = h.side + s + 'S'
+            surfName = kwargs[surfName]
 
             if surfExt != '.gii':
                 ps, ts = tuple(nibabel.freesurfer.io.read_geometry(\
-                    kwargs[surfName]))
+                    surfName))
             else: 
-                ps, ts = tuple(map(lambda o: o.data, \
-                    nibabel.load(kwargs[surfName]).darrays))
+                gft = nibabel.load(surfName).darrays
+                ps, ts = tuple(map(lambda o: o.data, gft))
 
-            # Transform the surfaces
-            ps = _affineTransformPoints(ps, np.matmul(world2vox, transform))
-            ts = ts.astype(np.int32)
+            # Transform the surfaces to reference space
+            ps = _affineTransformPoints(ps, transform)
+
+            # # Save the transformed surfaces 
+            # if kwargs.get('savesurfs'):
+            #     _, fl = op.split(surfName) 
+            #     transSurfName = op.join(transSurfDir, 'tob_' + fl)
+            #     if surfExt != '.gii':
+            #         nibabel.freesurfer.io.write_geometry(transSurfName, ps, ts)
+            #     else: 
+            #         gft2 = copy.deepcopy(gft)
+            #         gft2.darrays[0:2] = (ps, ts)
+            #         nibabel.save(gft2, transSurfName)
+
+            # Transform the surfaces to voxel space
+            ps = _affineTransformPoints(ps, world2vox)
             ps = ps.astype(np.float32)
+            ts = ts.astype(np.int32)
 
             # Final indexing checks
             if not (np.min(ts) == 0) & (np.max(ts) == ps.shape[0] - 1):
@@ -1710,7 +1741,19 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         description="Toblerone: partial volume estimation on the \
-        cortical ribbon. All arguments should be provided as key-value pairs.",
+        cortical ribbon",
+
+        usage="""
+        Required arguments: 
+            --ref       path to reference image for which to estimate PVs
+            --FSdir     path to a FreeSurfer subject directory, from which
+                            surfaces will be loaded in the /surf dir. 
+                            Alternative to LWS/LPS
+            --LWS,LPS
+
+        Optional arguments            
+            --stack
+        """
     )
 
     parser.add_argument('--ref', type=str, help="Path to reference image for \
