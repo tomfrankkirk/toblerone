@@ -23,7 +23,6 @@ from scipy.spatial.qhull import QhullError
 from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles
 from ctoblerone import _cytestManyRayTriangleIntersections
 
-NWORKERS = multiprocessing.cpu_count() 
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Class definitions -----------------------------------------------------------
@@ -123,7 +122,7 @@ class Surface:
         the points / xprods as required. 
         """
 
-        triNums = _flattenList(self.assocs[self.LUT == voxIdx])
+        triNums = self.assocs[self.LUT == voxIdx][0]
         (ps, ts) = self.rebaseTriangles(triNums)
 
         return Patch(ps, ts, self.xProds[triNums,:])
@@ -383,7 +382,7 @@ def _distributeObjects(objs, nWorkers):
 
 
 
-def _formAssociations(surf, FoVsize):
+def _formAssociations(surf, FoVsize, cores):
     """Identify which triangles of a surface each voxel. This reduces the
     number of tests that must be performed in the main Toblerone algorithm.
 
@@ -405,11 +404,11 @@ def _formAssociations(surf, FoVsize):
     if np.any(np.round(np.max(surf.points, axis=0)) >= FoVsize): 
         raise RuntimeError("formAssociations: coordinate outside FoV")
 
-    chunks = _distributeObjects(np.arange(surf.tris.shape[0]), NWORKERS)
+    chunks = _distributeObjects(np.arange(surf.tris.shape[0]), cores)
     workerFunc = functools.partial(_formAssociationsWorker, surf.tris, \
         surf.points, FoVsize)
 
-    with multiprocessing.Pool(NWORKERS) as p:
+    with multiprocessing.Pool(cores) as p:
         allResults = p.map(workerFunc, chunks, chunksize=1)
     # allResults = list(map(workerFunc, chunks))
 
@@ -1206,7 +1205,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
 
 
 def _estimateFractions(surf, FoVsize, supersampler, \
-    voxList, descriptor):
+    voxList, descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
@@ -1215,15 +1214,14 @@ def _estimateFractions(surf, FoVsize, supersampler, \
             to which the voxels in voxList are indexed. 
         supersampler: 1 x 3 vector of supersampling factor
         voxList: list of linear voxel indices within the FoV to process
-            (note any ROI is applied in the calling function)
 
     Returns: 
         vector of size prod(FoV)
     """
 
 
-    if FoVsize.size != 3: 
-        raise RuntimeError("FoV size should be a 1 x 3 vector")
+    if len(FoVsize) != 3: 
+        raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
 
     # Compute all voxel centres
     I, J, K = _ind2sub(FoVsize, np.arange(np.prod(FoVsize)))
@@ -1238,7 +1236,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
     # Parallel processing, tqdm provides the progress bar
     if True:
-        with multiprocessing.Pool(NWORKERS) as p: 
+        with multiprocessing.Pool(cores) as p: 
             for _, r in enumerate(tqdm.tqdm(
                 p.imap(estimateFractionsPartial, workerChunks), 
                 total=len(workerChunks), desc=descriptor, 
@@ -1249,8 +1247,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     else: 
         for chunk in tqdm.trange(len(workerChunks), 
             desc=descriptor, bar_format=BAR_FORMAT, ascii=True):
-            workerFractions.append(
-                estimateFractionsPartial(workerChunks[chunk]))
+            workerFractions.append(estimateFractionsPartial(workerChunks[chunk]))
 
     # Aggregate the results back together. 
     if any(map(lambda r: isinstance(r, Exception), workerFractions)):
@@ -1296,6 +1293,10 @@ def estimatePVs(**kwargs):
     """Estimate partial volumes on the cortical ribbon"""
 
     verbose = True 
+    if kwargs.get('cores') is not None:
+        cores = kwargs['cores']
+    else: 
+        cores = multiprocessing.cpu_count()
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
@@ -1396,7 +1397,10 @@ def estimatePVs(**kwargs):
         if not op.isdir(kwargs['outdir']):
             os.mkdir(kwargs['outdir'])
     else: 
-        kwargs['outdir'] = op.dirname(kwargs['ref'])
+        dname = op.dirname(kwargs['ref'])
+        if dname == '':
+            dname = os.getcwd()
+        kwargs['outdir'] = dname
 
     # Create output dir for transformed surfaces
     if kwargs.get('savesurfs'):
@@ -1576,11 +1580,11 @@ def estimatePVs(**kwargs):
 
         for h in hemispheres: 
             inAssocs, outAssocs = list(map(_formAssociations, h.surfs(), 
-                [fullFoVsize, fullFoVsize]))
+                [fullFoVsize, fullFoVsize], [cores, cores]))
             h.inSurf.LUT = np.array(list(inAssocs.keys()), dtype=np.int32)
-            h.inSurf.assocs = list(inAssocs.values())
+            h.inSurf.assocs = np.array(list(inAssocs.values()))
             h.outSurf.LUT = np.array(list(outAssocs.keys()), dtype=np.int32)
-            h.outSurf.assocs = list(outAssocs.values())
+            h.outSurf.assocs = np.array(list(outAssocs.values()))
 
             if 'saveassocs' in kwargs: 
                 inAssocsDict[h.side] = inAssocs
@@ -1603,10 +1607,6 @@ def estimatePVs(**kwargs):
 
     # Shift these into full FOV space with the offset
     voxSubs = voxSubs + FoVoffset 
-
-    # If ROI was given then apply it now
-    if 'ROI' in kwargs:
-        voxSubs = voxSubs[kwargs['ROI'].flatten(),:]
     
     # Convert to linear indices within full FOV space
     voxList = _sub2ind(fullFoVsize, (voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]))
@@ -1628,7 +1628,7 @@ def estimatePVs(**kwargs):
                 descriptor = " {} {}".format(h.side, d)
                 slist = np.intersect1d(voxList, s.LUT).astype(np.int32)
                 f = _estimateFractions(s, fullFoVsize, supersampler, 
-                    slist, descriptor)
+                    slist, descriptor, cores)
                 fracs.append(f)
                 vlists.append(slist)
 
@@ -1638,7 +1638,7 @@ def estimatePVs(**kwargs):
             fullFoVsize, 0)
 
         # Parallel mode
-        with multiprocessing.Pool(min(2, NWORKERS)) as p:
+        with multiprocessing.Pool(min(2, cores)) as p:
             fills = p.map(voxelisePartial, h.surfs())
 
         # Single threaded mode
@@ -1705,36 +1705,37 @@ def estimatePVs(**kwargs):
         FoVoffset[2] : FoVoffset[2] + imgSize[2] ]
 
     # Finally, form the NIFTI objects and save the PVs. 
-    print("Saving PVs to", kwargs['outdir'])
-    PVhdr = copy.deepcopy(imgObj.header)
-    if PVhdr.sizeof_hdr == 540:
-        makeNifti = nibabel.nifti2.Nifti2Image
-    else: 
-        makeNifti = nibabel.nifti1.Nifti1Image
+    if kwargs.get('nosave'):
+        print("Saving PVs to", kwargs['outdir'])
+        PVhdr = copy.deepcopy(imgObj.header)
+        if PVhdr.sizeof_hdr == 540:
+            makeNifti = nibabel.nifti2.Nifti2Image
+        else: 
+            makeNifti = nibabel.nifti1.Nifti1Image
 
-    tissues = ['GM', 'WM', 'NB']
-    if kwargs.get('nostack'):
-        for t in range(3):
-            PVobj = makeNifti(outPVs[:,:,:,t], 
-                imgObj.affine, header=PVhdr)
-            outPath = op.join(kwargs['outdir'], fname + tissues[t] + outExt)
+        tissues = ['GM', 'WM', 'NB']
+        if kwargs.get('nostack'):
+            for t in range(3):
+                PVobj = makeNifti(outPVs[:,:,:,t], 
+                    imgObj.affine, header=PVhdr)
+                outPath = op.join(kwargs['outdir'], fname + tissues[t] + outExt)
+                nibabel.save(PVobj, outPath)
+        else:
+            outPath = op.join(kwargs['outdir'], fname + outExt)
+            PVhdr['dim'][0] = 4
+            PVhdr['dim'][4] = 3
+            PVobj = makeNifti(outPVs, imgObj.affine, header=PVhdr)
             nibabel.save(PVobj, outPath)
-    else:
-        outPath = op.join(kwargs['outdir'], fname + outExt)
-        PVhdr['dim'][0] = 4
-        PVhdr['dim'][4] = 3
-        PVobj = makeNifti(outPVs, imgObj.affine, header=PVhdr)
-        nibabel.save(PVobj, outPath)
 
-    # Save the mask
-    maskPath = op.join(kwargs['outdir'], maskName + outExt)
-    print("Saving surface mask to", maskPath)
-    maskHdr = copy.deepcopy(imgObj.header)
-    maskObj = makeNifti(assocsMask, imgObj.affine, \
-        header=maskHdr)
-    nibabel.save(maskObj, maskPath)
+        # Save the mask
+        maskPath = op.join(kwargs['outdir'], maskName + outExt)
+        print("Saving surface mask to", maskPath)
+        maskHdr = copy.deepcopy(imgObj.header)
+        maskObj = makeNifti(assocsMask, imgObj.affine, \
+            header=maskHdr)
+        nibabel.save(maskObj, maskPath)
 
-    return # We are done. 
+    return (outPVs, assocsMask)
 
 
 if __name__ == '__main__':
@@ -1743,67 +1744,68 @@ if __name__ == '__main__':
         description="Toblerone: partial volume estimation on the \
         cortical ribbon",
 
-        usage="""
-        Required arguments: 
-            --ref       path to reference image for which to estimate PVs
-            --FSdir     path to a FreeSurfer subject directory, from which
-                            surfaces will be loaded in the /surf dir. 
-                            Alternative to LWS/LPS
-            --LWS,LPS
+        usage=
+"""
 
-        Optional arguments            
-            --stack
-        """
+Toblerone: partial volume estimation on the cortical ribbon. 
+
+By default output PV estimates will be saved as a single 4D image with GM, WM and non-brain in frames 0-2
+This tool may be run either at the command line or as a module within a Python script. 
+
+Required arguments: 
+    --ref           path to reference image for which to estimate PVs
+    --FSdir         path to a FreeSurfer subject directory; surfaces will be loaded from the /surf dir. 
+                        Alternative to LWS/LPS/RWS/RPS, in .gii or .white/.pial format
+    --LWS, --LPS    paths to left hemisphere white and pial surfaces respectively 
+    --RWS, --RPS    as above for right hemisphere
+    --struct2ref    path to structural (from which surfaces were produced) to reference transform.
+                        Set '--struct2ref I' for identity transform. NB if this is a FSL FLIRT
+                        transform then set the --flirt flag
+
+Optional arguments:
+    --name          output filename (ext optional). Defaults to reference filename with suffix _tob  
+    --outdir        output directory. Defaults to directory containing the reference image   
+    --flirt         flag, signifying that the --struct2ref transform was produced by FSL's FLIRT
+                        If set, then a path to the structural image from which surfaces were 
+                        produced must also be given     
+    --struct        path to structural image (ie, what FreeSurfer was run on)
+    --hard          don't estimate PVs, instead simply assign whole-voxel tissue volumes based on position
+                        relative to surfaces
+    --nostack       don't stack each tissue estimates into single image, save each separately 
+    --saveassocs    save triangle/voxel associations data (debug tool)
+    --cores         number of (logical) cores to use, default is maximum available
+    
+
+File formats:
+    Surfaces are loaded either via the nibabel.freesurferio (.white/pial) or freesurfer.load (.gii)
+    modules. 
+    Images are loaded via the nibabel.load module (.nii/.nii.gz)
+    Transformation matrices are loaded via np.fromtxt(), np.load() or np.fromfile() functions. 
+
+
+Tom Kirk, November 2018
+Institute of Biomedical Engineering / Welcome Centre for Integrative Neuroimaging
+University of Oxford
+thomas.kirk@eng.ox.ac.uk
+"""
     )
 
-    parser.add_argument('--ref', type=str, help="Path to reference image for \
-        which PV estimates are required", required=True)
-
-    parser.add_argument('--FSdir', type=str, 
-        help="Path to FS subject directory, from which all surfaces will be \
-        loaded from the /surf subdirectory. Alternative to LWS,LPS etc", 
-        required=False)
-
-    parser.add_argument('--LWS', type=str, help="Path to left white surface",
-        required=False)
-    parser.add_argument('--LPS', type=str, help="Path to left pial surface", 
-        required=False)
-    parser.add_argument('--RWS', type=str, help="Path to right white surface", 
-        required=False)        
-    parser.add_argument('--RPS', type=str, help="Path to right pial surface", 
-        required=False)
-
-    parser.add_argument('--struct2ref', type=str, help="Path to \
-        transformation matrix from structural space (surfaces) to reference. \
-        NB if using a FLIRT transform, set the --flirt flag", 
-        required=False) 
-
-    parser.add_argument('--flirt', action='store_true', help="Set if the \
-        struct2ref transform is from FLIRT. --struct must also be provided")
-
-    parser.add_argument('--struct', type=str, help="Path to structural image \
-        from which surfaces were generated. Only required for --flirt \
-        transforms", required=False)
-
-    parser.add_argument('--outdir', type=str, help="Path to output directory. \
-        Default is that of the reference image", required=False)
-
-    parser.add_argument('--name', type=str, help="Name of output file. If \
-        not given, will use the reference filename with suffix _tob", 
-        required=False)
-
-    parser.add_argument('--hard', action='store_true', help='Peform hard \
-        segmentation (no PVs) based only on voxel centre position relative \
-        to surfaces')
-
-    parser.add_argument('--nostack', action='store_true', dest='noStack',
-        help='Store outputs as separate images for GM/WM/non-brain', 
-        required=False)
-
-    parser.add_argument('--saveassocs', help='Debug tool', 
-        action='store_true', required=False)
+    parser.add_argument('--ref', type=str, required=True)
+    parser.add_argument('--FSdir', type=str, required=False)
+    parser.add_argument('--LWS', type=str, required=False)
+    parser.add_argument('--LPS', type=str, required=False)
+    parser.add_argument('--RWS', type=str, required=False)        
+    parser.add_argument('--RPS', type=str, required=False)
+    parser.add_argument('--struct2ref', type=str, required=True) 
+    parser.add_argument('--flirt', action='store_true')
+    parser.add_argument('--struct', type=str, required=False)
+    parser.add_argument('--outdir', type=str, required=False)
+    parser.add_argument('--name', type=str, required=False)
+    parser.add_argument('--hard', action='store_true')
+    parser.add_argument('--nostack', action='store_true', required=False)
+    parser.add_argument('--saveassocs', action='store_true', required=False)
+    parser.add_argument('--cores', type=int, required=False)
 
     args = vars(parser.parse_args())
-
     estimatePVs(**args)
     
