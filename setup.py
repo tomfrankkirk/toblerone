@@ -11,7 +11,9 @@ from setuptools.extension import Extension
 import numpy
 
 Description = """/
-Toblerone
+Toblerone: partial volume estimation on the cortical ribbon.
+See readme or run '>py toblerone.py' / '$ python3 toblerone.py' 
+at command line for help
 """
 
 extensions = []
@@ -39,10 +41,10 @@ extensions.append(Extension("ctoblerone",
 setup(name='toberone',
       cmdclass={'build_ext': build_ext},
       version="0.0.1",
-      description="Toblerone",
+      description="Partial volume estimation",
       long_description=Description,
-      author='',
-      author_email='',
+      author='Tom Kirk',
+      author_email='thomas.kirk@eng.ox.ac.uk',
       packages=[],
       setup_requires=['Cython'],
       install_requires=[],
