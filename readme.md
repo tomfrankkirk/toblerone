@@ -12,11 +12,12 @@ Toblerone estimates partial volumes on the cortical ribbon using cortical surfac
 4. [Contact](#contact)
 
 ## Usage
-```python
+```bash
 # As a command line tool (run without args for help)
 $ python3 toblerone --ref path/to/reference --FSdir path/to/subject/directory 
 --struct2ref path/to/structural/functional/transform
-
+```
+```python
 # Within a python script. Note estimatePVs() is the only function required. 
 import toblerone
 
@@ -74,7 +75,7 @@ If FSL's FLIRT was used for registration then set the `flirt` flag and give a pa
 
 The following are either saved to files or returned from the call to `estimatePVs()`.
 
-PV estimates: 4D image of partial volume estimates in the range [0,1] for each tissue in each voxel. Dimensions 1:3 are the spatial dimensions of the reference image and dimension 4 is tissue type, arranged as GM, WM and CSF in indices 1:3. 
+PV estimates: 4D image of partial volume estimates in the range [0,1] for each tissue in each voxel. Tissues are arranged GM, WM and non-brain in volumes 0:2. 
 
 Surface mask: 3D logical mask showing voxels that at least partially intersect the cortex. These are the voxels of highest confidence, all others have an estimate assigned purely on their position relative to the cortex. **No brain masking is performed, it is left to the user to do this as they see fit**.
 
