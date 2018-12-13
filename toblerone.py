@@ -18,12 +18,14 @@ import nibabel
 import nibabel.freesurfer.io
 import nibabel.nifti2
 import tqdm
+import pvcore
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles
 from ctoblerone import _cytestManyRayTriangleIntersections
 
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
+
 
 # Class definitions -----------------------------------------------------------
 
@@ -54,7 +56,7 @@ class Surface:
     discarding unncessary triangles.
     """
 
-    def __init__(self, ps, ts):
+    def __init__(self, ps, ts, hemi, pos):
         """ps: points, ts: triangles"""
 
         # Check inputs
@@ -69,12 +71,27 @@ class Surface:
             
         self.points = ps
         self.tris = ts
-        self.assocs = []
-        self.LUT = []
         self.xProds = np.cross(
             ps[ts[:,2],:] - ps[ts[:,0],:], 
             ps[ts[:,1],:] - ps[ts[:,0],:], 
             axis=1)
+        self.hemi = hemi 
+        self.position = pos
+
+
+    def addAssociations(self, dct):
+
+        assocs = np.array(list(dct.values()), dtype=object) 
+        LUT = np.array(list(dct.keys()), dtype=np.int32)
+
+        if not all(map(len, assocs)):
+            raise RuntimeError("Associations contains empty items")
+
+        if not len(LUT) == len(assocs):
+            raise RuntimeError("Size of LUT does not match that of associations")
+ 
+        self.assocs = assocs 
+        self.LUT = LUT
 
 
     def rebaseTriangles(self, triNums):
@@ -131,13 +148,101 @@ class Surface:
     def toPatchesForVoxels(self, voxIndices):
         """Return the patches for the voxels in voxel indices, flattened into 
         a single set of ps, ts and xprods. 
+
+        If no patches exist for this list of voxels return None.
         """
 
-        triNums = _flattenList(self.assocs[np.isin(self.LUT, voxIndices)])
-        triNums = list(set(triNums))
+        # Concatenate all triangle numbers for the voxels, using the
+        # set constructor to strip out repeats
+        vlists = self.assocs[np.isin(self.LUT, voxIndices)]
+        if vlists.size:
+            triNums = np.unique(np.hstack(vlists))
 
-        return Patch(self.points, self.tris[triNums,:], 
-            self.xProds[triNums,:])
+            return Patch(self.points, self.tris[triNums,:], 
+                self.xProds[triNums,:])
+
+        return None
+
+
+    @staticmethod
+    def voxelise(imgSize, surface):
+        """Voxelise (create binary in/out mask) a surface within a voxel grid
+        of size imgSize. Surface coordinates must be in 0-indexed voxel units, 
+        as will the voxel grid be interpreted (ie, 0 : imgSize - 1 in xyz). 
+        Method is defined as static on the class for compataibility with 
+        multiprocessing.Pool().
+
+            Args: 
+                imgSize: 3-vector of voxel grid dimensions
+                surface: surface object. 
+
+            Returns: 
+                a flat boolean mask indicating voxels contained within the
+                    surface. Use reshape(imgSize) as required. 
+        """
+
+        dim = np.argmax(imgSize)
+
+        try: 
+            # Initialsie empty mask, and loop over the OTHER dims to the one specified. 
+            mask = np.zeros(np.prod(imgSize), dtype=bool)
+            otherDims = [ (dim+1)%3, (dim+2)%3 ]
+            startPoint = np.zeros(3, dtype=np.float32)
+
+            for d1 in range(imgSize[otherDims[0]]):
+                for d2 in range(imgSize[otherDims[1]]):
+
+                    # Defined the start/end of the ray and gather all 
+                    # linear indices of voxels along the ray
+                    IJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
+                    IJK[:,dim] = np.arange(0, imgSize[dim])
+                    IJK[:,otherDims[0]] = d1
+                    IJK[:,otherDims[1]] = d2
+                    startPoint[otherDims] = [d1, d2]
+                    voxRange = _sub2ind(imgSize, (IJK[:,0], IJK[:,1], IJK[:,2]))
+
+                    # Find all associated triangles lying along this ray
+                    # and test for intersection
+                    patches = surface.toPatchesForVoxels(voxRange)
+
+                    if patches is not None:
+                        intersectionMus = _findRayTriangleIntersections2D(startPoint, \
+                            patches, dim)
+
+                        if not intersectionMus.shape[0]:
+                            continue
+                        
+                        # If intersections were found, perform a parity test. 
+                        # Any ray should make an even number of intersections
+                        # as it crosses from -ve to +ve infinity
+                        if (intersectionMus.shape[0] % 2):
+                            raise RuntimeError("fillSurfaceAlongDimension: \
+                                even number of intersections found. Does the FoV \
+                                cover the full extents of the surface")
+
+                        # Calculate points of intersection along the ray
+                        sorted = np.argsort(intersectionMus)
+                        intDs = startPoint[dim] + (intersectionMus[sorted])
+
+                        # Assignment. All voxels before the first point of intersection
+                        # are outside. The mask is already zeroed for these. All voxels
+                        # between point 1 and n could be in or out depending on parity
+                        for i in range(1, len(sorted)+1):
+
+                            # Starting from infinity, all points between an odd numbered
+                            # intersection and the next even one are inside the mask 
+                            if ((i % 2) & ((i+1) <= len(sorted))):
+                                indices = ((IJK[:,dim] > intDs[i-1]) 
+                                    & (IJK[:,dim] < intDs[i]))
+                                mask[voxRange[indices]] = 1
+                        
+                            # All voxels beyond the last point of intersection are also outside. 
+
+            return mask
+
+        except Exception as e:
+            print("Error voxelising surface.")
+            raise e 
 
 
 class Patch(Surface):
@@ -161,24 +266,6 @@ class Patch(Surface):
 
 
 # Function definitions --------------------------------------------------------
-
-def _affineTransformPoints(points, affine):
-    """Apply affine transformation to set of points.
-
-    Args: 
-        points: n x 3 matrix of points to transform
-        affine: 4 x 4 matrix for transformation
-
-    Returns: 
-        transformed copy of points 
-    """
-
-    # Add 1s on the 4th column, transpose and multiply, 
-    # then re-transpose and drop 4th column  
-    transfd = np.ones((points.shape[0], 4))
-    transfd[:,0:3] = points
-    transfd = np.matmul(affine, transfd.T).astype(np.float32)
-    return (transfd[0:3,:]).T
 
 
 def _quickCross(a, b):
@@ -287,6 +374,19 @@ def _getVoxelSubscripts(voxList, imgSize):
     return np.array(list(map(lambda v: _ind2sub(imgSize, v), voxList)))
 
 
+
+def _pointGroupsIntersect(grps, tris): 
+    """Break as soon as overlap is found. Brute force approach."""
+    for g in range(len(grps)):
+        for h in range(g + 1, len(grps)): 
+            if np.any(np.intersect1d(tris[grps[g],:], 
+                tris[grps[h],:])):
+                return True 
+
+    return False 
+
+
+
 def _separatePointClouds(tris):
     """Separate patches of a surface that intersect a voxel into disconnected
     groups, ie, point clouds. If the patch is cointguous within the voxel
@@ -299,20 +399,6 @@ def _separatePointClouds(tris):
         list of m arrays representing the point clouds, each of which is 
             list of row numbers into the given tris matrix 
     """
-
-    # Local functions --------------------
-
-    def __pointGroupsIntersect(grps, tris): 
-        """Break as soon as overlap is found. Brute force approach."""
-        for g in range(len(grps)):
-            for h in range(g + 1, len(grps)): 
-                if np.any(np.intersect1d(tris[grps[g],:], 
-                    tris[grps[h],:])):
-                    return True 
-
-        return False 
-
-    # Main function ---------------------
 
     if not tris.shape[0]:
         return [] 
@@ -340,7 +426,7 @@ def _separatePointClouds(tris):
 
     # Merge groups that intersect 
     if len(groups) > 1: 
-        while __pointGroupsIntersect(groups, tris): 
+        while _pointGroupsIntersect(groups, tris): 
             didMerge = False 
 
             for g in range(len(groups)):
@@ -417,9 +503,13 @@ def _formAssociations(surf, FoVsize, cores):
     associations = collections.defaultdict(list)
     for res in allResults: 
         for k in res.keys():
-            associations[k] = associations[k] + res[k]
+            associations[k] += res[k]
 
-    return dict(associations)
+    # Convert back to dict and assert no empty entries 
+    output = dict(associations)
+    assert all(map(len, output.values()))
+
+    return output
 
 
 
@@ -453,80 +543,6 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
     return workerResults
 
 
-def _voxeliseSurfaceAlongDimension(FoVsize, dim, surf):
-    """Fill the volume contained within the surface by projecting rays
-    in a given direction. See "Simplification and repair of polygonal models 
-    using volumetric techniques", Nooruddin & Turk, 2003 for an overview of 
-    the conceptual approach taken.
-
-    Args: 
-        FoVsize: 1 x 3 vector of FoV dimensions in which surface is enclosed
-        dim: int 0/1/2 dimension along which to project rays
-        surf: complete surface object. 
-
-    Returns: 
-        logical array of FoV size, true where voxel is contained in surface
-    """
-
-    try: 
-        # Initialsie empty mask, and loop over the OTHER dims to the one specified. 
-        mask = np.zeros(np.prod(FoVsize), dtype=bool)
-        otherDims = [ (dim+1)%3, (dim+2)%3 ]
-        startPoint = np.zeros(3, dtype=np.float32)
-
-        for d1 in range(FoVsize[otherDims[0]]):
-            for d2 in range(FoVsize[otherDims[1]]):
-
-                # Defined the start/end of the ray and gather all 
-                # linear indices of voxels along the ray
-                IJK = np.zeros((FoVsize[dim], 3), dtype=np.int16)
-                IJK[:,dim] = np.arange(0, FoVsize[dim])
-                IJK[:,otherDims[0]] = d1
-                IJK[:,otherDims[1]] = d2
-                startPoint[otherDims] = [d1, d2]
-                voxRange = _sub2ind(FoVsize, (IJK[:,0], IJK[:,1], IJK[:,2]))
-
-                # Find all associated triangles lying along this ray
-                # and test for intersection
-                patches = surf.toPatchesForVoxels(voxRange)
-
-                if patches.tris.shape[0]:
-                    intersectionMus = _findRayTriangleIntersections2D(startPoint, \
-                        patches, dim)
-
-                    if not intersectionMus.shape[0]:
-                        continue
-                    
-                    # If intersections were found, perform a parity test. 
-                    # Any ray should make an even number of intersections
-                    # as it crosses from -ve to +ve infinity
-                    if (intersectionMus.shape[0] % 2):
-                        raise RuntimeError("fillSurfaceAlongDimension: \
-                            even number of intersections found. Does the FoV \
-                            cover the full extents of the surface")
-
-                    # Calculate points of intersection along the ray
-                    sorted = np.argsort(intersectionMus)
-                    intDs = startPoint[dim] + (intersectionMus[sorted])
-
-                    # Assignment. All voxels before the first point of intersection
-                    # are outside. The mask is already zeroed for these. All voxels
-                    # between point 1 and n could be in or out depending on parity
-                    for i in range(1, len(sorted)+1):
-
-                        # Starting from infinity, all points between an odd numbered
-                        # intersection and the next even one are inside the mask 
-                        if ((i % 2) & ((i+1) <= len(sorted))):
-                            indices = ((IJK[:,dim] > intDs[i-1]) 
-                                & (IJK[:,dim] < intDs[i]))
-                            mask[voxRange[indices]] = 1
-                    
-                        # All voxels beyond the last point of intersection are also outside. 
-
-        return np.reshape(mask, FoVsize) 
-
-    except Exception as e:
-        raise e 
 
 
 
@@ -874,13 +890,6 @@ def _findVoxelSurfaceIntersections(patch, vertices):
     return (intersects, fold)
 
 
-def _flattenList(lists):
-    """Little utility to flatten a list of lists (depth of 2 max)"""
-    out = []
-    for sublist in lists:
-         out = out + sublist 
-    return out 
-
 
 def _adjustFLIRT(source, reference, transform):
     """Adjust a FLIRT transformation matrix into a true world-world 
@@ -1032,6 +1041,9 @@ def _getAllSubVoxCorners(supersampler, voxCent, voxSize):
         ).astype(np.float32).T
 
 
+
+
+
 def _estimateVoxelFraction(surf, voxIJK, voxIdx,
     imgSize, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
@@ -1063,7 +1075,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
 
     # Test all subvox corners now and store the results for later
     allCorners = _getAllSubVoxCorners(supersampler, voxIJK, voxSize)
-    voxCentFlag = _fullRayIntersectionTest(voxIJK, surf, voxIJK, imgSize)
+    voxCentFlag = surf.voxelised[voxIdx]
     allCornerFlags = _reducedRayIntersectionTest(allCorners, patch, \
         voxIJK, ~voxCentFlag)
 
@@ -1229,7 +1241,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     voxIJKs = voxIJKs.astype(np.float32)
 
     # Prepare partial function application for the estimation
-    workerChunks = _distributeObjects(voxList, 50)
+    workerChunks = _distributeObjects(voxList, 40)
     workerFractions = []
     estimateFractionsPartial = functools.partial(_estimateFractionsWorker, \
         surf, voxIJKs, FoVsize, supersampler)
@@ -1277,8 +1289,7 @@ def _estimateFractionsWorker(surf, voxIJK, imgSize, \
             # Load voxel centre, estimate vols, and rescale to PVs
             voxijk = voxIJK[v,:]
             fraction = _estimateVoxelFraction(surf, \
-                voxijk, v, imgSize, supersampler)
-            
+                voxijk, v, imgSize, supersampler)     
             partialVolumes[counter] = fraction
             counter += 1 
         
@@ -1301,15 +1312,10 @@ def estimatePVs(**kwargs):
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
     if 'FSdir' in kwargs:
-        FSdir = op.join(kwargs['FSdir'], 'surf')
-        
-        if not op.isdir(FSdir):
-            raise RuntimeError("Subject's surf/ directory does not exist")
+        surfdict = pvcore.loadSurfsToDict(kwargs['FSdir'])
 
-        kwargs['LWS'] = op.join(FSdir, 'lh.white')
-        kwargs['LPS'] = op.join(FSdir, 'lh.pial')
-        kwargs['RWS'] = op.join(FSdir, 'rh.white')
-        kwargs['RPS'] = op.join(FSdir, 'rh.pial')
+        for k,v in surfdict.items():
+            kwargs[k] = v 
 
     # Define the hemispheres we will be working with and check surfaces exist. 
     # Check file formats
@@ -1385,11 +1391,8 @@ def estimatePVs(**kwargs):
             kwargs['struct2ref'])
 
 
-    # Read in input image properties 
-    imgObj = nibabel.load(kwargs['ref'])
-    voxSize = (imgObj.header['pixdim'])[1:4]
-    imgSize = (imgObj.header['dim'])[1:4]
-    world2vox = np.linalg.inv(imgObj.affine)
+    # Read reference image properties into an ImageSpace object
+    refSpace = pvcore.ImageSpace.fromfile(kwargs['ref'])
 
     # Prepare output directory. If given then create it 
     # If not then use the input image dir
@@ -1467,7 +1470,7 @@ def estimatePVs(**kwargs):
                 ps, ts = tuple(map(lambda o: o.data, gft))
 
             # Transform the surfaces to reference space
-            ps = _affineTransformPoints(ps, transform)
+            ps = pvcore.affineTransformPoints(ps, transform)
 
             # # Save the transformed surfaces 
             # if kwargs.get('savesurfs'):
@@ -1481,7 +1484,7 @@ def estimatePVs(**kwargs):
             #         nibabel.save(gft2, transSurfName)
 
             # Transform the surfaces to voxel space
-            ps = _affineTransformPoints(ps, world2vox)
+            ps = pvcore.affineTransformPoints(ps, refSpace.world2vox)
             ps = ps.astype(np.float32)
             ts = ts.astype(np.int32)
 
@@ -1490,9 +1493,10 @@ def estimatePVs(**kwargs):
                 raise RuntimeError("Vertex/triangle indexing incorrect")
 
             # Write the surface into the hemisphere obj
-            surf = Surface(ps, ts)
-            if s == 'P': h.outSurf = surf 
-            else: h.inSurf = surf 
+            if s == 'P': 
+                h.outSurf = Surface(ps, ts, h, 'out')
+            else: 
+                h.inSurf = Surface(ps, ts, h, 'in')
 
 
     # FoV and associations loop -----------------------------------------------
@@ -1501,8 +1505,8 @@ def estimatePVs(**kwargs):
     # Warn if FoV does not contain whole surface
     s1 = hemispheres[0].outSurf.points
     s2 = hemispheres[-1].outSurf.points
-    if (np.any(s1 < -1) | np.any(s1 > imgSize-1) | \
-        np.any(s2 < -1) |  np.any(s2 > imgSize-1)):
+    if (np.any(s1 < -0.5) | np.any(s1 > refSpace.imgSize-0.5) | \
+        np.any(s2 < -0.5) |  np.any(s2 > refSpace.imgSize-0.5)):
         print("Warning: the FoV of the reference image does not cover the", 
             "full extents of the surfaces provided. PVs will only be", 
             "estimated within the reference FoV")
@@ -1518,8 +1522,9 @@ def estimatePVs(**kwargs):
     # in full FoV space, where XYZ is the FoV offset. 
     # The max() function catches cases where no offset is necessary
     FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int8)
-    fullFoVsize = (np.maximum(maxFoV - minFoV + 1, imgSize)).astype(np.int16)
-    assert np.all(fullFoVsize >= imgSize), \
+    fullFoVsize = (np.maximum(maxFoV + FoVoffset, 
+        refSpace.imgSize)).astype(np.int16)
+    assert np.all(fullFoVsize >= refSpace.imgSize), \
         "Full FoV has not been expanded to at least reference FoV"
 
     # Shift surfaces to remove negative coordinates, check max limits
@@ -1537,8 +1542,7 @@ def estimatePVs(**kwargs):
     # Form (or read in) associations
     # We use a "stamp" matrix to check that saved/loaded assocs
     # are referenced to the right image space
-    stamp = np.matmul(kwargs['struct2ref'], world2vox)
-    inAssocs = {}; outAssocs = {} 
+    stamp = np.matmul(kwargs['struct2ref'], refSpace.world2vox)
     recomputeAssocs = False 
 
     # Associations have been pre-computed 
@@ -1548,23 +1552,17 @@ def estimatePVs(**kwargs):
 
         with open(assocsPath, 'rb') as f:
 
-            oldStamp, inAssocsDict, outAssocsDict = pickle.load(f)
+            oldStamp, inAssocs, outAssocs = pickle.load(f)
             if not np.array_equal(oldStamp, stamp): 
-                raise RuntimeError("Pre-loaded associations stamp does not match", \
+                raise RuntimeError("Pre-loaded associations stamp does not match",
                     "surface/image geometry. Delete the associations.")
         
         # Check the loaded assocs are good to go (not nones)
         for h in hemispheres: 
-            if not ((inAssocsDict[h.side] is not None) & (outAssocsDict[h.side] is not None)):
+            if not ((inAssocs[h.side] is not None) & 
+                (outAssocs[h.side] is not None)):
                 print("Loaded associations are not complete, will recompute.")
                 recomputeAssocs = True 
-            
-        # If so, unpack the associations into their keys (LUT) and values. 
-            else:
-                h.inSurf.LUT = np.array(list(inAssocsDict[h.side].keys()), dtype=np.int32)
-                h.outSurf.LUT = np.array(list(outAssocsDict[h.side].keys()), dtype=np.int32)
-                h.inSurf.assocs = np.array(list(inAssocsDict[h.side].values()))
-                h.outSurf.assocs = np.array(list(outAssocsDict[h.side].values()))
     
     # Associations need computing
     elif (recomputeAssocs) or not (op.isfile(assocsPath)): 
@@ -1572,44 +1570,46 @@ def estimatePVs(**kwargs):
             print("Forming voxel associations, saving to:", assocsPath)
         else: 
             print("Forming voxel associations")
-
-        # Initialise all these as none and overwrite them with true values if the 
-        # hemispheres are available to do so 
-        if 'saveassocs' in kwargs: 
-              inAssocsDict = {}; outAssocsDict = {}
-
-        for h in hemispheres: 
-            inAssocs, outAssocs = list(map(_formAssociations, h.surfs(), 
-                [fullFoVsize, fullFoVsize], [cores, cores]))
-            h.inSurf.LUT = np.array(list(inAssocs.keys()), dtype=np.int32)
-            h.inSurf.assocs = np.array(list(inAssocs.values()))
-            h.outSurf.LUT = np.array(list(outAssocs.keys()), dtype=np.int32)
-            h.outSurf.assocs = np.array(list(outAssocs.values()))
-
-            if 'saveassocs' in kwargs: 
-                inAssocsDict[h.side] = inAssocs
-                outAssocsDict[h.side] = outAssocs 
+ 
+        inAssocs = {}; outAssocs = {}
+        for h in hemispheres:
+            for (s,d) in zip(h.surfs(), [inAssocs, outAssocs]):
+                d.update({h.side: _formAssociations(s, fullFoVsize, cores)})
 
         if 'saveassocs' in kwargs: 
             with open(assocsPath, 'wb') as f: 
-                pickle.dump((stamp, inAssocsDict, outAssocsDict), f)
+                pickle.dump((stamp, inAssocs, outAssocs), f)
+
+    # At this point we have either computed or loaded association dicts, 
+    # now load them into their respective surfaces. 
+    for h in hemispheres:
+        h.inSurf.addAssociations(inAssocs[h.side])
+        h.outSurf.addAssociations(outAssocs[h.side])
 
 
     # And now pass off to the actual toblerone estimation
-    supersampler = np.ceil(voxSize).astype(np.int8)
+    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
     print("Supersampling factor set at:", supersampler)
 
-    # Generate the list of voxels to be processed. Start with the set of all
-    # voxels within the reference image 
-    I,J,K = np.meshgrid(np.arange(imgSize[0]), np.arange(imgSize[1]), \
-        np.arange(imgSize[2]))
-    voxSubs = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
-
-    # Shift these into full FOV space with the offset
+    # Prepare list of voxels to be processed. Start with grid, add offset, 
+    # then flatten to linear indices. 
+    voxSubs = pvcore.coordinatesForGrid(refSpace.imgSize)
     voxSubs = voxSubs + FoVoffset 
-    
-    # Convert to linear indices within full FOV space
     voxList = _sub2ind(fullFoVsize, (voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]))
+            
+    # Fill in whole voxels (ie, no PVs)
+    print("Filling whole voxels")
+    allSurfs = [ s for h in hemispheres for s in h.surfs() ]
+    voxelise = functools.partial(Surface.voxelise, fullFoVsize)
+
+    if True: 
+        with multiprocessing.Pool(cores) as p:
+            fills = p.map(voxelise, allSurfs)
+    else: 
+        fills = list(map(voxelise, allSurfs))
+
+    # Match up the results of the map (a list) with their respective surfaces
+    [ setattr(s, 'voxelised', f) for (s,f) in zip(allSurfs, fills) ]
 
     # Process each hemisphere
     for h in hemispheres:
@@ -1620,7 +1620,7 @@ def estimatePVs(**kwargs):
                 "from the origin than the outer vertices. Are the surfaces in",\
                 "the correct order?")
         
-        # Estimate fractions against the inner surface
+        # Estimate fractions against each surface
         if not kwargs.get('hard'):
 
             fracs = []; vlists = []
@@ -1632,22 +1632,10 @@ def estimatePVs(**kwargs):
                 fracs.append(f)
                 vlists.append(slist)
 
-        
-        # Estimate bool masks against both surfaces. 
-        voxelisePartial = functools.partial(_voxeliseSurfaceAlongDimension, \
-            fullFoVsize, 0)
-
-        # Parallel mode
-        with multiprocessing.Pool(min(2, cores)) as p:
-            fills = p.map(voxelisePartial, h.surfs())
-
-        # Single threaded mode
-        # fills = list(map(voxelisePartial, h.surfs()))
-
+    
         # Write the fractions on top of the binary masks. 
-        inFilled, outFilled = fills 
-        inFractions = (inFilled.flatten()).astype(np.float32)
-        outFractions = (outFilled.flatten()).astype(np.float32)
+        inFractions = (h.inSurf.voxelised).astype(np.float32)
+        outFractions = (h.outSurf.voxelised).astype(np.float32)
 
         if not kwargs.get('hard'):
             inFractions[vlists[0]] = fracs[0] 
@@ -1697,42 +1685,36 @@ def estimatePVs(**kwargs):
     assocsMask = np.reshape(assocsMask, tuple(fullFoVsize[0:3]))
 
     # Extract the output within the FoV of the reference image
-    outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + imgSize[0], \
-        FoVoffset[1] : FoVoffset[1] + imgSize[1], \
-        FoVoffset[2] : FoVoffset[2] + imgSize[2] ]
-    assocsMask = outPVs[ FoVoffset[0] : FoVoffset[0] + imgSize[0], \
-        FoVoffset[1] : FoVoffset[1] + imgSize[1], \
-        FoVoffset[2] : FoVoffset[2] + imgSize[2] ]
+    outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
+        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1], \
+        FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
+    assocsMask = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
+        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1], \
+        FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
 
     # Finally, form the NIFTI objects and save the PVs. 
-    if kwargs.get('nosave'):
+    if 'nosave' not in kwargs:
         print("Saving PVs to", kwargs['outdir'])
-        PVhdr = copy.deepcopy(imgObj.header)
-        if PVhdr.sizeof_hdr == 540:
-            makeNifti = nibabel.nifti2.Nifti2Image
-        else: 
-            makeNifti = nibabel.nifti1.Nifti1Image
+        makeNifti = nibabel.nifti2.Nifti2Image
 
         tissues = ['GM', 'WM', 'NB']
-        if kwargs.get('nostack'):
+        if 'nostack' in kwargs:
             for t in range(3):
                 PVobj = makeNifti(outPVs[:,:,:,t], 
-                    imgObj.affine, header=PVhdr)
+                    refSpace.vox2world)
                 outPath = op.join(kwargs['outdir'], fname + tissues[t] + outExt)
                 nibabel.save(PVobj, outPath)
         else:
             outPath = op.join(kwargs['outdir'], fname + outExt)
-            PVhdr['dim'][0] = 4
-            PVhdr['dim'][4] = 3
-            PVobj = makeNifti(outPVs, imgObj.affine, header=PVhdr)
+            # PVhdr['dim'][0] = 4
+            # PVhdr['dim'][4] = 3
+            PVobj = makeNifti(outPVs, refSpace.vox2world)
             nibabel.save(PVobj, outPath)
 
         # Save the mask
         maskPath = op.join(kwargs['outdir'], maskName + outExt)
         print("Saving surface mask to", maskPath)
-        maskHdr = copy.deepcopy(imgObj.header)
-        maskObj = makeNifti(assocsMask, imgObj.affine, \
-            header=maskHdr)
+        maskObj = makeNifti(assocsMask, refSpace.vox2world)
         nibabel.save(maskObj, maskPath)
 
     return (outPVs, assocsMask)
@@ -1807,5 +1789,9 @@ thomas.kirk@eng.ox.ac.uk
     parser.add_argument('--cores', type=int, required=False)
 
     args = vars(parser.parse_args())
+
+    if args.get('struct2ref') is 'I':
+        args['struct2ref'] = np.identity(4)
+        
     estimatePVs(**args)
     
