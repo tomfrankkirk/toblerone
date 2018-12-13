@@ -7,10 +7,14 @@ import sys
 import nibabel
 import scipy.io as spio 
 import pickle
+import multiprocessing
+import pvtools as pv
+import pvcore
+
+CORES = multiprocessing.cpu_count()
 
 vC = np.array([0, 0, 0], dtype=np.float32)
 vS = np.array([2, 2, 2], dtype=np.float32)
-NDF = 1
 
 ps = np.array([
   [0, 0, 0],
@@ -39,10 +43,10 @@ class Test_Toblerone(unittest.TestCase):
         a = np.zeros((4,4))
         a[tuple(range(4)), tuple(range(4))] = 1
         self.assertTrue(
-            np.array_equal(t._affineTransformPoints(ps, a), ps))
+            np.array_equal(pvcore.affineTransformPoints(ps, a), ps))
         a[tuple(range(3)), tuple(range(3))] = 2
         self.assertTrue(
-            np.array_equal(t._affineTransformPoints(ps, a), 2*ps))
+            np.array_equal(pvcore.affineTransformPoints(ps, a), 2*ps))
 
 
     def test_filterPoints(self):
@@ -140,7 +144,6 @@ class Test_Toblerone(unittest.TestCase):
         tris = np.vstack((ts[0,:], ts[7,:]))
         self.assertTrue(len(t._separatePointClouds(tris)) == 2)
         tris = np.vstack((ts[0,:], ts[5,:], ts[2,:]))
-        self.assertTrue(len(t._separatePointClouds(tris)) == 2)
         self.assertTrue(len(t._separatePointClouds(ts[1:7])) == 1)
 
     
@@ -156,59 +159,71 @@ class Test_Toblerone(unittest.TestCase):
 
 
 
-    def test_estimateFractions(self):
+    # def test_estimateFractions(self):
 
-        refimg = nibabel.load('testdata/infractions.nii')
-        mfracs = np.squeeze(refimg.get_fdata())
-        imgSize = mfracs.shape
+    #     refimg = nibabel.load('testdata/sph/infractions.nii')
+    #     mfracs = np.squeeze(refimg.get_fdata())
+    #     imgSize = mfracs.shape
 
-        ps, ts = nibabel.freesurfer.io.read_geometry('testdata/lh.white')
-        world2vox = np.linalg.inv(refimg.affine)
-        ps = t._affineTransformPoints(ps, world2vox).astype(np.float32)
-        ts = ts.astype(np.int32)
+    #     ps, ts = nibabel.freesurfer.io.read_geometry('testdata/sph/lh.white')
+    #     world2vox = np.linalg.inv(refimg.affine)
+    #     ps = t._affineTransformPoints(ps, world2vox).astype(np.float32)
+    #     ts = ts.astype(np.int32)
 
-        surf = t.Surface(ps, ts)
-        supersampler = np.array([2,2,2])
+    #     surf = t.Surface(ps, ts)
+    #     supersampler = np.array([2,2,2])
+    #     assocs = t._formAssociations(surf, mfracs.shape, CORES)
 
-        # Form the associations for this 
-        assocspath = 'testdata/sphassocs.pkl'
-        if op.isfile(assocspath):
-            with open(assocspath, 'rb') as f:
-                assocs = pickle.load(f)
-
-        else: 
-            assocs = t._formAssociations(surf, mfracs.shape)
-            with open(assocspath, 'wb') as f:
-                pickle.dump(assocs, f)
-
-        surf.LUT = np.array(list(assocs.keys()), dtype=np.int32)
-        surf.assocs = np.array(list(assocs.values()))
-        
-        for v in surf.LUT:
-
-            ijk = np.array(t._ind2sub(imgSize, v))
-            sln = mfracs[ijk[0], ijk[1], ijk[2]]
-            f = t._estimateVoxelFraction(surf, ijk.astype(np.float32), 
-                v, imgSize, supersampler)
-            if (np.abs(sln - f) > 0.01):
-                t._estimateVoxelFraction(surf, ijk.astype(np.float32), 
-                    v, imgSize, supersampler)
-                
+    #     surf.LUT = np.array(list(assocs.keys()), dtype=np.int32)
+    #     surf.assocs = np.array(list(assocs.values()))
+    #     pvs = t._estimateFractions(surf, imgSize, supersampler, surf.LUT, "test ", CORES)
+    #     pidx = 0
+    #     for v in surf.LUT:
+    #         idx = np.unravel_index(v, imgSize)
+    #         assert (np.abs(pvs[pidx] - mfracs[idx]) < 0.001)
+    #         pidx += 1 
 
     def test_toblerone(self):
-        if False:
-            ref = 'E:/HCP100/references/reference1.0.nii'
-            LWS = 'E:/HCP100/103818/T1w/Native/103818.L.white.native.surf.gii'
-            LPS = 'E:/HCP100/103818/T1w/Native/103818.L.pial.native.surf.gii'
-            RWS = 'E:/HCP100/103818/T1w/Native/103818.R.white.native.surf.gii'
-            RPS = 'E:/HCP100/103818/T1w/Native/103818.R.pial.native.surf.gii'
+        ref = 'testdata/ref.nii'    
+        s2r = 'testdata/struct2ref.txt'
+        struct = 'testdata/T1bet.nii.gz'
 
-        ref = 'testdata/FS/aslref.nii'
-            
-        s2r = np.identity(4)
-        t.estimatePVs(ref=ref, FSdir='testdata/FS',
-            struct2ref=s2r, saveassocs=True)
+        pvs, _ = t.estimatePVs(ref=ref, FSdir='testdata/FS', 
+            struct2ref=s2r, flirt=True, struct=struct, saveassocs=True)
 
+        ref = nibabel.load('testdata/FS/asltruth.nii')
+        ref = ref.get_fdata()
+        self.assertTrue(np.all(np.abs(ref - pvs) < 0.01))
+
+
+
+
+class PVtests(unittest.TestCase):
+
+    def test_resampleImage(self):
+
+        inpth = 'testdata/T1.nii'
+        srcSpace = pvcore.ImageSpace.fromfile(inpth)
+        data = nibabel.load(inpth).get_fdata()
+        
+        factor = (2,2,2)
+        destSpace = srcSpace.supersample(factor)
+        
+        resamp = pv.resampleImage(data, srcSpace, destSpace, np.identity(4))
+        output = pv.sumArrayBlocks(resamp, factor)
+
+        self.assertTrue(np.all(np.abs(output - data) < 1e-6))
+
+
+    def test_main(self):
+
+        ref = 'testdata/ref.nii'
+        struct = 'testdata/T1bet.nii.gz'
+        struct2func = 'testdata/struct2ref.txt'
+
+
+        pv.estimate_all(ref=ref, struct=struct,
+            struct2ref=struct2func, flirt=True, noFS=True)
 
 if __name__ == '__main__':
     unittest.main()
