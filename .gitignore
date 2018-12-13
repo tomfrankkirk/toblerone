@@ -13,3 +13,4 @@ surf_transform
 *.png 
 ctoblerone.c
 scratch.py
+/testdata/pvtools
