@@ -12,6 +12,7 @@ import os
 import os.path as op
 import pickle
 import argparse
+from IPython import embed
 
 import numpy as np 
 import nibabel
@@ -1392,7 +1393,7 @@ def estimatePVs(**kwargs):
     transform = np.matmul(kwargs['struct2ref'], transform)
     if verbose: 
         np.set_printoptions(precision=3, suppress=True)
-        print("Final surface-to-reference-voxel transformation:\n", transform)
+        print("Final surface-to-reference (world) transformation:\n", transform)
     
 
     # Load all surfaces and transform into reference voxel space
@@ -1408,9 +1409,8 @@ def estimatePVs(**kwargs):
             ps, ts = tuple(map(lambda o: o.data, gft))
 
         # Transforms: surface -> reference -> reference voxels
-        transform = np.matmul(refSpace, transform)
-        ps = pvcore.affineTransformPoints(ps, transform)
-        ps = ps.astype(np.float32)
+        overall = np.matmul(refSpace.world2vox, transform)
+        ps = pvcore.affineTransformPoints(ps, overall)
         ts = ts.astype(np.int32)
 
         # Indexing checks
