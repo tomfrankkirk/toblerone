@@ -24,7 +24,7 @@ from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles
 from ctoblerone import _cytestManyRayTriangleIntersections
 
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
-
+SHARED_ARGS = []
 
 # Class definitions -----------------------------------------------------------
 
@@ -1151,6 +1151,16 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
     return inFraction 
 
 
+def _intialiseWorker(*sharedArgs):
+    global SHARED_ARGS
+    for a in sharedArgs:
+        SHARED_ARGS.append(a)
+
+def _intialiseWorkerFunction(function, workerArgs):
+    global SHARED_ARGS 
+    return function(*SHARED_ARGS, workerArgs)
+
+
 def _estimateFractions(surf, FoVsize, supersampler, \
     voxList, descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
@@ -1166,6 +1176,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         vector of size prod(FoV)
     """
 
+    global SHARED_ARGS 
     if len(FoVsize) != 3: 
         raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
 
@@ -1173,23 +1184,30 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     voxIJKs = pvcore.coordinatesForGrid(FoVsize).astype(np.float32)
     workerChunks = _distributeObjects(voxList, 40)
     workerFractions = []
-    estimateFractionsPartial = functools.partial(_estimateFractionsWorker, \
-        surf, voxIJKs, FoVsize, supersampler)
 
-    # Parallel processing, tqdm provides the progress bar
-    if True:
-        with multiprocessing.Pool(cores) as p: 
+    # Parallel processing, tqdm provides the progress bar. 
+    # Ensure the shared global object is clear before starting the pool.
+    SHARED_ARGS = []
+    estimateWrapped = functools.partial(_intialiseWorkerFunction, 
+        _estimateFractionsWorker)
+    # estPartial = functools.partial(_estimateFractionsWorker, 
+    #     surf, voxIJKs, FoVsize, supersampler)
+    if cores > 1:
+        with multiprocessing.Pool(cores, _intialiseWorker,
+            (surf, voxIJKs, FoVsize, supersampler)) as p: 
+
             for _, r in enumerate(tqdm.tqdm(
-                p.imap(estimateFractionsPartial, workerChunks), 
+                p.imap(estimateWrapped, workerChunks), 
                 total=len(workerChunks), desc=descriptor, 
                 bar_format=BAR_FORMAT, ascii=True)):
                 workerFractions.append(r)
 
     # Serial processing, again with progress bar.
     else: 
+        _intialiseWorker(surf, voxIJKs, FoVsize, supersampler)
         for chunk in tqdm.trange(len(workerChunks), 
             desc=descriptor, bar_format=BAR_FORMAT, ascii=True):
-            workerFractions.append(estimateFractionsPartial(workerChunks[chunk]))
+            workerFractions.append(estimateWrapped(workerChunks[chunk]))
 
     # Aggregate the results back together. 
     if any(map(lambda r: isinstance(r, Exception), workerFractions)):
@@ -1219,7 +1237,7 @@ def _estimateFractionsWorker(surf, voxIJK, imgSize, \
             # Load voxel centre, estimate vols, and rescale to PVs
             voxijk = voxIJK[v,:]
             fraction = _estimateVoxelFraction(surf, \
-                voxijk, v, imgSize, supersampler)     
+                voxijk, v, imgSize, supersampler)  
             partialVolumes[counter] = fraction
             counter += 1 
         
@@ -1239,11 +1257,11 @@ def estimatePVs(**kwargs):
     else: 
         cores = multiprocessing.cpu_count() - 1
 
+
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
     if kwargs.get('FSdir'):
         surfdict = pvcore.loadSurfsToDict(kwargs['FSdir'])
-
         for k,v in surfdict.items():
             kwargs[k] = v 
 
@@ -1303,14 +1321,10 @@ def estimatePVs(**kwargs):
                 raise e 
             kwargs['struct2ref'] = matrix
 
-    else: 
-        warnings.warn("No structural to reference transform given. Assuming identity.")
-        kwargs['struct2ref'] = np.identity(4)
-
     if not kwargs['struct2ref'].shape == (4,4):
         raise RuntimeError("struct2ref must be a 4x4 matrix")
 
-    # Is this a FLIRT transform? If so we need to do some clever preprocessing
+    # If FLIRT transform we need to do some clever preprocessing
     if kwargs.get('flirt'):
         if not kwargs.get('struct'):
             raise RuntimeError("If using a FLIRT transform, the path to the \
@@ -1321,11 +1335,7 @@ def estimatePVs(**kwargs):
             kwargs['struct2ref'])
 
 
-    # Read reference image properties into an ImageSpace object
-    refSpace = pvcore.ImageSpace.fromfile(kwargs['ref'])
-
-    # Prepare output directory. If given then create it 
-    # If not then use the input image dir
+    # Prepare output directory. Default to same as ref image
     if kwargs.get('outdir'):
         if not op.isdir(kwargs['outdir']):
             os.mkdir(kwargs['outdir'])
@@ -1335,11 +1345,11 @@ def estimatePVs(**kwargs):
             dname = os.getcwd()
         kwargs['outdir'] = dname
 
-    # Create output dir for transformed surfaces
-    if kwargs.get('savesurfs'):
-        transSurfDir = op.join(kwargs['outdir'], 'surf_transform')
-        if not op.isdir(transSurfDir):
-            os.mkdir(transSurfDir)
+    # # Create output dir for transformed surfaces
+    # if kwargs.get('savesurfs'):
+    #     transSurfDir = op.join(kwargs['outdir'], 'surf_transform')
+    #     if not op.isdir(transSurfDir):
+    #         os.mkdir(transSurfDir)
     
     # Prepare the output filename. If not given then we pull it 
     # from the reference
@@ -1372,8 +1382,11 @@ def estimatePVs(**kwargs):
         else: 
             cRAS = np.zeros(3)
     
+
+    # Load reference ImageSpace object
     # Form the final transformation matrix to bring the surfaces to 
     # the same world (mm, not voxel) space as the reference image
+    refSpace = pvcore.ImageSpace.fromfile(kwargs['ref'])
     transform = np.identity(4)
     transform[0:3,3] = cRAS
     transform = np.matmul(kwargs['struct2ref'], transform)
@@ -1381,47 +1394,34 @@ def estimatePVs(**kwargs):
         np.set_printoptions(precision=3, suppress=True)
         print("Final surface-to-reference-voxel transformation:\n", transform)
     
+
     # Load all surfaces and transform into reference voxel space
-    for h in hemispheres: 
-        for s in ['P', 'W']: 
-            surfName = h.side + s + 'S'
-            surfName = kwargs[surfName]
+    for (h,s) in itertools.product(hemispheres, ['P', 'W']): 
+        surfName = h.side + s + 'S'
+        surfName = kwargs[surfName]
 
-            if surfExt != '.gii':
-                ps, ts = tuple(nibabel.freesurfer.io.read_geometry(\
-                    surfName))
-            else: 
-                gft = nibabel.load(surfName).darrays
-                ps, ts = tuple(map(lambda o: o.data, gft))
+        if surfExt != '.gii':
+            ps, ts = tuple(nibabel.freesurfer.io.read_geometry(\
+                surfName))
+        else: 
+            gft = nibabel.load(surfName).darrays
+            ps, ts = tuple(map(lambda o: o.data, gft))
 
-            # Transform the surfaces to reference space
-            ps = pvcore.affineTransformPoints(ps, transform)
+        # Transforms: surface -> reference -> reference voxels
+        transform = np.matmul(refSpace, transform)
+        ps = pvcore.affineTransformPoints(ps, transform)
+        ps = ps.astype(np.float32)
+        ts = ts.astype(np.int32)
 
-            # # Save the transformed surfaces 
-            # if kwargs.get('savesurfs'):
-            #     _, fl = op.split(surfName) 
-            #     transSurfName = op.join(transSurfDir, 'tob_' + fl)
-            #     if surfExt != '.gii':
-            #         nibabel.freesurfer.io.write_geometry(transSurfName, ps, ts)
-            #     else: 
-            #         gft2 = copy.deepcopy(gft)
-            #         gft2.darrays[0:2] = (ps, ts)
-            #         nibabel.save(gft2, transSurfName)
+        # Indexing checks
+        if not (np.min(ts) == 0) & (np.max(ts) == ps.shape[0] - 1):
+            raise RuntimeError("Vertex/triangle indexing incorrect")
 
-            # Transform the surfaces to voxel space
-            ps = pvcore.affineTransformPoints(ps, refSpace.world2vox)
-            ps = ps.astype(np.float32)
-            ts = ts.astype(np.int32)
-
-            # Final indexing checks
-            if not (np.min(ts) == 0) & (np.max(ts) == ps.shape[0] - 1):
-                raise RuntimeError("Vertex/triangle indexing incorrect")
-
-            # Write the surface into the hemisphere obj
-            if s == 'P': 
-                h.outSurf = Surface(ps, ts, h, 'out')
-            else: 
-                h.inSurf = Surface(ps, ts, h, 'in')
+        # Write the surface into the hemisphere obj
+        if s == 'P': 
+            h.outSurf = Surface(ps, ts, h, 'out')
+        else: 
+            h.inSurf = Surface(ps, ts, h, 'in')
 
 
     # FoV and associations loop -----------------------------------------------
@@ -1460,7 +1460,7 @@ def estimatePVs(**kwargs):
 
     # Form (or read in) associations
     # We use a "stamp" matrix to check that saved/loaded assocs
-    # are referenced to the right image space
+    # are referenced to the right image space. 
     stamp = np.matmul(kwargs['struct2ref'], refSpace.world2vox)
     recomputeAssocs = False 
 
@@ -1499,6 +1499,7 @@ def estimatePVs(**kwargs):
             with open(assocsPath, 'wb') as f: 
                 pickle.dump((stamp, inAssocs, outAssocs), f)
 
+
     # At this point we have either computed or loaded association dicts, 
     # now load them into their respective surfaces. 
     for h in hemispheres:
@@ -1506,42 +1507,37 @@ def estimatePVs(**kwargs):
         h.outSurf.addAssociations(outAssocs[h.side])
 
 
-    # And now pass off to the actual toblerone estimation
+    # Prepare for estimation. Generate list of voxels to process:
+    # Start with grid, add offset, then flatten to linear indices. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
     print("Supersampling factor set at:", supersampler)
-
-    # Prepare list of voxels to be processed. Start with grid, add offset, 
-    # then flatten to linear indices. 
     voxSubs = pvcore.coordinatesForGrid(refSpace.imgSize)
     voxSubs = voxSubs + FoVoffset 
     voxList = np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
         fullFoVsize)
             
-    # Fill in whole voxels (ie, no PVs)
+
+    # Fill in whole voxels (ie, no PVs), then match the results of the map
+    # to respective surfaces.
     print("Filling whole voxels")
     voxelise = functools.partial(Surface.voxelise, fullFoVsize)
-
-    if True: 
+    if cores > 1: 
         with multiprocessing.Pool(min([cores, len(allSurfs)])) as p:
             fills = p.map(voxelise, allSurfs)
     else: 
         fills = list(map(voxelise, allSurfs))
-
-    # Match up the results of the map (a list) with their respective surfaces
     [ setattr(s, 'voxelised', f) for (s,f) in zip(allSurfs, fills) ]
 
-    # Process each hemisphere
-    for h in hemispheres:
 
+    # Estimate the actual PVs for each hemisphere. 
+    for h in hemispheres:
         if np.any(np.max(np.abs(h.inSurf.points)) > 
             np.max(np.abs(h.outSurf.points))):
             raise RuntimeWarning("Inner surface vertices appear to be further",\
                 "from the origin than the outer vertices. Are the surfaces in",\
                 "the correct order?")
         
-        # Estimate fractions against each surface
         if not kwargs.get('hard'):
-
             fracs = []; vlists = []
             for s, d in zip(h.surfs(), ['in', 'out']):
                 descriptor = " {} {}".format(h.side, d)
@@ -1555,7 +1551,6 @@ def estimatePVs(**kwargs):
         # Write the fractions on top of the binary masks. 
         inFractions = (h.inSurf.voxelised).astype(np.float32)
         outFractions = (h.outSurf.voxelised).astype(np.float32)
-
         if not kwargs.get('hard'):
             inFractions[vlists[0]] = fracs[0] 
             outFractions[vlists[1]] = fracs[1]
@@ -1568,6 +1563,7 @@ def estimatePVs(**kwargs):
 
         # And write into the hemisphere object. 
         h.PVs = hemiPVs
+
 
     # Merge the fill masks by giving priority to GM, then WM, then CSF.
     if len(hemispheres) == 1:
