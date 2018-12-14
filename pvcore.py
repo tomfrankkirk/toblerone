@@ -138,10 +138,9 @@ def loadSurfsToDict(FSdir):
 
 
 def coordinatesForGrid(ofSize):
-    X,Y,Z = np.meshgrid(np.arange(ofSize[0]), 
-        np.arange(ofSize[1]), np.arange(ofSize[2]))
-    coords = np.vstack((X.flatten(), Y.flatten(), Z.flatten())).astype(np.int16).T
-    return coords
+    I, J, K = np.unravel_index(np.arange(np.prod(ofSize)), ofSize)
+    cents = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
+    return cents.astype(np.int32)
 
 
 def maskVolumes(fourDarray, mask):
