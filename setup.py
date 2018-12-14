@@ -3,7 +3,7 @@ import os
 import sys
 import glob
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 from setuptools.extension import Extension
@@ -45,8 +45,8 @@ setup(name='toberone',
       long_description=Description,
       author='Tom Kirk',
       author_email='thomas.kirk@eng.ox.ac.uk',
-      packages=[],
       setup_requires=['Cython'],
       install_requires=[],
       ext_modules=cythonize(extensions),
+      packages=['toblerone', 'pvcore', 'pvtools']
 )
