@@ -154,8 +154,11 @@ class Surface:
         # Concatenate all triangle numbers for the voxels, using the
         # set constructor to strip out repeats
         vlists = self.assocs[np.isin(self.LUT, voxIndices)]
+
         if vlists.size:
-            triNums = np.unique(np.hstack(vlists))
+            triNums = []
+            [ triNums.extend(l) for l in vlists ]
+            triNums = np.unique(triNums)
 
             return Patch(self.points, self.tris[triNums,:], 
                 self.xProds[triNums,:])
@@ -1234,7 +1237,7 @@ def estimatePVs(**kwargs):
     if kwargs.get('cores') is not None:
         cores = kwargs['cores']
     else: 
-        cores = multiprocessing.cpu_count()
+        cores = multiprocessing.cpu_count() - 1
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
@@ -1516,11 +1519,10 @@ def estimatePVs(**kwargs):
             
     # Fill in whole voxels (ie, no PVs)
     print("Filling whole voxels")
-    allSurfs = [ s for h in hemispheres for s in h.surfs() ]
     voxelise = functools.partial(Surface.voxelise, fullFoVsize)
 
     if True: 
-        with multiprocessing.Pool(cores) as p:
+        with multiprocessing.Pool(min([cores, len(allSurfs)])) as p:
             fills = p.map(voxelise, allSurfs)
     else: 
         fills = list(map(voxelise, allSurfs))
@@ -1661,7 +1663,7 @@ Optional arguments:
                         relative to surfaces
     --nostack       don't stack each tissue estimates into single image, save each separately 
     --saveassocs    save triangle/voxel associations data (debug tool)
-    --cores         number of (logical) cores to use, default is maximum available
+    --cores         number of (logical) cores to use, default is maximum available - 1
     
 
 File formats:
