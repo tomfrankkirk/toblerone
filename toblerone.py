@@ -1163,16 +1163,11 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         vector of size prod(FoV)
     """
 
-
     if len(FoVsize) != 3: 
         raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
 
     # Compute all voxel centres
-    I, J, K = np.unravel_index(np.arange(np.prod(FoVsize)), FoVsize)
-    voxIJKs = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
-    voxIJKs = voxIJKs.astype(np.float32)
-
-    # Prepare partial function application for the estimation
+    voxIJKs = pvcore.coordinatesForGrid(FoVsize).astype(np.float32)
     workerChunks = _distributeObjects(voxList, 40)
     workerFractions = []
     estimateFractionsPartial = functools.partial(_estimateFractionsWorker, \
@@ -1243,7 +1238,7 @@ def estimatePVs(**kwargs):
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
-    if 'FSdir' in kwargs:
+    if kwargs.get('FSdir'):
         surfdict = pvcore.loadSurfsToDict(kwargs['FSdir'])
 
         for k,v in surfdict.items():
@@ -1269,7 +1264,7 @@ def estimatePVs(**kwargs):
 
 
     # Reference image path 
-    if not 'ref' in kwargs:
+    if not kwargs.get('ref'):
         raise RuntimeError("Path to reference image must be given")
 
     if not op.isfile(kwargs['ref']):
@@ -1314,7 +1309,7 @@ def estimatePVs(**kwargs):
 
     # Is this a FLIRT transform? If so we need to do some clever preprocessing
     if kwargs.get('flirt'):
-        if not 'struct' in kwargs:
+        if not kwargs.get('struct'):
             raise RuntimeError("If using a FLIRT transform, the path to the \
                 structural image must also be given")
         if not op.isfile(kwargs['struct']):
@@ -1348,23 +1343,18 @@ def estimatePVs(**kwargs):
     if  kwargs.get('name'):
         name = kwargs['name']
     else:  
-        name = op.split(kwargs['ref'])[-1]
-        name, inExt = op.splitext(name)
-        name += '_tob'
+        name = kwargs['ref']
 
-    outExt = ''
-    fname = name
-    while ('.nii' in fname) | ('.nii.gz' in fname): 
-        fname, e = op.splitext(fname)
-        outExt = e + outExt
-    
-    if outExt == '': 
-        outExt = inExt 
-    
-    name = fname
-    maskName = name + "_surfmask"
-    assocsName = name + "_assocs"
-    assocsPath = op.join(kwargs['outdir'], assocsName + '.pkl')
+    name = op.split(name)[-1]
+    outExt = '.nii.gz'
+    for e in ['.nii', '.nii.gz']:
+        if e in name: 
+            outExt = e 
+            name = name.replace(e, '')
+
+    outPath = op.join(kwargs['outdir'], name + '_tob' + outExt)
+    maskPath = op.join(kwargs['outdir'], name + '_surfmask' + outExt)
+    assocsPath = op.join(kwargs['outdir'], name + '_assocs' + '.pkl')
 
 
     # Load surface geometry information 
@@ -1386,7 +1376,7 @@ def estimatePVs(**kwargs):
     transform = np.matmul(kwargs['struct2ref'], transform)
     if verbose: 
         np.set_printoptions(precision=3, suppress=True)
-        print("Transformation matrix will be applied:\n", transform)
+        print("Final surface-to-reference-voxel transformation:\n", transform)
     
     # Load all surfaces and transform into reference voxel space
     for h in hemispheres: 
@@ -1498,7 +1488,7 @@ def estimatePVs(**kwargs):
     
     # Associations need computing
     elif (recomputeAssocs) or not (op.isfile(assocsPath)): 
-        if 'saveassocs' in kwargs: 
+        if kwargs.get('saveassocs'): 
             print("Forming voxel associations, saving to:", assocsPath)
         else: 
             print("Forming voxel associations")
@@ -1508,7 +1498,7 @@ def estimatePVs(**kwargs):
             for (s,d) in zip(h.surfs(), [inAssocs, outAssocs]):
                 d.update({h.side: _formAssociations(s, fullFoVsize, cores)})
 
-        if 'saveassocs' in kwargs: 
+        if kwargs.get('saveassocs'): 
             with open(assocsPath, 'wb') as f: 
                 pickle.dump((stamp, inAssocs, outAssocs), f)
 
@@ -1626,30 +1616,19 @@ def estimatePVs(**kwargs):
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
 
     # Finally, form the NIFTI objects and save the PVs. 
-    if 'nosave' not in kwargs:
-        print("Saving PVs to", kwargs['outdir'])
-        makeNifti = nibabel.nifti2.Nifti2Image
+    if not kwargs.get('nosave'):
+        print("Saving output to", kwargs['outdir'])
+        refSpace.saveImage(assocsMask, maskPath)
 
         tissues = ['GM', 'WM', 'NB']
-        if 'nostack' in kwargs:
+        if kwargs.get('nostack'):
             for t in range(3):
-                PVobj = makeNifti(outPVs[:,:,:,t], 
-                    refSpace.vox2world)
-                outPath = op.join(kwargs['outdir'], fname + tissues[t] + outExt)
-                nibabel.save(PVobj, outPath)
+                refSpace.saveImage(outPVs[:,:,:,t], 
+                    pvcore.addSuffixToFilename('_' + tissues[t], outPath))
         else:
-            outPath = op.join(kwargs['outdir'], fname + outExt)
-            # PVhdr['dim'][0] = 4
-            # PVhdr['dim'][4] = 3
-            PVobj = makeNifti(outPVs, refSpace.vox2world)
-            nibabel.save(PVobj, outPath)
+            refSpace.saveImage(outPVs, outPath)
 
-        # Save the mask
-        maskPath = op.join(kwargs['outdir'], maskName + outExt)
-        print("Saving surface mask to", maskPath)
-        maskObj = makeNifti(assocsMask, refSpace.vox2world)
-        nibabel.save(maskObj, maskPath)
-
+    print("Toblerone finished\n")
     return (outPVs, assocsMask)
 
 
