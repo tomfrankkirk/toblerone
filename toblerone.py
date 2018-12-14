@@ -16,7 +16,6 @@ import argparse
 import numpy as np 
 import nibabel
 import nibabel.freesurfer.io
-import nibabel.nifti2
 import tqdm
 import pvcore
 from scipy.spatial import ConvexHull
@@ -181,62 +180,64 @@ class Surface:
                     surface. Use reshape(imgSize) as required. 
         """
 
+        # Test along the largest dim possible to minimise number of loops
+        # We loop over the other two dims 
         dim = np.argmax(imgSize)
 
         try: 
-            # Initialsie empty mask, and loop over the OTHER dims to the one specified. 
+
             mask = np.zeros(np.prod(imgSize), dtype=bool)
             otherDims = [ (dim+1)%3, (dim+2)%3 ]
             startPoint = np.zeros(3, dtype=np.float32)
 
-            for d1 in range(imgSize[otherDims[0]]):
-                for d2 in range(imgSize[otherDims[1]]):
+            for (d1,d2) in itertools.product(
+                range(imgSize[otherDims[0]]), range(imgSize[otherDims[1]])):
 
-                    # Defined the start/end of the ray and gather all 
-                    # linear indices of voxels along the ray
-                    IJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
-                    IJK[:,dim] = np.arange(0, imgSize[dim])
-                    IJK[:,otherDims[0]] = d1
-                    IJK[:,otherDims[1]] = d2
-                    startPoint[otherDims] = [d1, d2]
-                    voxRange = _sub2ind(imgSize, (IJK[:,0], IJK[:,1], IJK[:,2]))
+                # Defined the start/end of the ray and gather all 
+                # linear indices of voxels along the ray
+                IJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
+                IJK[:,dim] = np.arange(0, imgSize[dim])
+                IJK[:,otherDims[0]] = d1
+                IJK[:,otherDims[1]] = d2
+                startPoint[otherDims] = [d1, d2]
+                voxRange = np.ravel_multi_index((IJK[:,0], IJK[:,1], IJK[:,2]), 
+                    imgSize)
 
-                    # Find all associated triangles lying along this ray
-                    # and test for intersection
-                    patches = surface.toPatchesForVoxels(voxRange)
+                # Find all associated triangles lying along this ray
+                # and test for intersection
+                patches = surface.toPatchesForVoxels(voxRange)
 
-                    if patches is not None:
-                        intersectionMus = _findRayTriangleIntersections2D(startPoint, \
-                            patches, dim)
+                if patches is not None:
+                    intersectionMus = _findRayTriangleIntersections2D(startPoint, \
+                        patches, dim)
 
-                        if not intersectionMus.shape[0]:
-                            continue
-                        
-                        # If intersections were found, perform a parity test. 
-                        # Any ray should make an even number of intersections
-                        # as it crosses from -ve to +ve infinity
-                        if (intersectionMus.shape[0] % 2):
-                            raise RuntimeError("fillSurfaceAlongDimension: \
-                                even number of intersections found. Does the FoV \
-                                cover the full extents of the surface")
+                    if not intersectionMus.shape[0]:
+                        continue
+                    
+                    # If intersections were found, perform a parity test. 
+                    # Any ray should make an even number of intersections
+                    # as it crosses from -ve to +ve infinity
+                    if (intersectionMus.shape[0] % 2):
+                        raise RuntimeError("fillSurfaceAlongDimension: \
+                            even number of intersections found. Does the FoV \
+                            cover the full extents of the surface")
 
-                        # Calculate points of intersection along the ray
-                        sorted = np.argsort(intersectionMus)
-                        intDs = startPoint[dim] + (intersectionMus[sorted])
+                    # Calculate points of intersection along the ray
+                    sorted = np.argsort(intersectionMus)
+                    intDs = startPoint[dim] + (intersectionMus[sorted])
 
-                        # Assignment. All voxels before the first point of intersection
-                        # are outside. The mask is already zeroed for these. All voxels
-                        # between point 1 and n could be in or out depending on parity
-                        for i in range(1, len(sorted)+1):
+                    # Assignment. All voxels before the first point of intersection
+                    # are outside. The mask is already zeroed for these. All voxels
+                    # between point 1 and n could be in or out depending on parity
+                    for i in range(1, len(sorted)+1):
 
-                            # Starting from infinity, all points between an odd numbered
-                            # intersection and the next even one are inside the mask 
-                            if ((i % 2) & ((i+1) <= len(sorted))):
-                                indices = ((IJK[:,dim] > intDs[i-1]) 
-                                    & (IJK[:,dim] < intDs[i]))
-                                mask[voxRange[indices]] = 1
-                        
-                            # All voxels beyond the last point of intersection are also outside. 
+                        # Starting from infinity, all points between an odd numbered
+                        # intersection and the next even one are inside the mask 
+                        # Points beyond the last intersection are outside the mask
+                        if ((i % 2) & ((i+1) <= len(sorted))):
+                            indices = ((IJK[:,dim] > intDs[i-1]) 
+                                & (IJK[:,dim] < intDs[i]))
+                            mask[voxRange[indices]] = 1
 
             return mask
 
@@ -275,27 +276,6 @@ def _quickCross(a, b):
         (a[0]*b[1]) - (a[1]*b[0])], dtype = np.float32)
 
 
-def _generateVoxelCorners(cent, size):
-    """Produce 8 x 3 matrix of voxel vertices. 
-
-    Args: 
-        cent: centre coordinate of voxel
-        size: vector of dimensions in xyz 
-    """
-
-    bounds = _getVoxelBounds(cent, size)
-    return np.array([
-        [bounds[0,0], bounds[1,0], bounds[2,0]],
-        [bounds[0,1], bounds[1,0], bounds[2,0]],
-        [bounds[0,0], bounds[1,1], bounds[2,0]],
-        [bounds[0,1], bounds[1,1], bounds[2,0]],
-        [bounds[0,0], bounds[1,0], bounds[2,1]],
-        [bounds[0,1], bounds[1,0], bounds[2,1]],
-        [bounds[0,0], bounds[1,1], bounds[2,1]],
-        [bounds[0,1], bounds[1,1], bounds[2,1]],
-    ])
-
-
 
 def _filterPoints(points, voxCent, voxSize):
     """Logical filter of points that are in the voxel specified.
@@ -314,17 +294,6 @@ def _filterPoints(points, voxCent, voxSize):
 
 
 
-def _getVoxelBounds(voxCent, voxSize):
-    """Return 3x2 vector of bounds for the voxel, 
-    arranged [xMin xMax; yMin yMax; ...]
-    """
-
-    return np.array([
-        [ voxCent[d] + (i * 0.5 * voxSize[d]) for i in [-1, 1] ]
-        for d in range(3) ])
-
-
-
 def _dotVectorAndMatrix(vec, mat):
     """Row-wise dot product of a vector and matrix. 
     Returns a vector with the same number of rows as
@@ -332,46 +301,6 @@ def _dotVectorAndMatrix(vec, mat):
     vector in each row"""
 
     return np.sum(mat * vec, axis=1)
-
-
-
-
-def _sub2ind(dims, subs): 
-    """Equivalent of MATLAB's sub2ind function
-    
-    Args:
-        dims: tuple of ints for matrix dimensions
-        subs: tuple of int arrays, one for each dim
-    
-    Returns: 
-        list of flat indices 
-    """
-
-    return np.ravel_multi_index(subs, dims)
-
-
-
-def _ind2sub(dims, inds):
-    """Equivalent of MATLAB's ind2sub function
-    
-    Args:
-        dims: tuple of ints for matrix dimensions
-        inds: int array of flat indices
-    
-    Returns: 
-        tuple of int subscript arrays, one for each dimension 
-    """
-
-    return np.unravel_index(inds, dims)
-
-
-
-def _getVoxelSubscripts(voxList, imgSize):
-    """Convert linear voxel indices into IJK subscripts
-    within a matrix of imgSize. Returns an n x 3 matrix
-    """
-    
-    return np.array(list(map(lambda v: _ind2sub(imgSize, v), voxList)))
 
 
 
@@ -534,7 +463,8 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
 
             if _ctestTriangleVoxelIntersection(voxel, voxSize, tri):
 
-                ind = _sub2ind(FoVsize, voxel.astype(np.int16))
+                ind = np.ravel_multi_index(voxel.astype(np.int16), 
+                    FoVsize)
                 if ind in workerResults:
                     workerResults[ind].append(t)
                 else: 
@@ -678,8 +608,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
 
 
 
-def _fullRayIntersectionTest(testPnt, surf, \
-        voxIJK, imgSize):
+def _fullRayIntersectionTest(testPnt, surf, voxIJK, imgSize):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
     all the triangles of a surface (not the reduced form used elsewhere for 
@@ -700,7 +629,8 @@ def _fullRayIntersectionTest(testPnt, surf, \
     dim = np.argmin(imgSize)
     subs = np.tile(voxIJK, (imgSize[dim], 1)).astype(np.int32)
     subs[:,dim] = np.arange(0, imgSize[dim])
-    inds = _sub2ind(imgSize, (subs[:,0], subs[:,1], subs[:,2]))
+    inds = np.ravel_multi_index((subs[:,0], subs[:,1], subs[:,2]),
+        imgSize)
 
     # Form the ray and fetch all appropriate triangles from assocs data
     patches = surf.toPatchesForVoxels(inds)
@@ -1002,7 +932,7 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
 
     # Get the IJK coords within the subvoxel grid. 
     # Vertices are then +1/0 from these coords
-    i, j, k = _ind2sub(supersampler, linIdx)
+    i, j, k = np.unravel_index(linIdx, supersampler)
     subs = np.array([ [i, j, k], [i+1, j, k], [i, j+1, k], \
         [i+1, j+1, k], [i, j, k+1], [i+1, j, k+1], [i, j+1, k+1], \
         [i+1, j+1, k+1] ], dtype=np.int16) 
@@ -1072,6 +1002,8 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
 
     # Rebase triangles and points for this voxel
     patch = surf.toPatch(voxIdx)
+    assert np.all(_cyfilterTriangles(patch.tris, patch.points, voxIJK, 
+        voxSize.astype(np.float32)))
 
     # Test all subvox corners now and store the results for later
     allCorners = _getAllSubVoxCorners(supersampler, voxIJK, voxSize)
@@ -1236,7 +1168,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
 
     # Compute all voxel centres
-    I, J, K = _ind2sub(FoVsize, np.arange(np.prod(FoVsize)))
+    I, J, K = np.unravel_index(np.arange(np.prod(FoVsize)), FoVsize)
     voxIJKs = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
     voxIJKs = voxIJKs.astype(np.float32)
 
@@ -1595,7 +1527,8 @@ def estimatePVs(**kwargs):
     # then flatten to linear indices. 
     voxSubs = pvcore.coordinatesForGrid(refSpace.imgSize)
     voxSubs = voxSubs + FoVoffset 
-    voxList = _sub2ind(fullFoVsize, (voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]))
+    voxList = np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
+        fullFoVsize)
             
     # Fill in whole voxels (ie, no PVs)
     print("Filling whole voxels")
