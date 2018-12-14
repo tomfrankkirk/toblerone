@@ -20,8 +20,8 @@ import tqdm
 import pvcore
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
-from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles
-from ctoblerone import _cytestManyRayTriangleIntersections
+from ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
+    _cytestManyRayTriangleIntersections
 
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 SHARED_ARGS = []
