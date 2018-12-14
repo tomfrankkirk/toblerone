@@ -7,7 +7,6 @@ import os.path as op
 import subprocess
 import warnings
 import shutil
-sys.path.append('../toblerone')
 
 from . import toblerone as cortex
 from . import pvcore

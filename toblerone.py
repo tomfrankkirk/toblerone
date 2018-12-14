@@ -12,7 +12,6 @@ import os
 import os.path as op
 import pickle
 import argparse
-from IPython import embed
 
 import numpy as np 
 import nibabel
