@@ -1423,43 +1423,37 @@ def estimatePVs(**kwargs):
 
     # FoV and associations loop -----------------------------------------------
 
-    # Check the FoV of the reference image against the extents of the surfaces
-    # Warn if FoV does not contain whole surface
-    s1 = hemispheres[0].outSurf.points
-    s2 = hemispheres[-1].outSurf.points
-    if (np.any(s1 < -0.5) | np.any(s1 > refSpace.imgSize-0.5) | \
-        np.any(s2 < -0.5) |  np.any(s2 > refSpace.imgSize-0.5)):
-        print("Warning: the FoV of the reference image does not cover the", 
-            "full extents of the surfaces provided. PVs will only be", 
-            "estimated within the reference FoV")
+    # Do we need to expand the FoV of the voxel grid to contain the surfaces?
+    pials = list(map(lambda h: h.outSurf.points, hemispheres))
+    if any(map(lambda p: np.any(p < -0.5) or np.any(p > refSpace.imgSize-0.5), 
+        pials)):
+        print("Warning: the FoV of the reference image does fully enclose", 
+            "the surfaces.")
+        print("PVs will only be estimated within the reference FoV.")
 
-    # Determine the full FoV needed to contain the surfaces
-    minFoV = np.floor(np.minimum(np.min(s1, axis=0), \
-        np.min(s2, axis=0)))
-    maxFoV = np.ceil(np.maximum(np.max(s1, axis=0), \
-        np.max(s2, axis=0)))
+    # Find the min/max coordinates of the surfaces
+    minFoV = np.floor(np.array([np.min(p,axis=0) for p in pials]).min(axis=0))
+    maxFoV = np.ceil(np.array([np.max(p,axis=0) for p in pials]).max(axis=0))
 
-    # If the full FoV is larger than the reference FoV, work out the coord
-    # shift between the spaces. [0 0 0] in reference space becomes [X Y Z] 
-    # in full FoV space, where XYZ is the FoV offset. 
-    # The max() function catches cases where no offset is necessary
-    FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int8)
+    # If the min/max range is larger than the reference FoV, then shift and 
+    # expand the coordinate system to the minimal size required for surfs
+    FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int16)
     fullFoVsize = (np.maximum(maxFoV + FoVoffset, 
         refSpace.imgSize)).astype(np.int16)
     assert np.all(fullFoVsize >= refSpace.imgSize), \
         "Full FoV has not been expanded to at least reference FoV"
 
-    # Shift surfaces to remove negative coordinates, check max limits
-    # are within range of the full FoV
+    # Now apply the shift to the surfaces and check against limits. 
+    allSurfs = [ s for h in hemispheres for s in h.surfs() ]
     if np.any(FoVoffset != 0):
-        for h in hemispheres:
-            for s in h.surfs(): 
-                s.points = s.points + FoVoffset
+        for s in allSurfs:
+            s.points = s.points + FoVoffset
 
-                assert np.all(np.floor(np.min(s.points, axis=0)) >= 0), \
-                    "FoV offset does not remove negative coordinates"
-                assert np.all(np.ceil(np.max(s.points, axis=0)) < \
-                    fullFoVsize), "Full FoV does not contain all surface coordinates"
+            if not np.all(np.floor(np.min(s.points, axis=0)) >= 0):
+                raise RuntimeError("FoV offset does not remove negative coordinates")
+            if not np.all(np.ceil(np.max(s.points, axis=0)) < fullFoVsize):
+                raise RuntimeError("Full FoV does not contain all surface coordinates")
+
 
     # Form (or read in) associations
     # We use a "stamp" matrix to check that saved/loaded assocs
