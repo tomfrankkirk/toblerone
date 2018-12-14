@@ -19,6 +19,11 @@ import scipy.ndimage
 
 TISSUES = ['GM', 'WM', 'CSF']
 
+def sysprint(txt):
+    sys.stdout.write(txt)
+    sys.stdout.flush()
+
+
 def resampleImage(data, srcSpace, destSpace, src2dest):
     """Resample array data onto destination space, applying affine transformation
     at the same time
@@ -129,7 +134,6 @@ def mergeCortexAndSubcorticalPVs(subcortPath, cortexPath, reference, outpath):
     cortex = nibabel.load(cortexPath).get_fdata().astype(np.float32)
     subcortex = nibabel.load(subcortPath).get_fdata().astype(np.float32)
 
-
     # Calculate the factor multiple between spaces. Assert no remainder, 
     # then force into ints. 
     factor = [ i/r for (i,r) in zip(intSpace.imgSize, refSpace.imgSize) ]
@@ -148,19 +152,21 @@ def mergeCortexAndSubcorticalPVs(subcortPath, cortexPath, reference, outpath):
         a = pvcore.maskVolumes(a, m)
         intSpace.saveImage(a, pvcore.addSuffixToFilename('_masked', f))
 
-    # Sum across the intermediate grids to get estimates in reference space
-    # Divide by the neighbourhood size (we want mean, not sum)
-    hoodsize = np.prod(factor)
-    ctxsum = sumArrayBlocks(cortex, factor)
-    subcortsum = sumArrayBlocks(subcortex, factor)
+    # Combine estimates in intermediate space using the mask
+    print("Combing estimates in intermediate space")
+    summed = cortex + subcortex
 
-    # Combine estimates. Sum both sets, then divide by sum to rescale to [0,1]
-    outpvs = (ctxsum + subcortsum) / hoodsize
+    # Sum array blocks and divide by blocksize to get mean within each
+    print("Summing estimates back into reference space")
+    outpvs = sumArrayBlocks(summed, factor) / np.prod(factor)
+
+    # Rescale by sum of each voxels estimates to get range [0 1]
+    # (small float rounding errors expected otherwise)
     divisors = np.sum(outpvs, axis=3)
     for d in range(3):
         outpvs[:,:,:,d] = outpvs[:,:,:,d] / divisors
 
-    # Save output using a copy of the reference. 
+    print("Saving final output at:", outpath)
     refSpace.saveImage(outpvs, outpath)
 
 
@@ -189,10 +195,11 @@ def estimateIntermediatePVs(subcorts, surfs, reference, struct2ref,
     intSpace = refSpace.supersample(factor)
 
     # Resample subcortical estimates and flatten into single image. 
-    print("Resampling subcortical estimates")
+    sysprint("Resampling subcortical estimates...")
     subcortPVs = np.stack((superResampleImage(subcorts[t], (2,2,2), 
         intSpace, struct2ref) for t in TISSUES ), axis=3) 
-    intSpace.saveImage(subcortPVs, savepaths[0])    
+    intSpace.saveImage(subcortPVs, savepaths[0])   
+    sysprint("Done.\n") 
     
     # Run Toblerone to estimate cortex PVs. Use the subcortical image as
     # the reference for the intermediate space 
@@ -252,11 +259,12 @@ def estimateStructuralPVs(struct, savepaths):
         os.mkdir(fastdir)
 
     os.chdir(fastdir)
-    print("Running FAST\n")
+    sysprint("Running FAST...")
     newfname = op.split(struct)[-1]
     shutil.copyfile(struct, newfname)
     cmd = 'fast ' + newfname 
     shellCommand(cmd)
+    sysprint("Done.\n")
 
     # Convert between FAST's naming convention and explicit tissue names
     oldname = lambda n: \
@@ -298,10 +306,8 @@ def estimate_all(**kwargs):
     for d in [pvdir, intdir]:
         if not op.isdir(d):
             os.mkdir(d)
-    print("Output directory:", pvdir)
 
-
-    # Prepare output directory and run structural (FAST/FS) estimation
+    # Prepare output directorxy and run structural (FAST/FS) estimation
     if not op.isdir(pvdir):
         os.mkdir(pvdir)
 
@@ -331,9 +337,12 @@ def estimate_all(**kwargs):
 
     # Merge subcort/cortex estimates in intermediate space
     outname = pvcore.addSuffixToFilename('_pvs', kwargs['ref'])
-    print("Output will be saved at:", outname)
     mergeCortexAndSubcorticalPVs(intsubcort, intctx, kwargs['ref'], 
         outname)
+
+    print("Saving final output:", outname)
+    
+
 
 
 
