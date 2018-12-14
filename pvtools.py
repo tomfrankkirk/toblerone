@@ -44,7 +44,7 @@ def resampleImage(data, srcSpace, destSpace, src2dest):
 
     # Interpolate. 
     out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.imgSize, mode='constant', order=3)
+        output_shape=destSpace.imgSize, mode='constant', order=4)
 
     # Due to the spline interpolants, the resampled output can go outside
     # the original min,max of the input data 
