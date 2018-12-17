@@ -8,8 +8,8 @@ import subprocess
 import warnings
 import shutil
 
-from . import toblerone as cortex
-from . import pvcore
+from pvtools import toblerone as cortex
+from pvtools import pvcore
 import nibabel
 import numpy as np
 import scipy as sp
@@ -43,7 +43,7 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
 
     # Interpolate. 
     out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.imgSize, mode='constant', order=4)
+        output_shape=destSpace.imgSize, mode='constant', order=3)
 
     # Due to the spline interpolants, the resampled output can go outside
     # the original min,max of the input data 
@@ -137,13 +137,13 @@ def _mergeCortexAndSubcorticalPVs(subcortPath, cortexPath, reference, outpath):
         raise RuntimeError("Intermediate space is not an integer multiple of reference")
     factor = [ int(f) for f in factor ]
 
-    # Cortex mask: accept all GM and CSF from Toblerone
+    # Cortex mask: accept all and(GM, CSF) from Toblerone
     # Apply mask to the different sets of estimates. 
-    mask = ~(cortex[:,:,:,1] > 0.99) 
+    mask = np.logical_and(cortex[:,:,:,0], cortex[:,:,:,2]) 
     outdir = op.dirname(cortexPath)
     intSpace.saveImage(mask.astype(np.int8), op.join(outdir, 'mask.nii.gz'))
 
-    for a, m, f in zip([cortex, subcortex], [mask, ~mask], 
+    for (a, m, f) in zip([cortex, subcortex], [mask, ~mask], 
         [cortexPath, subcortPath]):
         a = pvcore._maskVolumes(a, m)
         intSpace.saveImage(a, pvcore._addSuffixToFilename('_masked', f))
@@ -187,8 +187,9 @@ def _estimateIntermediatePVs(subcorts, surfs, reference, struct2ref,
     # Load reference image information, create intermediate space as 
     # supersampled copy
     refSpace = pvcore.ImageSpace.fromfile(reference)
-    factor = np.floor(refSpace.voxSize).astype(np.int8)
+    factor = np.maximum(np.floor(refSpace.voxSize), [1,1,1]).astype(np.int8)
     intSpace = refSpace.supersample(factor)
+    print("Intermediate factor set at", factor)
 
     # Resample subcortical estimates and flatten into single image. 
     _sysprint("Resampling subcortical estimates...")
@@ -265,14 +266,14 @@ def _estimateStructuralPVs(struct, savepaths):
     # Convert between FAST's naming convention and explicit tissue names
     oldname = lambda n: \
         op.join(sname + '_pve_{}.nii.gz'.format(n))
-    for (n,t) in zip([1,2], TISSUES[0:2]):
+    for (n,t) in zip([1,2,0], TISSUES):
         shutil.copyfile(oldname(n), savepaths[t])
 
-    spc = pvcore.ImageSpace.fromfile(savepaths['GM'])
-    wm = nibabel.load(savepaths['WM']).get_fdata()
-    gm = nibabel.load(savepaths['GM']).get_fdata()
-    csf = 1 - (wm + gm)
-    spc.saveImage(csf, savepaths['CSF'])
+    # spc = pvcore.ImageSpace.fromfile(savepaths['GM'])
+    # wm = nibabel.load(savepaths['WM']).get_fdata()
+    # gm = nibabel.load(savepaths['GM']).get_fdata()
+    # csf = 1 - (wm + gm)
+    # spc.saveImage(csf, savepaths['CSF'])
 
     os.chdir(pwd)
 
@@ -310,7 +311,7 @@ def estimate_all(**kwargs):
 
     fastnames = { t: op.join(pvdir, 'fast', t + '.nii.gz') 
         for t in TISSUES }
-    if not debug: 
+    if not debug and not kwargs.get('noFAST'): 
         _estimateStructuralPVs(kwargs['struct'], fastnames)
 
     if not kwargs.get('noFS'):
@@ -320,7 +321,7 @@ def estimate_all(**kwargs):
 
     # Load struct2func transform, and adjust appropriately
     struct2ref = np.loadtxt(kwargs['struct2ref'])
-    if 'flirt' in kwargs:
+    if kwargs.get('flirt'):
         print("Adjusting FLIRT matrix")
         struct2ref = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
             struct2ref)
@@ -339,75 +340,3 @@ def estimate_all(**kwargs):
 
     print("Saving final output:", outname)
     
-
-
-
-
-if __name__ == '__main__':
-
-    suffix = "Tom Kirk, thomas.kirk@eng.ox.ac.uk, 2018 \n"
-
-    usage_main = """
-PVTOOLS     Tools for estimating partial volumes in neuroimaging
-
-Usage (run either option with no arguments for more information):
-
-$ pvtools -estimate-all             estimate PVs for both cortical and subcortical tissues
-
-$ pvtools -merge-with-surface       merge volumetric PV estimates with cortex estimates 
-                                        produced via Toblerone
-"""
-
-    usage_estimate = """
-PVTOOLS -estimate-all	  Run FreeSurfer and FSL's FAST & Toblerone to estimate PVs for a reference 
-image. Requires installations of FreeSurfer and FSL tools to be available on the system $PATH. 
-
-Usage:
-
-$ pvtools -estimate-all -struct STRUCT -ref REF -struct2ref S2R [-dir DIR -flirt]
-
-Required arguments: 
-    -struct         path to structural T1-weighted image from which PVs are
-                        estimated
-    -ref            path to reference image for which PVs are required 
-    -struct2ref	    path to 4x4 affine transformation matrix (text-like file) describing transformation 
-                        from structural to reference image. If using a FLIRT matrix set the -flirt 
-                        flag as well.
-
-Optional arguments: 
-    -dir            where to save output folder (default is in same location as ref)
-    -flirt          to signify the -struct2ref argument was produced by FSL's FLIRT
-
-Overview:
-
-Runs FreeSurfer on the structural image to produce cortical surfaces. 
-Runs FAST on the structural image to produce volumetric PV estimates for subcortical tissue. 
-Resamples FAST estimates to an upsampled copy of reference image space, applying the -struct2ref 
-transformation matrix in the process, to give subcortical PVs.
-Runs Toblerone to estimate cortical PVs in this upsampled reference space. 
-Combines the two sets of estimates into a single output in an appropriate manner. 
-
-The structural and intermediate space files will be saved in their own folders within the output directory. 
-The overall PV estimates file will have the same filename as the reference with the suffix '_pvs'. 
-
-"""
-
-    usage_merge = """
-PVTOOLS -merge-with-surface
-"""
-
-
-
-
-    args = sys.argv
-
-    if len(args) == 1:
-        print(usage_main + suffix)
-
-    if len(args) == 2:
-    
-        if args[1] == '-estimate-all':
-            print(usage_estimate + suffix)
-
-        elif args[1] == '-merge-with-surface':
-            print(usage_merge + suffix)

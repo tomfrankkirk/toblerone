@@ -8,7 +8,7 @@ import itertools
 # Class definitions -----------------------------------------------------------
 
 # Class to contain an images voxel grid, including dimensions and vox2world transforms
-class ImageSpace():
+class ImageSpace(object):
 
     def __init__(self, imgSize, voxSize, vox2world):
         """Use the static method .fromfile() to initialise"""
