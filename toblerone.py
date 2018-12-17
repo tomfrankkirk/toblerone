@@ -29,10 +29,10 @@ SHARED_ARGS = []
 
 # Class definitions -----------------------------------------------------------
 
-class Hemisphere: 
+class Hemisphere(object): 
     """Class to encapsulate the white and pial surfaces of a hemisphere.
     Initialise with a side identifier (L/R), the surfaces should be added
-    directly via class to hemi.inSurf / hemi.outSurf
+    directly via hemi.inSurf / hemi.outSurf
     """
 
     def __init__(self, side):
@@ -47,7 +47,8 @@ class Hemisphere:
         return [self.inSurf, self.outSurf]
 
 
-class Surface:
+
+class Surface(object):
     """Class to contain a surface's points, triangles and normals matrix. 
     Normals are calculated upon initialisation, with the appropriate norm 
     direction flag. LUT and associations are intially set to None but will be 
@@ -478,8 +479,6 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
 
 
 
-
-
 def _findRayTriangleIntersections2D(testPnt, patch, axis):
     """Find intersections between a ray and a patch of surface, testing along
     one coordinate axis only (XYZ). As the triangle intersection test used within
@@ -515,7 +514,6 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
 
 
 
-
 def _normalToVector(vec):
     """Return a normal to the given vector"""
 
@@ -525,6 +523,7 @@ def _normalToVector(vec):
         normal = np.array([0, -vec[2], vec[1]])
 
     return normal 
+
 
 
 def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
@@ -550,6 +549,7 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
 
     return mu 
+
 
 
 def _findRayTriangleIntersections3D(testPnt, ray, patch):
@@ -841,6 +841,7 @@ def _safeFormHull(points):
         return 0
 
 
+
 def _classifyVoxelViaRecursion(patch, voxCent, voxSize, \
         containedFlag):
     """Classify a voxel entirely via recursion (not using any 
@@ -862,6 +863,7 @@ def _classifyVoxelViaRecursion(patch, voxCent, voxSize, \
     return (np.sum(flags) / Nsubs2)
 
 
+
 def _fetchSubVoxCornerIndices(linIdx, supersampler):
     """Map between linear subvox index number and the indices of its
     vertices within the larger grid of subvoxel vertices
@@ -880,6 +882,7 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
         supersampler + 1)
 
     return corners 
+
 
 
 def _getAllSubVoxCorners(supersampler, voxCent, voxSize):
@@ -909,10 +912,7 @@ def _getAllSubVoxCorners(supersampler, voxCent, voxSize):
 
 
 
-
-
-def _estimateVoxelFraction(surf, voxIJK, voxIdx,
-    imgSize, supersampler):
+def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -1085,14 +1085,30 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx,
     return inFraction 
 
 
+
 def _intialiseWorker(*sharedArgs):
+    """Called when each worker of a pool starts on a new chunk. Unpack the 
+    list of shared arguments and load them into global namespace ready 
+    for execution along with private worker variables. 
+    """
+
     global SHARED_ARGS
     for a in sharedArgs:
         SHARED_ARGS.append(a)
 
+
+
 def _intialiseWorkerFunction(function, workerArgs):
+    """Combine a worker's private arguments with the shared arguments in the 
+    global namespace and apply the function to them. Call this before using 
+    a multiprocessing pool. Eg, if the function f is to be used with pool.map, 
+    use as follows: f_wrapped = functools.partial(_initialiseWorkerFunction,
+    f), then with multiprocessing.Pool(cores, _initialiseWorker, (sharedArgs))
+    as p: p.map(f, workerArgs)
+    """
     global SHARED_ARGS 
     return function(*SHARED_ARGS, workerArgs)
+
 
 
 def _estimateFractions(surf, FoVsize, supersampler, \
@@ -1294,12 +1310,12 @@ def estimatePVs(**kwargs):
 
     name = op.split(name)[-1]
     outExt = '.nii.gz'
-    for e in ['.nii', '.nii.gz']:
+    for e in ['.nii.gz', '.nii']:
         if e in name: 
             outExt = e 
             name = name.replace(e, '')
 
-    outPath = op.join(kwargs['outdir'], name + '_tob' + outExt)
+    outPath = op.join(kwargs['outdir'], name + outExt)
     maskPath = op.join(kwargs['outdir'], name + '_surfmask' + outExt)
     assocsPath = op.join(kwargs['outdir'], name + '_assocs' + '.pkl')
 
@@ -1374,7 +1390,7 @@ def estimatePVs(**kwargs):
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
     FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int16)
-    fullFoVsize = (np.maximum(maxFoV + FoVoffset, 
+    fullFoVsize = (np.maximum(maxFoV + FoVoffset + 1, 
         refSpace.imgSize)).astype(np.int16)
     assert np.all(fullFoVsize >= refSpace.imgSize), \
         "Full FoV has not been expanded to at least reference FoV"
@@ -1385,10 +1401,12 @@ def estimatePVs(**kwargs):
         for s in allSurfs:
             s.points = s.points + FoVoffset
 
-            if not np.all(np.floor(np.min(s.points, axis=0)) >= 0):
-                raise RuntimeError("FoV offset does not remove negative coordinates")
-            if not np.all(np.ceil(np.max(s.points, axis=0)) < fullFoVsize):
-                raise RuntimeError("Full FoV does not contain all surface coordinates")
+    if np.any(np.floor(np.array(
+        [np.min(p,axis=0) for p in pials]).min(axis=0)) < 0):
+        raise RuntimeError("FoV offset does not remove negative coordinates")
+    if np.any(np.ceil(np.array(
+        [np.max(p,axis=0) for p in pials]).max(axis=0)) >= fullFoVsize):
+        raise RuntimeError("Full FoV does not contain all surface coordinates")
 
 
     # Form (or read in) associations
