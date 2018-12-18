@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Toblerone: partial volume estimation on the cortical ribbon
 
 import copy
@@ -1376,16 +1374,18 @@ def estimatePVs(**kwargs):
     # FoV and associations loop -----------------------------------------------
 
     # Do we need to expand the FoV of the voxel grid to contain the surfaces?
-    pials = list(map(lambda h: h.outSurf.points, hemispheres))
-    if any(map(lambda p: np.any(p < -0.5) or np.any(p > refSpace.imgSize-0.5), 
-        pials)):
+    surfs = [ s for h in hemispheres for s in h.surfs() ]
+    if any(map(lambda s: np.any(s.points < -0.5) or 
+        np.any(s.points > refSpace.imgSize-0.5), surfs)):
         print("Warning: the FoV of the reference image does fully enclose", 
             "the surfaces.")
         print("PVs will only be estimated within the reference FoV.")
 
     # Find the min/max coordinates of the surfaces
-    minFoV = np.floor(np.array([np.min(p,axis=0) for p in pials]).min(axis=0))
-    maxFoV = np.ceil(np.array([np.max(p,axis=0) for p in pials]).max(axis=0))
+    minFoV = np.floor(np.array(
+        [np.min(s.points, axis=0) for s in surfs]).min(axis=0))
+    maxFoV = np.ceil(np.array(
+        [np.max(s.points, axis=0) for s in surfs]).max(axis=0))
 
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
@@ -1396,16 +1396,15 @@ def estimatePVs(**kwargs):
         "Full FoV has not been expanded to at least reference FoV"
 
     # Now apply the shift to the surfaces and check against limits. 
-    allSurfs = [ s for h in hemispheres for s in h.surfs() ]
-    if np.any(FoVoffset != 0):
-        for s in allSurfs:
+    if np.any(FoVoffset):
+        for s in surfs:
             s.points = s.points + FoVoffset
 
     if np.any(np.floor(np.array(
-        [np.min(p,axis=0) for p in pials]).min(axis=0)) < 0):
+        [np.min(s.points, axis=0) for s in surfs]).min(axis=0)) < 0):
         raise RuntimeError("FoV offset does not remove negative coordinates")
     if np.any(np.ceil(np.array(
-        [np.max(p,axis=0) for p in pials]).max(axis=0)) >= fullFoVsize):
+        [np.max(s.points, axis=0) for s in surfs]).max(axis=0)) >= fullFoVsize):
         raise RuntimeError("Full FoV does not contain all surface coordinates")
 
 
@@ -1473,11 +1472,11 @@ def estimatePVs(**kwargs):
     print("Filling whole voxels")
     voxelise = functools.partial(Surface.voxelise, fullFoVsize)
     if cores > 1: 
-        with multiprocessing.Pool(min([cores, len(allSurfs)])) as p:
-            fills = p.map(voxelise, allSurfs)
+        with multiprocessing.Pool(min([cores, len(surfs)])) as p:
+            fills = p.map(voxelise, surfs)
     else: 
-        fills = list(map(voxelise, allSurfs))
-    [ setattr(s, 'voxelised', f) for (s,f) in zip(allSurfs, fills) ]
+        fills = list(map(voxelise, surfs))
+    [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
 
 
     # Estimate the actual PVs for each hemisphere. 
