@@ -321,9 +321,9 @@ class Surface(object):
     def shiftFoV(self, offset, FoVsize):
 
         self.points += offset
-        if np.any(np.floor(self.points.min(axis=0)) < 0):
+        if np.any(np.round(self.points.min(axis=0)) < 0):
             raise RuntimeError("FoV offset does not remove negative coordinates")
-        if np.any(np.ceil(self.points.max(axis=0)) >= FoVsize):
+        if np.any(np.round(self.points.max(axis=0)) >= FoVsize):
             raise RuntimeError("Full FoV does not contain all surface coordinates")
 
 
