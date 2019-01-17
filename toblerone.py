@@ -977,7 +977,8 @@ def _determineFullFoV(surfs, refSpace):
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
     FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int16)
-    FoVsize = np.maximum(refSpace.imgSize + FoVoffset, maxFoV+1).astype(np.int16)
+    FoVsize = np.maximum(refSpace.imgSize, maxFoV).astype(np.int16) + \
+        FoVoffset
 
     return (FoVoffset, FoVsize)
 
