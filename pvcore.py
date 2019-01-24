@@ -341,57 +341,18 @@ def _runFIRST(struct, dir):
     struct = op.abspath(struct)
     pwd = os.getcwd()
     os.chdir(dir)
-    cmd = 'run_first_all -i {} -o {} -b'.format(struct, nameroot)
+    cmd = 'run_first_all -i {} -o {}'.format(struct, nameroot)
     print("Preparing to call FIRST\n")
     _shellCommand(cmd)
     os.chdir(pwd)
 
 
-def _estimateStructuralPVs(struct, savepaths):
-    """Run FAST and FreeSurfer on the given structural image, saving the
-    output into respective folders within the given directory. 
-
-    Args:
-        struct:     path to structural image
-        savepaths:  dict with keys GM/WM/CSF, paths to save images. 
-        debug:      don't run commands 
-    
-    Returns: 
-        each tool, with the following keys:
-        subcorts: GM, WM, CSF: paths to PV estimates for these tissues
-        surfs: LWS/LPS/RWS/RPS: Left/Right White/Pial surfaces.
-    """
-
-    # Required to find FAST's output later on
-    _, sname = op.split(struct)
-    while '.' in sname:
-        sname, _ = op.splitext(sname)
-
-    # Move into the output dir, run FAST, move back afterwards
+def _runFAST(struct, dir):
+    nameroot, _ = fileutils.splitExts(struct)
+    struct = op.abspath(struct)
     pwd = os.getcwd()
-    fastdir = op.dirname(savepaths['GM'])
-
-    if not op.isdir(fastdir):
-        os.mkdir(fastdir)
-
-    os.chdir(fastdir)
-    _sysprint("Running FAST...")
-    newfname = op.split(struct)[-1]
-    shutil.copyfile(struct, newfname)
-    cmd = 'fast ' + newfname 
+    os.chdir(dir)
+    cmd = 'fast {}'.format(struct)
+    print("Preparing to call FAST\n")
     _shellCommand(cmd)
-    _sysprint("Done.\n")
-
-    # Convert between FAST's naming convention and explicit tissue names
-    oldname = lambda n: \
-        op.join(sname + '_pve_{}.nii.gz'.format(n))
-    for (n,t) in zip([1,2,0], TISSUES):
-        shutil.copyfile(oldname(n), savepaths[t])
-
-    # spc = pvcore.ImageSpace.fromfile(savepaths['GM'])
-    # wm = nibabel.load(savepaths['WM']).get_fdata()
-    # gm = nibabel.load(savepaths['GM']).get_fdata()
-    # csf = 1 - (wm + gm)
-    # spc.saveImage(csf, savepaths['CSF'])
-
     os.chdir(pwd)
