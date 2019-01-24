@@ -1,6 +1,7 @@
 import functools
 import multiprocessing
 import warnings
+import tqdm
 
 import numpy as np
 
@@ -23,22 +24,35 @@ def cortex(hemispheres, refSpace, supersampler, cores):
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
-    print("Supersampling factor set at:", supersampler)
     voxList = pvcore.getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
     
     # Fill in whole voxels (ie, no PVs), then match the results of the map
     # to respective surfaces.
-    print("Filling whole voxels")
     voxelise = functools.partial(toblerone.voxelise, FoVsize)
-    if cores > 1: 
-        with multiprocessing.Pool(min([cores, len(surfs)])) as p:
-            fills = p.map(voxelise, surfs)
+    fills = []
+    desc = ' Filling cortex'
+    if cores > 1:
+        with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
+            for _, r in tqdm.tqdm(enumerate(p.imap(voxelise, surfs)), 
+                total=len(surfs), desc=desc, 
+                bar_format=toblerone.BAR_FORMAT, ascii=True):
+                fills.append(r)
+
     else: 
-        fills = list(map(voxelise, surfs))
+        for idx in tqdm.trange(len(surfs), desc=desc, 
+            bar_format=toblerone.BAR_FORMAT, ascii=True):
+            fills.append(voxelise(surfs[idx]))
+
     [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
-        
+
+    # if cores > 1: 
+    #     with multiprocessing.Pool(min([cores, len(surfs)])) as p:
+    #         fills = p.map(voxelise, surfs)
+    # else: 
+    #     fills = list(map(voxelise, surfs))
+
     # Estimate fractions for each surface
-    print("Estimating fractions")
+    print("Estimating cortex")
     for h in hemispheres:
         if np.any(np.max(np.abs(h.inSurf.points)) > 
             np.max(np.abs(h.outSurf.points))):
@@ -56,8 +70,8 @@ def cortex(hemispheres, refSpace, supersampler, cores):
     for h in hemispheres:
         inFractions = (h.inSurf.voxelised).astype(np.float32)
         outFractions = (h.outSurf.voxelised).astype(np.float32)
-        inFractions[h.inSurf.vlist] = h.inSurf.fractions
-        outFractions[h.outSurf.vlist] = h.outSurf.fractions
+        inFractions[h.inSurf.flist] = h.inSurf.fractions
+        outFractions[h.outSurf.flist] = h.outSurf.fractions
 
         # Combine estimates from each surface into whole hemi PV estimates
         hemiPVs = np.zeros((np.prod(FoVsize), 3), dtype=np.float32)
@@ -104,11 +118,11 @@ def cortex(hemispheres, refSpace, supersampler, cores):
     assocsMask = np.reshape(assocsMask, tuple(FoVsize[0:3]))
 
     # Extract the output within the FoV of the reference image
-    outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
-        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1], \
+    outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
+        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
-    assocsMask = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
-        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1], \
+    assocsMask = assocsMask[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
+        FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
 
     return outPVs, assocsMask
