@@ -64,18 +64,16 @@ class ImageSpace(object):
         newSpace.imgSize = self.imgSize * factor
         newSpace.voxSize = self.voxSize / factor
         for r in range(3):
-            newSpace.vox2world[r, 0:3] = newSpace.vox2world[r, 0:3] / factor[r]
+            newSpace.vox2world[0:3,r] /= factor[r]
 
-        # The direction vector travelled in incrementing each index 
-        # within the original grid by 1 is: 
-        ijkvec = np.sum(self.vox2world[0:3,0:3], axis=1)
-
-        # Origin of the src voxel grid is at (NB 1 is dist between vox cents)
-        orig = self.vox2world[0:3,3] - (0.5 * ijkvec)
-
-        # Which means the new grid has centre coord of vox (0,0,0) at: 
-        offset = orig + (0.5 * ijkvec / factor)
-        newSpace.vox2world[0:3,3] = offset 
+        # Start at the vox centre of [0 0 0] on the original grid
+        # Move in by 0.5 voxels along the diagonal direction vector of the voxel
+        # Then move back out by 0.5 voxels of the NEW direction vector to get
+        # the vox cent for [0 0 0] within the new grid
+        orig = (self.vox2world[0:3,3] 
+            - 0.5 * np.sum(self.vox2world[0:3,0:3], axis=1))
+        new = orig + 0.5 * np.sum(newSpace.vox2world[0:3,0:3], axis=1)
+        newSpace.vox2world[0:3,3] = new 
 
         # Check the bounds of the new voxel grid we have created
         svertices = np.array(list(itertools.product([-0.5, newSpace.imgSize[0] - 0.5], 
@@ -93,6 +91,9 @@ class ImageSpace(object):
 
         if not np.all(data.shape[0:3] == self.imgSize):
             raise RuntimeError("Data size does not match image size")
+
+        if data.dtype == np.dtype('bool'):
+            data = data.astype(np.int8)
 
         img = nibabel.Nifti2Image(data, self.vox2world)
         nibabel.save(img, path)
@@ -117,14 +118,17 @@ class Hemisphere(object):
         return [self.inSurf, self.outSurf]
 
 
+# TODO: provide a manual surface constructor?
 
 class Surface(object):
-    """Class to contain a surface's points, triangles and normals matrix. 
-    Normals are calculated upon initialisation, with the appropriate norm 
-    direction flag. LUT and associations are intially set to None but will be 
-    updated later on. Using associations data, a surface can be cast to patch
-    for a particular voxel which reduces computational complexity by 
-    discarding unncessary triangles.
+    """Encapsulates a surface's points, triangles and associations data.
+    Create either by passing a file path (as below) or use the static class 
+    method Surface.manual() to directly pass points and triangles.
+    
+    Args: 
+        path:   path to file (.gii/.vtk/.white/.pial)
+        space:  'world' (default) or 'first'; space that surface is in 
+        struct: if in 'first' space, then path to structural image by FIRST
     """
 
     def __init__(self, path, space='world', struct=None):
@@ -181,7 +185,6 @@ class Surface(object):
         self.tris = ts.astype(np.int32)
         self.xProds = None 
         self.voxelised = None 
-
 
 
     def calculateXprods(self):
