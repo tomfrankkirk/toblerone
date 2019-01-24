@@ -3,8 +3,10 @@ import os.path as op
 import argparse
 import itertools
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import warnings
 import functools
+import copy
 
 import nibabel
 import numpy as np
@@ -21,60 +23,143 @@ def estimate_all(**kwargs):
 
     kwargs = enforce_and_load_common_arguments(**kwargs)
 
-    if kwargs.get('outdir'):
-        fileutils.weak_mkdir(kwargs.get('outdir'))
-    else: 
+    if not kwargs.get('outdir'):
         kwargs['outdir'] = op.join(op.dirname(kwargs['ref']), 'pvtools')
         fileutils.weak_mkdir(kwargs['outdir'])
 
-    # TODO: we could run these in parallel
-    # Use a logical map to determine which need running, 
-    # then prepare func calls and args, and run on pool
-
     # Run first if not given a FS dir
+    processes = []
     if not kwargs.get('FSdir'):
         kwargs['FSdir'] = op.join(kwargs.get('outdir'), 'fs')
-        fileutils.weak_mkdir(kwargs['FSdir'])
-        pvcore._runFreeSurfer(kwargs['struct'], kwargs['FSdir'])
+        proc = multiprocessing.Process(
+            target=pvcore._runFreeSurfer, 
+            args=(kwargs['struct'], kwargs['outdir']))
+        processes.append(proc)
 
     # Run first if not given a first dir
     if not kwargs.get('firstdir'):
         kwargs['firstdir'] = op.join(kwargs['outdir'], 'first')
         fileutils.weak_mkdir(kwargs['firstdir'])
-        pvcore._runFIRST(kwargs['struct'], kwargs['firstdir'])      
+        proc = multiprocessing.Process(
+            target=pvcore._runFIRST, 
+            args=(kwargs['struct'], kwargs['firstdir']))
+        processes.append(proc)
+
+    # Run FAST if not given a FAST dir
+    if not kwargs.get('fastdir'):
+        kwargs['fastdir'] = op.join(kwargs['outdir'], 'fast')
+        fileutils.weak_mkdir(kwargs['fastdir'])
+        proc = multiprocessing.Process(
+            target=pvcore._runFAST, 
+            args=(kwargs['struct'], kwargs['fastdir']))
+        processes.append(proc)
+
+    if len(processes) <= kwargs['cores']:
+        [ p.start() for p in processes ]
+        [ p.join() for p in processes ]
+    else:
+        for p in processes: 
+            p.start()
+            p.join()
+      
+    for kw in ['FSdir', 'firstdir', 'fastdir']:
+        print("Using {}: {}".format(kw, kwargs[kw]))
+   
+
+    # Resample FASTs to reference space. 
+    fasts = fileutils._loadFASTdir(kwargs['fastdir'])
+
+    # Redefine FAST CSF
+    GM = nibabel.load(fasts['FAST_GM']).get_fdata()
+    WM = nibabel.load(fasts['FAST_WM']).get_fdata()
+    CSF = 1 - (GM + WM)
+    spc = ImageSpace(fasts['FAST_GM'])
+    spc.saveImage(CSF, fasts['FAST_CSF'])
+
+    for t, f in fasts.items():
+        outpath = op.join(kwargs['outdir'], t + '.nii.gz')
+        resample(f, kwargs['ref'], outpath, kwargs['struct2ref'])
 
     # Process subcortical structures first. 
-    FIRSTsurfs = fileutils.loadFIRSTdir(kwargs['firstdir'])
+    FIRSTsurfs = fileutils._loadFIRSTdir(kwargs['firstdir'])
     structures = [ Structure(n, s, 'first', kwargs['struct']) 
         for n, s in FIRSTsurfs.items() ]
-    print("The following structures will be estimated:")
+    print("The following structures will be estimated:", flush=True)
     [ print(s.name, end=' ') for s in structures ]
-    results = []
-    desc = 'Subcortical structures'
+    print('Cortex')
+    desc = ' Subcortical structures'
     estimator = functools.partial(estimate_structure_wrapper, 
         **kwargs)
 
-    # if kwargs['cores'] > 1:
-    #     with multiprocessing.Pool(kwargs['cores']) as p: 
-    #         for r in tqdm.tqdm(p.imap(estimator, structures), 
-    #             total=len(structures), desc=desc, 
-    #             bar_format=toblerone.BAR_FORMAT, ascii=True):
-    #             results.append(r)
+    results = []
+    if kwargs['cores'] > 1:
+        with multiprocessing.Pool(kwargs['cores']) as p: 
+            for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
+                total=len(structures), desc=desc, 
+                bar_format=toblerone.BAR_FORMAT, ascii=True):
+                    results.append(r)
 
-    # else: 
-    #     for idx in tqdm.trange(len(structures), desc=desc, 
-    #         bar_format= toblerone.BAR_FORMAT, ascii=True):
-    #         results.append(estimator(substruct=structures[idx]))
+    else: 
+        for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
+            total=len(structures), desc=desc, 
+            bar_format=toblerone.BAR_FORMAT, ascii=True):
+                results.append(r)
 
-    # # Save each individual output. 
-    # refSpace = ImageSpace(kwargs['ref'])
-    # for s, r in zip(structures, results):
-    #     outpath = op.join(kwargs['outdir'], s.name + '_pvs.nii.gz')
-    #     refSpace.saveImage(r, outpath)
+    output = { k: o for (k,o) in zip(FIRSTsurfs.keys(), results) }
 
-    # And now do the cortex
-    estimate_cortex(**kwargs)
+    # Now do the cortex
+    ctx, ctxmask = estimate_cortex(**kwargs)
+    output['cortex'] = ctx 
+    output['cortexmask'] = ctxmask
 
+    # Finally, flatten individual results onto single volume. 
+
+    return output 
+
+
+def stack_images(images):
+
+    images = copy.deepcopy(images)
+    
+    ctx = images.pop('cortex')
+    shape = ctx.shape
+    ctx = ctx.reshape(-1,3)
+    out = np.zeros_like(ctx)
+    out[:,2] = 1
+
+    csf = images.pop('FAST_CSF').flatten()
+    wm = images.pop('FAST_WM').flatten()
+    gm = images.pop('FAST_GM').flatten()
+
+    # Method 1
+    mask = np.logical_or(ctx[:,0], ctx[:,1])
+    brain = np.logical_or(mask, csf>0.05)
+    out[mask,:] = ctx[mask,:]
+
+    out[:,2] = np.maximum(csf[:], out[:,2])
+    out[:,1] = np.maximum(0, 1 - np.sum(out[:,0:4:2], axis=1))
+
+    # out[brain,:] = (out[brain,:] / (np.sum(out[brain,:], axis=1)[:,None]))
+    # assert np.all(np.abs(np.sum(out[brain,:], axis=1) - 1) < 1e-6)
+
+    for s in images.values():
+        smask = (s.flatten() > 0)
+        out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
+        out[smask,1] = np.maximum(0, 1 - out[smask,0])
+
+    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
+
+    # Method 2
+    # mask = np.logical_and(wm, gm).flatten()
+    # out[:,2] = csf.flatten() 
+    # for s in images.values():
+    #     out[:,0] = np.minimum(1 - out[:,2], out[:,0] + s.flatten())
+    # out[:,0] = np.minimum(1 - out[:,2], out[:,0] + ctx[:,:,:,0].flatten())
+    # mask = np.logical_and(mask, ctx[:,:,:,1].flatten())
+    # out[:,1][mask] = (1 - np.sum(out, axis=1))[mask]
+    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
+
+    return out.reshape(shape)
 
 
 
@@ -124,10 +209,8 @@ def estimate_cortex(**kwargs):
         raise RuntimeError("Either a FSdir or paths to LWS/LPS etc"
             "must be given.")
 
-    if kwargs.get('cores') is not None:
-        cores = kwargs['cores']
-    else: 
-        cores = multiprocessing.cpu_count() - 1
+    if not kwargs.get('cores'):
+        kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
@@ -167,21 +250,21 @@ def estimate_cortex(**kwargs):
 
     # Set supersampler and estimate. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
-    outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, supersampler, cores)
+    outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
+        supersampler, kwargs['cores'])
 
     return (outPVs, cortexMask)
 
 
 
-def resample(src, ref, out, aff=np.identity(4), flirt=False):
-
-    
+def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
+   
     if flirt:
-        src2ref = pvcore._adjustFLIRT(src, ref, aff)
+        src2ref = pvcore._adjustFLIRT(src, ref, src2ref)
 
     refSpace = ImageSpace(ref)
     factor = np.ceil(refSpace.voxSize).astype(np.int8)
-    resamp = pvcore._superResampleImage(ref, factor, refSpace, src2ref)
+    resamp = pvcore._superResampleImage(src, factor, refSpace, src2ref)
     refSpace.saveImage(resamp, out)
 
 
@@ -232,14 +315,16 @@ def enforce_and_load_common_arguments(**kwargs):
         raise RuntimeError("struct2ref must be a 4x4 matrix")
 
     # If FLIRT transform we need to do some clever preprocessing
+    # We then set the flirt flag to false again (otherwise later steps will 
+    # repeat the tricks and end up reverting to the original - those steps don't
+    # need to know what we did here, simply that it is now world-world again)
     if kwargs.get('flirt'):
         if not kwargs.get('struct'):
             raise RuntimeError("If using a FLIRT transform, the path to the \
                 structural image must also be given")
-        if not op.isfile(kwargs['struct']):
-            raise RuntimeError("Structural image does not exist")
         kwargs['struct2ref'] = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
             kwargs['struct2ref'])
+        kwargs['flirt'] = False 
 
     if not kwargs.get('cores'):
         kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
