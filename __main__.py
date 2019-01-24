@@ -136,8 +136,23 @@ def estimate_all_cmd(*args):
     parser = CommonParser()
     parser.add_argument('-FSdir', type=str, required=False)
     parser.add_argument('-firstdir', type=str, required=False)
+    parser.add_argument('-fastdir', type=str, required=False)
+    parser.add_argument('-bet', type=str, required=False)
     kwargs = parser.parse(args)
-    pvtools.estimate_all(**kwargs)
+
+    if not kwargs.get('outdir'):
+        kwargs['outdir'] = op.join(op.dirname(kwargs['ref']), 'pvtools')
+    fileutils.weak_mkdir(kwargs['outdir'])
+
+    output = pvtools.estimate_all(**kwargs)
+
+    # Save each individual output. 
+    refSpace = ImageSpace(kwargs['ref'])
+    for k, o in output.items():
+        outpath = op.join(kwargs['outdir'], k + '_pvs.nii.gz')
+        if k == 'cortexmask':
+            outpath = op.join(kwargs['outdir'], k + '.nii.gz')
+        refSpace.saveImage(o, outpath)
 
 
 if __name__ == '__main__':
