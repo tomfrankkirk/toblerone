@@ -5,7 +5,7 @@ import glob
 
 from .classes import STRUCTURES
 
-def loadFIRSTdir(dir):
+def _loadFIRSTdir(dir):
 
     if not op.isdir(dir):
         raise RuntimeError("FIRST directory does not exist")
@@ -23,6 +23,28 @@ def loadFIRSTdir(dir):
         raise RuntimeError("No surfaces were found")
 
     return surfs
+
+
+def _loadFASTdir(dir):
+
+    if not op.isdir(dir):
+        raise RuntimeError("FAST directory does not exist")
+    
+    paths = {}
+    files = glob.glob(op.join(dir, '*.nii.gz'))
+    channels = { '_pve_{}'.format(c): t for (c,t)
+        in enumerate(['CSF', 'GM', 'WM']) }
+        
+    for f in files: 
+        fname = op.split(f)[1]
+        for c, t in channels.items():
+            if c in fname: 
+                paths['FAST_' + t] = f
+    
+    if len(paths) != 3:
+        raise RuntimeError("Could not load 3 PV maps from FAST directory")
+
+    return paths
 
 
 def _loadSurfsToDict(FSdir):
