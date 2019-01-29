@@ -5,6 +5,7 @@ import collections
 import multiprocessing
 import functools
 import argparse
+import warnings
 
 import numpy as np 
 import nibabel
@@ -118,7 +119,6 @@ class Hemisphere(object):
         return [self.inSurf, self.outSurf]
 
 
-# TODO: provide a manual surface constructor?
 
 class Surface(object):
     """Encapsulates a surface's points, triangles and associations data.
@@ -153,7 +153,11 @@ class Surface(object):
         else: 
             ps, ts, meta = nibabel.freesurfer.io.read_geometry(path, 
                 read_metadata=True)
-            ps += meta['cras']
+            if not 'cras' in meta:
+                print('Warning: Could not load C_ras from surface', path)
+                print('If true C_ras is non-zero then estimates will be inaccurate')
+            else:
+                ps += meta['cras']
 
         if ps.shape[1] != 3: 
             raise RuntimeError("Points matrices should be p x 3")
@@ -186,8 +190,27 @@ class Surface(object):
         self.xProds = None 
         self.voxelised = None 
 
+    
+    @classmethod
+    def manual(cls, ps, ts):
+        """Manual surface constructor using points and triangles arrays"""
+
+        if (ps.shape[1] != 3) or (ts.shape[1] != 3):
+            raise RuntimeError("ps, ts arrays must have N x 3 dimensions")
+
+        s = cls.__new__(cls)
+        s.points = ps.astype(np.float32)
+        s.tris = ts.astype(np.int32)
+        s.xProds = None 
+        s.voxelised = None 
+        return s
+
 
     def calculateXprods(self):
+        """Calculate and store surface element normals. Must be called prior to 
+        estimateFractions()
+        """
+
         self.xProds = np.cross(
             self.points[self.tris[:,2],:] - self.points[self.tris[:,0],:], 
             self.points[self.tris[:,1],:] - self.points[self.tris[:,0],:], 
@@ -195,6 +218,7 @@ class Surface(object):
 
 
     def applyTransform(self, transform):
+        """Apply affine transformation (4x4 array) to surface coordinates"""
 
         self.points = (pvcore._affineTransformPoints(
             self.points, transform).astype(np.float32))
