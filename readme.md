@@ -14,8 +14,7 @@ Toblerone estimates partial volumes on the cortical ribbon using cortical surfac
 ## Usage
 ```bash
 # As a command line tool (run without args for help)
-$ python3 toblerone --ref path/to/reference --FSdir path/to/subject/directory 
---struct2ref path/to/structural/functional/transform
+$ python3 toblerone --ref path/to/reference --FSdir path/to/subject/directory --struct2ref path/to/structural/functional/transform
 ```
 ```python
 # Within a python script. Note estimatePVs() is the only function required. 
