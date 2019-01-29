@@ -45,12 +45,6 @@ def cortex(hemispheres, refSpace, supersampler, cores):
 
     [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
 
-    # if cores > 1: 
-    #     with multiprocessing.Pool(min([cores, len(surfs)])) as p:
-    #         fills = p.map(voxelise, surfs)
-    # else: 
-    #     fills = list(map(voxelise, surfs))
-
     # Estimate fractions for each surface
     print("Estimating cortex")
     for h in hemispheres:
