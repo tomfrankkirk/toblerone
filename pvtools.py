@@ -1,342 +1,332 @@
-import sys
-import itertools
-import copy
-import multiprocessing
 import os
 import os.path as op
-import subprocess
+import argparse
+import itertools
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import warnings
-import shutil
+import functools
+import copy
 
-from pvtools import toblerone as cortex
-from pvtools import pvcore
 import nibabel
 import numpy as np
-import scipy as sp
-import scipy.interpolate
-import scipy.ndimage
+import tqdm
 
-TISSUES = ['GM', 'WM', 'CSF']
-
-def _sysprint(txt):
-    sys.stdout.write(txt)
-    sys.stdout.flush()
-
-
-def _resampleImage(data, srcSpace, destSpace, src2dest):
-    """Resample array data onto destination space, applying affine transformation
-    at the same time
-
-    Args: 
-        data: array to resample
-        scrSpace: ImageSpace in which the data currently exists 
-        destSpace: ImageSpace onto which it should be resampled
-        src2dest: 4x4 transformation matrix to apply during resampling
-
-    Returns: 
-        array of size destSpace.imgSize
-    """
-
-    # Transform the destination grid into world coordinates, aligned with src
-    destvox2src = np.matmul(np.linalg.inv(src2dest), destSpace.vox2world)
-    destvox2src = np.matmul(np.linalg.inv(srcSpace.vox2world), destvox2src)
-
-    # Interpolate. 
-    out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.imgSize, mode='constant', order=3)
-
-    # Due to the spline interpolants, the resampled output can go outside
-    # the original min,max of the input data 
-    out = np.maximum(out, data.min())
-    out = np.minimum(out, data.max())
-
-    return out 
-
-
-def _superResampleImage(source, factor, destSpace, src2dest):
-    """Resample an image onto a new space, applying an affine transformation
-    at the same time. The source image transformed onto an upsampled copy of 
-    the destination space first and then block-summed back down to the required
-    resolution. 
-
-    Args:
-        source: path to image to resample
-        factor: iterable length 3, extent to upsample in each dim 
-        destSpace: an ImageSpace representing the destination space
-        src2dest: affine transformation matrix (4x4) between source and reference
-
-    Returns: 
-        an array of the dimensions given by destSpace.imgSize
-    """
-
-    # Load input data and read in the space for it
-    srcSpace = pvcore.ImageSpace.fromfile(source)
-    data = nibabel.load(source).get_fdata().astype(np.float32)
-
-    # Create a supersampled version of the space 
-    superSpace = destSpace.supersample(factor)
-
-    # Resample onto this new grid, applying transform at the same time. 
-    # Then sum the array blocks and divide by the size of each block to 
-    # get the mean value within each block. This is the final output. 
-    resamp = _resampleImage(data, srcSpace, superSpace, src2dest)
-    resamp = _sumArrayBlocks(resamp, factor) / np.prod(factor)
-
-    return resamp
-
-
-def _sumArrayBlocks(array, factor):
-    """Sum sub-arrays of a larger array, each of which is sized according to factor. 
-    The array is split into smaller subarrays of size given by factor, each of which 
-    is summed, and the results returned in a new array, shrunk accordingly. 
-
-    Args:
-        array: n-dimensional array of data to sum
-        factor: n-length tuple, size of sub-arrays to sum over
-
-    Returns:
-        array of size array.shape/factor, each element containing the sum of the 
-            corresponding subarray in the input
-    """
-
-    outshape = [ int(s/f) for (s,f) in zip(array.shape, factor) ]
-    out = np.copy(array)
-
-    for dim in range(3):
-        newshape = [0] * 4
-
-        for d in range(3):
-            if d < dim: 
-                newshape[d] = outshape[d]
-            elif d == dim: 
-                newshape[d+1] = factor[d]
-                newshape[d] = outshape[d]
-            else: 
-                newshape[d+1] = array.shape[d]
-
-        newshape = newshape + list(array.shape[3:])
-        out = np.sum(out.reshape(newshape), axis=dim+1)
-
-    return out 
-
-
-
-def _mergeCortexAndSubcorticalPVs(subcortPath, cortexPath, reference, outpath):
-    """Take subcort PVs in intermediate space and Tob estimates, 
-    sum across grid and output results in reference space"""
-
-    refSpace = pvcore.ImageSpace.fromfile(reference)
-    intSpace = pvcore.ImageSpace.fromfile(subcortPath)
-    cortex = nibabel.load(cortexPath).get_fdata().astype(np.float32)
-    subcortex = nibabel.load(subcortPath).get_fdata().astype(np.float32)
-
-    # Calculate the factor multiple between spaces. Assert no remainder, 
-    # then force into ints. 
-    factor = [ i/r for (i,r) in zip(intSpace.imgSize, refSpace.imgSize) ]
-    if not all(map(lambda f: f%1 == 0, factor)):
-        raise RuntimeError("Intermediate space is not an integer multiple of reference")
-    factor = [ int(f) for f in factor ]
-
-    # Cortex mask: accept all and(GM, CSF) from Toblerone
-    # Apply mask to the different sets of estimates. 
-    mask = np.logical_and(cortex[:,:,:,0], cortex[:,:,:,2]) 
-    outdir = op.dirname(cortexPath)
-    intSpace.saveImage(mask.astype(np.int8), op.join(outdir, 'mask.nii.gz'))
-
-    for (a, m, f) in zip([cortex, subcortex], [mask, ~mask], 
-        [cortexPath, subcortPath]):
-        a = pvcore._maskVolumes(a, m)
-        intSpace.saveImage(a, pvcore._addSuffixToFilename('_masked', f))
-
-    # Combine estimates in intermediate space using the mask
-    print("Combing estimates in intermediate space")
-    summed = cortex + subcortex
-
-    # Sum array blocks and divide by blocksize to get mean within each
-    print("Summing estimates back into reference space")
-    outpvs = _sumArrayBlocks(summed, factor) / np.prod(factor)
-
-    # Rescale by sum of each voxels estimates to get range [0 1]
-    # (small float rounding errors expected otherwise)
-    divisors = np.sum(outpvs, axis=3)
-    for d in range(3):
-        outpvs[:,:,:,d] = outpvs[:,:,:,d] / divisors
-
-    print("Saving final output at:", outpath)
-    refSpace.saveImage(outpvs, outpath)
-
-
-def _estimateIntermediatePVs(subcorts, surfs, reference, struct2ref, 
-    savepaths):
-    """Estimate PVs in intermediate space by resampling subcortical estimates
-    and running Toblerone on surfaces.
-    
-    Args:
-        subcorts:   dict with keys GM/WM/CSF for paths to PV estimates for 
-                        each of these tissues respectively, in structural 
-                        space (ie, FAST)
-        surfs:      dict with keys RWS/RPS/LPS/LWS for paths to each of these
-                        surfaces
-        reference:  path to reference image
-        struct2ref: structural to reference affine transform, in world/world
-                        coordinates (ie, adjusted-FLIRT)
-        savepaths:  two path names, where to save subcortical and cortex 
-                        respectively output. 
-    """
-
-    # Load reference image information, create intermediate space as 
-    # supersampled copy
-    refSpace = pvcore.ImageSpace.fromfile(reference)
-    factor = np.maximum(np.floor(refSpace.voxSize), [1,1,1]).astype(np.int8)
-    intSpace = refSpace.supersample(factor)
-    print("Intermediate factor set at", factor)
-
-    # Resample subcortical estimates and flatten into single image. 
-    _sysprint("Resampling subcortical estimates...")
-    subcortPVs = np.stack((_superResampleImage(subcorts[t], (2,2,2), 
-        intSpace, struct2ref) for t in TISSUES ), axis=3) 
-    intSpace.saveImage(subcortPVs, savepaths[0])   
-    _sysprint("Done.\n") 
-    
-    # Run Toblerone to estimate cortex PVs. Use the subcortical image as
-    # the reference for the intermediate space 
-    print("Estimating within cortex (Toblerone)")
-    cortex.estimatePVs(LWS=surfs['LWS'], LPS=surfs['LPS'], 
-        RWS=surfs['RWS'], RPS=surfs['RPS'], ref=savepaths[0], 
-        struct2ref=struct2ref, name=savepaths[1])
-
-
-
-def _shellCommand(cmd):   
-    try: 
-        ret = subprocess.run(cmd, stdout=sys.stdout, stderr=sys.stderr, 
-            shell=True)
-        if ret.returncode:
-            print("Non-zero return code")
-            raise RuntimeError()
-    except Exception as e:
-        print("Error when executing cmd:", cmd)
-        raise e
-
-
-def _runFreeSurfer(struct, dir):
-    pwd = os.getcwd()
-    os.chdir(dir)
-    cmd = 'recon-all -i {} -all -subjid fs -sd .'.format(struct)
-    print("Preparing to call FreeSurfer: this will take ~10 hours\n")
-    _shellCommand(cmd)
-    os.chdir(pwd)
-
-
-def _estimateStructuralPVs(struct, savepaths):
-    """Run FAST and FreeSurfer on the given structural image, saving the
-    output into respective folders within the given directory. 
-
-    Args:
-        struct:     path to structural image
-        savepaths:  dict with keys GM/WM/CSF, paths to save images. 
-        debug:      don't run commands 
-    
-    Returns: 
-        each tool, with the following keys:
-        subcorts: GM, WM, CSF: paths to PV estimates for these tissues
-        surfs: LWS/LPS/RWS/RPS: Left/Right White/Pial surfaces.
-    """
-
-    # Required to find FAST's output later on
-    _, sname = op.split(struct)
-    while '.' in sname:
-        sname, _ = op.splitext(sname)
-
-    # Move into the output dir, run FAST, move back afterwards
-    pwd = os.getcwd()
-    fastdir = op.dirname(savepaths['GM'])
-
-    if not op.isdir(fastdir):
-        os.mkdir(fastdir)
-
-    os.chdir(fastdir)
-    _sysprint("Running FAST...")
-    newfname = op.split(struct)[-1]
-    shutil.copyfile(struct, newfname)
-    cmd = 'fast ' + newfname 
-    _shellCommand(cmd)
-    _sysprint("Done.\n")
-
-    # Convert between FAST's naming convention and explicit tissue names
-    oldname = lambda n: \
-        op.join(sname + '_pve_{}.nii.gz'.format(n))
-    for (n,t) in zip([1,2,0], TISSUES):
-        shutil.copyfile(oldname(n), savepaths[t])
-
-    # spc = pvcore.ImageSpace.fromfile(savepaths['GM'])
-    # wm = nibabel.load(savepaths['WM']).get_fdata()
-    # gm = nibabel.load(savepaths['GM']).get_fdata()
-    # csf = 1 - (wm + gm)
-    # spc.saveImage(csf, savepaths['CSF'])
-
-    os.chdir(pwd)
-
-
-def merge_with_surface():
-    pass 
-
+from pvtools import toblerone
+from pvtools import pvcore
+from .classes import ImageSpace, Hemisphere, Structure
+from .classes import Surface, CommonParser, STRUCTURES
+from pvtools import estimators 
+from pvtools import fileutils
 
 def estimate_all(**kwargs):
 
-    debug = ('debug' in kwargs)
+    kwargs = enforce_and_load_common_arguments(**kwargs)
 
-    # Check args
-    for a in ['ref', 'struct', 'struct2ref']:
-        if (a not in kwargs) or (not op.isfile(kwargs[a])):
-            raise RuntimeError(a +" not given or non-existent")
-        else: 
-            kwargs[a] = op.realpath(kwargs[a])
+    if not kwargs.get('outdir'):
+        kwargs['outdir'] = op.join(op.dirname(kwargs['ref']), 'pvtools')
+        fileutils.weak_mkdir(kwargs['outdir'])
 
-    # If outdir not given, then use the same as the reference
-    if 'outdir' in kwargs:
-        outdir = kwargs['outdir']
+    # Run first if not given a FS dir
+    processes = []
+    if not kwargs.get('FSdir'):
+        kwargs['FSdir'] = op.join(kwargs.get('outdir'), 'fs')
+        proc = multiprocessing.Process(
+            target=pvcore._runFreeSurfer, 
+            args=(kwargs['struct'], kwargs['outdir']))
+        processes.append(proc)
+
+    # Run first if not given a first dir
+    if not kwargs.get('firstdir'):
+        kwargs['firstdir'] = op.join(kwargs['outdir'], 'first')
+        fileutils.weak_mkdir(kwargs['firstdir'])
+        proc = multiprocessing.Process(
+            target=pvcore._runFIRST, 
+            args=(kwargs['struct'], kwargs['firstdir']))
+        processes.append(proc)
+
+    # Run FAST if not given a FAST dir
+    if not kwargs.get('fastdir'):
+        kwargs['fastdir'] = op.join(kwargs['outdir'], 'fast')
+        fileutils.weak_mkdir(kwargs['fastdir'])
+        proc = multiprocessing.Process(
+            target=pvcore._runFAST, 
+            args=(kwargs['struct'], kwargs['fastdir']))
+        processes.append(proc)
+
+    if len(processes) <= kwargs['cores']:
+        [ p.start() for p in processes ]
+        [ p.join() for p in processes ]
     else:
-        outdir = op.dirname(op.realpath(kwargs['ref']))
+        for p in processes: 
+            p.start()
+            p.join()
+      
+    for kw in ['FSdir', 'firstdir', 'fastdir']:
+        print("Using {}: {}".format(kw, kwargs[kw]))
+   
 
-    pvdir = op.join(outdir, 'pvtools')
-    intdir = op.join(pvdir, 'intermediate')
-    for d in [pvdir, intdir]:
-        if not op.isdir(d):
-            os.mkdir(d)
+    # Resample FASTs to reference space. 
+    fasts = fileutils._loadFASTdir(kwargs['fastdir'])
 
-    # Prepare output directorxy and run structural (FAST/FS) estimation
-    if not op.isdir(pvdir):
-        os.mkdir(pvdir)
+    # Redefine FAST CSF
+    GM = nibabel.load(fasts['FAST_GM']).get_fdata()
+    WM = nibabel.load(fasts['FAST_WM']).get_fdata()
+    CSF = 1 - (GM + WM)
+    spc = ImageSpace(fasts['FAST_GM'])
+    spc.saveImage(CSF, fasts['FAST_CSF'])
 
-    fastnames = { t: op.join(pvdir, 'fast', t + '.nii.gz') 
-        for t in TISSUES }
-    if not debug and not kwargs.get('noFAST'): 
-        _estimateStructuralPVs(kwargs['struct'], fastnames)
+    for t, f in fasts.items():
+        outpath = op.join(kwargs['outdir'], t + '.nii.gz')
+        resample(f, kwargs['ref'], outpath, kwargs['struct2ref'])
 
-    if not kwargs.get('noFS'):
-        _runFreeSurfer(kwargs['struct'], pvdir)
+    # Process subcortical structures first. 
+    FIRSTsurfs = fileutils._loadFIRSTdir(kwargs['firstdir'])
+    structures = [ Structure(n, s, 'first', kwargs['struct']) 
+        for n, s in FIRSTsurfs.items() ]
+    print("The following structures will be estimated:", flush=True)
+    [ print(s.name, end=' ') for s in structures ]
+    print('Cortex')
+    desc = ' Subcortical structures'
+    estimator = functools.partial(estimate_structure_wrapper, 
+        **kwargs)
 
-    surfs = pvcore._loadSurfsToDict(op.join(pvdir, 'fs'))
+    results = []
+    if kwargs['cores'] > 1:
+        with multiprocessing.Pool(kwargs['cores']) as p: 
+            for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
+                total=len(structures), desc=desc, 
+                bar_format=toblerone.BAR_FORMAT, ascii=True):
+                    results.append(r)
 
-    # Load struct2func transform, and adjust appropriately
-    struct2ref = np.loadtxt(kwargs['struct2ref'])
-    if kwargs.get('flirt'):
-        print("Adjusting FLIRT matrix")
-        struct2ref = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
-            struct2ref)
+    else: 
+        for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
+            total=len(structures), desc=desc, 
+            bar_format=toblerone.BAR_FORMAT, ascii=True):
+                results.append(r)
 
-    # Prepare intermediate directory and resample FAST / run Toblerone within 
-    intsubcort = op.join(intdir, 'subcort.nii.gz')
-    intctx = op.join(intdir, 'cortex.nii.gz')
-    if not debug:
-        _estimateIntermediatePVs(fastnames, surfs, kwargs['ref'], struct2ref, 
-            (intsubcort, intctx))
+    output = { k: o for (k,o) in zip(FIRSTsurfs.keys(), results) }
 
-    # Merge subcort/cortex estimates in intermediate space
-    outname = pvcore._addSuffixToFilename('_pvs', kwargs['ref'])
-    _mergeCortexAndSubcorticalPVs(intsubcort, intctx, kwargs['ref'], 
-        outname)
+    # Now do the cortex
+    ctx, ctxmask = estimate_cortex(**kwargs)
+    output['cortex'] = ctx 
+    output['cortexmask'] = ctxmask
 
-    print("Saving final output:", outname)
+    # Finally, flatten individual results onto single volume. 
+
+    return output 
+
+
+def stack_images(images):
+
+    images = copy.deepcopy(images)
     
+    ctx = images.pop('cortex')
+    shape = ctx.shape
+    ctx = ctx.reshape(-1,3)
+    out = np.zeros_like(ctx)
+    out[:,2] = 1
+
+    csf = images.pop('FAST_CSF').flatten()
+    wm = images.pop('FAST_WM').flatten()
+    gm = images.pop('FAST_GM').flatten()
+
+    # Method 1
+    mask = np.logical_or(ctx[:,0], ctx[:,1])
+    brain = np.logical_or(mask, csf>0.05)
+    out[mask,:] = ctx[mask,:]
+
+    out[:,2] = np.maximum(csf[:], out[:,2])
+    out[:,1] = np.maximum(0, 1 - np.sum(out[:,0:4:2], axis=1))
+
+    # out[brain,:] = (out[brain,:] / (np.sum(out[brain,:], axis=1)[:,None]))
+    # assert np.all(np.abs(np.sum(out[brain,:], axis=1) - 1) < 1e-6)
+
+    for s in images.values():
+        smask = (s.flatten() > 0)
+        out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
+        out[smask,1] = np.maximum(0, 1 - out[smask,0])
+
+    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
+
+    # Method 2
+    # mask = np.logical_and(wm, gm).flatten()
+    # out[:,2] = csf.flatten() 
+    # for s in images.values():
+    #     out[:,0] = np.minimum(1 - out[:,2], out[:,0] + s.flatten())
+    # out[:,0] = np.minimum(1 - out[:,2], out[:,0] + ctx[:,:,:,0].flatten())
+    # mask = np.logical_and(mask, ctx[:,:,:,1].flatten())
+    # out[:,1][mask] = (1 - np.sum(out, axis=1))[mask]
+    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
+
+    return out.reshape(shape)
+
+
+
+def estimate_structure_wrapper(substruct, **kwargs):
+    return estimate_structure(substruct=substruct, **kwargs)
+
+
+def estimate_structure(**kwargs):
+
+    kwargs = enforce_and_load_common_arguments(**kwargs)
+    # Check we either have a substruct or surfpath
+    if not any([
+        kwargs.get('substruct') is not None, 
+        kwargs.get('surf') is not None]):
+        raise RuntimeError("A path to a surface must be given.")
+
+    # if not kwargs.get('space'):
+    #     raise RuntimeError("Surface coordinate space must be provided (world/first")
+
+    if kwargs.get('substruct') is None:
+        # We will create a struct using the surf path 
+        surfname = op.splitext(op.split(kwargs['surf'])[1])[0]
+        substruct = Structure(surfname, kwargs['surf'], kwargs.get('space'), 
+            kwargs['struct'])
+        
+    else: 
+        substruct = kwargs['substruct']
+
+    refSpace = ImageSpace(kwargs['ref'])
+    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
+
+    overall = np.matmul(refSpace.world2vox, kwargs['struct2ref'])
+    substruct.surf.applyTransform(overall)
+
+    return estimators.structure(refSpace, 1, supersampler, substruct)
+
+
+
+def estimate_cortex(**kwargs):
+
+    """Estimate partial volumes on the cortical ribbon"""
+    kwargs = enforce_and_load_common_arguments(**kwargs)
+    if not any([
+        kwargs.get('FSdir') is not None, 
+        any([ kwargs.get(s) is not None 
+            for s in ['LWS', 'LPS', 'RWS', 'RPS'] ]) ]):
+        raise RuntimeError("Either a FSdir or paths to LWS/LPS etc"
+            "must be given.")
+
+    if not kwargs.get('cores'):
+        kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
+
+    # If subdir given, then get all the surfaces out of the surf dir
+    # If individual surface paths were given they will already be in scope
+    if kwargs.get('FSdir'):
+        surfdict = fileutils._loadSurfsToDict(kwargs['FSdir'])
+        kwargs.update(surfdict)
+
+    # What hemispheres are we working with?
+    sides = []
+    if all([ kwargs.get(s) is not None for s in ['LPS', 'LWS'] ]): 
+        sides.append('L')
+
+    if all([ kwargs.get(s) is not None for s in ['RPS', 'RWS'] ]): 
+        sides.append('R')
+
+    if not sides:
+        raise RuntimeError("At least one hemisphere (eg LWS/LPS required")
+
+    # Load reference ImageSpace object
+    # Form the final transformation matrix to bring the surfaces to 
+    # the same world (mm, not voxel) space as the reference image
+    refSpace = ImageSpace(kwargs['ref'])
+    if kwargs.get('verbose'): 
+        np.set_printoptions(precision=3, suppress=True)
+        print("Final surface-to-reference (world) transformation:\n", 
+            kwargs['struct2ref'])
+
+    # Transforms: surface -> reference -> reference voxels
+    # then calc cross prods 
+    hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
+        for s in sides ]    
+    surfs = [ s for h in hemispheres for s in h.surfs() ]
+    overall = np.matmul(refSpace.world2vox, kwargs['struct2ref'])
+    for s in surfs:
+        s.applyTransform(overall)
+        s.calculateXprods()
+
+    # Set supersampler and estimate. 
+    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
+    outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
+        supersampler, kwargs['cores'])
+
+    return (outPVs, cortexMask)
+
+
+
+def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
+   
+    if flirt:
+        src2ref = pvcore._adjustFLIRT(src, ref, src2ref)
+
+    refSpace = ImageSpace(ref)
+    factor = np.ceil(refSpace.voxSize).astype(np.int8)
+    resamp = pvcore._superResampleImage(src, factor, refSpace, src2ref)
+    refSpace.saveImage(resamp, out)
+
+
+
+
+def enforce_and_load_common_arguments(**kwargs):
+    
+    # Reference image path 
+    if not kwargs.get('ref'):
+        raise RuntimeError("Path to reference image must be given")
+
+    if not op.isfile(kwargs['ref']):
+        raise RuntimeError("Reference image does not exist")
+
+    # Structural to reference transformation. Either as array or path
+    # to file containing matrix
+    if not any([type(kwargs.get('struct2ref')) is str, 
+        type(kwargs.get('struct2ref')) is np.ndarray]):
+        raise RuntimeError("struct2ref transform must be given (either path", 
+            "or np.array object)")
+
+    else:
+        s2r = kwargs['struct2ref']
+
+        if (type(s2r) is str): 
+            if s2r == 'I':
+                matrix = np.identity(4)
+            else:
+                _, matExt = op.splitext(kwargs['struct2ref'])
+
+                try: 
+                    if matExt == '.txt':
+                        matrix = np.loadtxt(kwargs['struct2ref'], 
+                            dtype=np.float32)
+                    elif matExt in ['.npy', 'npz', '.pkl']:
+                        matrix = np.load(kwargs['struct2ref'])
+                    else: 
+                        matrix = np.fromfile(kwargs['struct2ref'], 
+                            dtype=np.float32)
+                except Exception as e:
+                    warnings.warn("""Could not load struct2ref matrix. 
+                        File should be any type valid with numpy.load().""")
+                    raise e 
+
+            kwargs['struct2ref'] = matrix
+
+    if not kwargs['struct2ref'].shape == (4,4):
+        raise RuntimeError("struct2ref must be a 4x4 matrix")
+
+    # If FLIRT transform we need to do some clever preprocessing
+    # We then set the flirt flag to false again (otherwise later steps will 
+    # repeat the tricks and end up reverting to the original - those steps don't
+    # need to know what we did here, simply that it is now world-world again)
+    if kwargs.get('flirt'):
+        if not kwargs.get('struct'):
+            raise RuntimeError("If using a FLIRT transform, the path to the \
+                structural image must also be given")
+        kwargs['struct2ref'] = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
+            kwargs['struct2ref'])
+        kwargs['flirt'] = False 
+
+    if not kwargs.get('cores'):
+        kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
+
+    return kwargs
