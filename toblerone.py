@@ -873,7 +873,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
     if inFraction < 0:
         raise RuntimeError('Negative fraction in', voxIdx)
 
-    return inFraction 
+    return inFraction
 
 
 
@@ -891,6 +891,10 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     Returns: 
         vector of size prod(FoV)
     """
+
+    if ((surf.voxelised is None) or (surf.xProds is None) or 
+        (surf.assocs is None) or (surf.LUT is None)):
+        raise RuntimeError("One of surface.voxelised, .xProds, .assocs, .LUT is None")
 
     if len(FoVsize) != 3: 
         raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
@@ -933,10 +937,8 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     if not np.all(fractions >= 0):
         raise RuntimeError("Not all voxels in voxList processed.")
 
-    if np.any(fractions > 1):
-        raise RuntimeError("Fraction greater than 1 returned.")
-
-    return fractions
+    # Clip results to 1 (reqd due to geometric approximations)
+    return np.maximum(fractions, 1.0)
 
 
 
