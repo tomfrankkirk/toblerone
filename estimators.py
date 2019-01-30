@@ -84,7 +84,7 @@ def cortex(hemispheres, refSpace, supersampler, cores):
         h1, h2 = hemispheres
         outPVs = np.zeros((np.prod(FoVsize), 3), dtype=np.float32)
         outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
-        outPVs[:,1] = np.minimum(1.0 - outPVs[:,0], \
+        outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
             h1.PVs[:,1] + h2.PVs[:,1])
         outPVs[:,2] = 1.0 - np.sum(outPVs[:,0:2], axis=1)
 
