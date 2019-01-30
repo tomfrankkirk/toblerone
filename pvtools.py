@@ -73,6 +73,7 @@ def estimate_all(**kwargs):
     GM = nibabel.load(fasts['FAST_GM']).get_fdata()
     WM = nibabel.load(fasts['FAST_WM']).get_fdata()
     CSF = 1 - (GM + WM)
+    CSF = pvcore._clipArray(CSF)
     spc = ImageSpace(fasts['FAST_GM'])
     spc.saveImage(CSF, fasts['FAST_CSF'])
 
@@ -117,57 +118,13 @@ def estimate_all(**kwargs):
     return output 
 
 
-def stack_images(images):
-
-    images = copy.deepcopy(images)
-    
-    ctx = images.pop('cortex')
-    shape = ctx.shape
-    ctx = ctx.reshape(-1,3)
-    out = np.zeros_like(ctx)
-    out[:,2] = 1
-
-    csf = images.pop('FAST_CSF').flatten()
-    wm = images.pop('FAST_WM').flatten()
-    gm = images.pop('FAST_GM').flatten()
-
-    # Method 1
-    mask = np.logical_or(ctx[:,0], ctx[:,1])
-    brain = np.logical_or(mask, csf>0.05)
-    out[mask,:] = ctx[mask,:]
-
-    out[:,2] = np.maximum(csf[:], out[:,2])
-    out[:,1] = np.maximum(0, 1 - np.sum(out[:,0:4:2], axis=1))
-
-    # out[brain,:] = (out[brain,:] / (np.sum(out[brain,:], axis=1)[:,None]))
-    # assert np.all(np.abs(np.sum(out[brain,:], axis=1) - 1) < 1e-6)
-
-    for s in images.values():
-        smask = (s.flatten() > 0)
-        out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
-        out[smask,1] = np.maximum(0, 1 - out[smask,0])
-
-    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
-
-    # Method 2
-    # mask = np.logical_and(wm, gm).flatten()
-    # out[:,2] = csf.flatten() 
-    # for s in images.values():
-    #     out[:,0] = np.minimum(1 - out[:,2], out[:,0] + s.flatten())
-    # out[:,0] = np.minimum(1 - out[:,2], out[:,0] + ctx[:,:,:,0].flatten())
-    # mask = np.logical_and(mask, ctx[:,:,:,1].flatten())
-    # out[:,1][mask] = (1 - np.sum(out, axis=1))[mask]
-    # out = out / (np.maximum(1, np.sum(out, axis=1))[:,None])
-
-    return out.reshape(shape)
-
-
-
 def estimate_structure_wrapper(substruct, **kwargs):
+    """Convenience method for parallel processing"""
     return estimate_structure(substruct=substruct, **kwargs)
 
 
 def estimate_structure(**kwargs):
+    """Estimate PVs for a single structure denoted by a single surface"""
 
     kwargs = enforce_and_load_common_arguments(**kwargs)
     # Check we either have a substruct or surfpath
@@ -197,10 +154,9 @@ def estimate_structure(**kwargs):
     return estimators.structure(refSpace, 1, supersampler, substruct)
 
 
-
 def estimate_cortex(**kwargs):
-
     """Estimate partial volumes on the cortical ribbon"""
+
     kwargs = enforce_and_load_common_arguments(**kwargs)
     if not any([
         kwargs.get('FSdir') is not None, 
@@ -256,8 +212,16 @@ def estimate_cortex(**kwargs):
     return (outPVs, cortexMask)
 
 
-
 def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
+    """Resample an image via upsampling to an intermediate space followed
+    by summation back down to reference space. Wrapper for superResampleImage()
+    
+    Args:
+        src: path to source image 
+        ref: path to reference image, onto which src will be resampled 
+        out: path to save output 
+        src2ref: 4x4 affine transformation between src and ref 
+    """
    
     if flirt:
         src2ref = pvcore._adjustFLIRT(src, ref, src2ref)
@@ -268,9 +232,90 @@ def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
     refSpace.saveImage(resamp, out)
 
 
+def stack_images(images):
+
+    # Copy the dict of images as we are going to make changes and dont want 
+    # to screw up the caller's copy 
+    images = copy.deepcopy(images)
+    
+    # Pop out FAST's estimates  
+    csf = images.pop('FAST_CSF').flatten()
+    wm = images.pop('FAST_WM').flatten()
+    images.pop('FAST_GM')
+
+    # Pop the cortex estimates and initialise output as all CSF
+    ctx = images.pop('cortex')
+    shape = ctx.shape
+    ctx = ctx.reshape(-1,3)
+    out = np.zeros_like(ctx)
+    out[:,2] = 1
+
+    # Then write in Toblerone's filled cortex estimates from the 
+    # cortex inwards 
+    mask = np.logical_or(ctx[:,0], ctx[:,1])
+    out[mask,:] = ctx[mask,:]
+
+    # Overwrite using FAST's CSF estimate. Where FAST has suggested a higher
+    # CSF estimate than currently exists, and the voxel is not within the pure
+    # cortex, accept FAST's estimate. Then update the other tissues estimates
+    # in these voxels in the order GM, then WM. This is because we always have 
+    # higher confidence in a GM estimate than WM. 
+    ctxmask = (ctx[:,0] > 0)
+    updates = np.logical_and(csf > out[:,2], ~ctxmask)
+    tmpwm = out[updates,1]
+    tmpgm = out[updates,0]
+    out[updates,2] = csf[updates]
+    out[updates,0] = np.minimum(tmpgm, 1 - out[updates,2])
+    out[updates,1] = np.minimum(tmpwm, 1 - (out[updates,0] + out[updates,2]))
+
+    # Sanity check: total tissue PV in each vox should sum to 1
+    assert np.all(np.abs(out.sum(1) - 1) < 1e-6)
+
+    # Prepare the WM weights to be used when writing in PVs from subcortical 
+    # structures. Lots of tricks are needed to avoid zero- or small-divisions. 
+    # These are taken from FAST's WM/CSF estimates. 
+    div = pvcore._clipArray(wm+csf)
+    divmask = (div > 0)
+    wmweights = np.zeros_like(wm)
+    wmweights[divmask] = wm[divmask] / div[divmask] 
+    wmweights = pvcore._clipArray(wmweights)
+
+    # For each subcortical structure, create a mask of the voxels which it 
+    # relates to. Write in the PVs as GM
+    for s in images.values():
+        smask = (s.flatten() > 0)
+        out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
+
+        # And then for the remainders, ie, 1-PV, distribute it amongst
+        # WM and CSF in the proportion of these tissue that FAST assigned. 
+        out[smask,1] = np.maximum(0, wmweights[smask] * (1-out[smask,0]))
+        out[smask,2] = np.maximum(0, 1-np.sum(out[smask,0:2], axis=1))
+        
+    # Final sanity check, then rescaling so all voxels sum to unity. 
+    sums = out.sum(1)
+    assert np.all(np.abs(sums - 1) < 1e-6)
+    out = out / sums[:,None]
+
+    return out.reshape(shape)
 
 
 def enforce_and_load_common_arguments(**kwargs):
+    """Enforces and pre-processes common arguments in a kwargs dict
+    that are used across multiple pvtools functions. The following
+    args are handled:
+
+    Args:
+        ref: path to a reference image in which to operate 
+        struct2ref: path to file or 4x4 array representing transformation
+            between structural space (that of the surfaces) and reference. 
+            If given as 'I', identity matrix will be used. 
+        flirt: bool denoting that the struct2ref is a FLIRT transform.
+            This means it requires special treatment  
+        struct: if FLIRT given, then the path to the structural image used
+            for surface generation is required for said special treatment
+        cores: maximum number of cores to parallelise tasks across 
+            (default is N-1)
+    """
     
     # Reference image path 
     if not kwargs.get('ref'):
