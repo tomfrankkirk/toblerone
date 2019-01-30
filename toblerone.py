@@ -938,7 +938,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         raise RuntimeError("Not all voxels in voxList processed.")
 
     # Clip results to 1 (reqd due to geometric approximations)
-    return np.maximum(fractions, 1.0)
+    return np.minimum(fractions, 1.0)
 
 
 
