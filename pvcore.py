@@ -14,6 +14,14 @@ from pvtools.classes import ImageSpace, TISSUES
 from pvtools import fileutils
 
 
+def _clipArray(arr, mini=0.0, maxi=1.0):
+    """Clip array values into [mini, maxi], default [0 1]"""
+
+    arr[arr < mini] = mini 
+    arr[arr > maxi] = maxi 
+    return arr 
+
+
 def _affineTransformPoints(points, affine):
     """Apply affine transformation to set of points.
 
