@@ -1,3 +1,5 @@
+# Core functions and utilities used throughout pvtools
+
 import sys
 import copy
 import itertools
@@ -12,6 +14,9 @@ import scipy.ndimage
 
 from pvtools.classes import ImageSpace, TISSUES
 from pvtools import fileutils
+
+
+BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 
 def _clipArray(arr, mini=0.0, maxi=1.0):
@@ -42,6 +47,10 @@ def _affineTransformPoints(points, affine):
 
 
 def _coordinatesForGrid(ofSize):
+    """Produce N x 3 array of all voxel indices (eg [10, 18, 2]) within
+    a grid of size ofSize, 0-indexed and in integer form. 
+    """
+
     I, J, K = np.unravel_index(np.arange(np.prod(ofSize)), ofSize)
     cents = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
     return cents.astype(np.int32)
@@ -315,6 +324,22 @@ def _estimateIntermediatePVs(subcorts, surfs, reference, struct2ref,
 
 
 def getVoxList(imgSize, FoVoffset, FoVsize):
+    """Single list of linear voxel indices for all voxels lying within 
+    a grid of size imgSize, contained within a potentially larger grid 
+    of size FoVsize, in which the respective origins are shifted by 
+    FoVoffst. 
+
+    Args: 
+        imgSize: the size of the grid for which voxels indices are needed
+        FoVoffset: the offset (3-vector) between voxel [0,0,0] of the grid
+            represented by FoVoffset and voxel [0,0,0] of imgSize. 
+        FoVsize: the size of the (potentially) larger voxel grid within which
+            the smaller grid lies (they are at least the same size)
+
+    Returns: 
+        list of linear voxel indices referenced to the grid FoVsize
+    """
+
     voxSubs = _coordinatesForGrid(imgSize)
     voxSubs = voxSubs + FoVoffset 
     return np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
@@ -323,6 +348,8 @@ def getVoxList(imgSize, FoVoffset, FoVsize):
 
 
 def _shellCommand(cmd):   
+    """Convenience function for calling shell commands"""
+
     try: 
         ret = subprocess.run(cmd, stdout=sys.stdout, stderr=sys.stderr, 
             shell=True)
@@ -335,6 +362,12 @@ def _shellCommand(cmd):
 
 
 def _runFreeSurfer(struct, dir):
+    """Args: 
+        struct: path to structural image 
+        dir: path to directory in which a subject directory entitled
+            'fs' will be created and FS run within
+    """
+
     struct = op.abspath(struct)
     pwd = os.getcwd()
     os.chdir(dir)
@@ -345,6 +378,11 @@ def _runFreeSurfer(struct, dir):
 
 
 def _runFIRST(struct, dir):
+    """Args: 
+        struct: path to structural image 
+        dir: path to directory in which FIRST will be run
+    """
+
     nameroot, _ = fileutils.splitExts(struct)
     struct = op.abspath(struct)
     pwd = os.getcwd()
@@ -356,7 +394,11 @@ def _runFIRST(struct, dir):
 
 
 def _runFAST(struct, dir):
-    nameroot, _ = fileutils.splitExts(struct)
+    """Args: 
+        struct: path to structural image 
+        dir: path to directory in which FAST will be run
+    """
+
     struct = op.abspath(struct)
     pwd = os.getcwd()
     os.chdir(dir)

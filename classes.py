@@ -1,3 +1,21 @@
+# Class definitions for the pvtools module, as follows: 
+# 
+# Structure: a subcortical structure, consisting of a name (ie, 'Thalamus') and 
+#     corresponding surface. 
+# ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and 
+#     inverse, of an image. Used for resampling operations between different 
+#     spaces and also for saving images into said space (eg, save PV estimates 
+#     into the space of an image)
+# Surface: the points and triangles of a surface, and various calculated
+#     properties that are evaluated ahead of time to speed up later operations
+# Hemisphere: a pair of surfaces, used specifically to represent one half 
+#     of the cerebral cortex (referred to as inner and outer surfaces)
+# Patch: a subcalss of Surface, representing a smaller portion of a surface,
+#     used to reduce computational complexity of operations 
+# CommonParser: a subclass of the library ArgumentParser object pre-configured
+#     to parse arguments that are common to many pvtools functions 
+    
+
 import itertools
 import copy 
 import os.path as op
@@ -30,8 +48,19 @@ class Structure(object):
         self.surf = Surface(surfpath, space=space, struct=struct)
 
 
-# Class to contain an images voxel grid, including dimensions and vox2world transforms
 class ImageSpace(object):
+    """The voxel grid of an image, namely: 
+    -imgSize (dimensions)
+    -voxSize (voxel size)
+    -vox2world (voxel to world transformation)
+    -world2voxel (inverse)
+
+    Initialise by specifying a path to the image. 
+
+    Two methods are provided: supersample (produce a super-resolution
+    copy of the current space) and saveImage (save an image array into 
+    the space represented by the calling object)
+    """
 
     def __init__(self, path):
 
@@ -102,7 +131,9 @@ class ImageSpace(object):
 
 
 class Hemisphere(object): 
-    """Class to encapsulate the white and pial surfaces of a hemisphere.
+    """The white and pial surfaces of a hemisphere, and a repository to 
+    store data when calculating tissue PVs from the fractions of each
+    surface
     """
 
     def __init__(self, inpath, outpath, side):
@@ -124,6 +155,14 @@ class Surface(object):
     """Encapsulates a surface's points, triangles and associations data.
     Create either by passing a file path (as below) or use the static class 
     method Surface.manual() to directly pass points and triangles.
+
+    NB before using a surface with the estimateFractions method (the key step
+    in estimating PVs), the surface must:
+    - be transformed into voxel space (surface.applyTransformation())
+    - have formAssociations() called upon it 
+    - have calculateXprods() called upon it 
+    - have the voxelised property set upon it as follows: 
+        surface.voxelised = toblerone.voxelise(FoVsize, surface)
     
     Args: 
         path:   path to file (.gii/.vtk/.white/.pial)
@@ -225,8 +264,9 @@ class Surface(object):
 
 
     def formAssociations(self, FoVsize, cores):
-        """Identify which triangles of a surface each voxel. This reduces the
-        number of tests that must be performed in the main Toblerone algorithm.
+        """Identify which triangles of a surface intersect each voxel. This 
+        reduces the number of operations that need be performed later. The 
+        results will be stored on the surface object (ie, self)
 
         Args: 
             points: p x 3 matrix of surface nodes
@@ -235,8 +275,9 @@ class Surface(object):
                 fully enclose the surface
 
         Returns: 
-            (associations, LUT) tuple of associations (a list of lists) and 
-                a LUT used to index between associations table and vox index. 
+            None, but associations (a list of lists) and LUT (used to index 
+                between the associations list and vox index) are set on the 
+                calling object. 
         """
 
         # Check for negative coordinates: these should have been sripped. 
@@ -346,6 +387,9 @@ class Surface(object):
 
 
     def shiftFoV(self, offset, FoVsize):
+        """Shift the points of this surface by an offset so that it lies 
+        within the FoV given by FoVsize (in voxel coordinates)
+        """
 
         self.points += offset
         if np.any(np.round(self.points.min(axis=0)) < 0):
@@ -378,6 +422,12 @@ class Patch(Surface):
 
 
 class CommonParser(argparse.ArgumentParser):
+    """Preconfigured subclass of ArgumentParser to parse arguments that
+    are common across pvtools functions. To use, instantiate an object, 
+    then call add_argument to add in the arguments unique to the particular
+    function in which it is being used, then finally call parse_args as 
+    normal. 
+    """
 
     def __init__(self):
         super().__init__()
