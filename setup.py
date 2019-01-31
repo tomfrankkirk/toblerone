@@ -10,11 +10,7 @@ from setuptools.extension import Extension
 
 import numpy
 
-Description = """/
-Toblerone: partial volume estimation on the cortical ribbon.
-See readme or run '>py toblerone.py' / '$ python3 toblerone.py' 
-at command line for help
-"""
+Description = ""
 
 extensions = []
 compile_args = []
@@ -31,9 +27,8 @@ elif sys.platform.startswith('darwin'):
 
 # T1 map generation extension
 extensions.append(Extension("ctoblerone",
-                 sources=['ctoblerone.pyx', 
-                          'extern/tribox.c', 
-                          'extern/ctoblerone.c'],
+                 sources=['extern/ctoblerone.pyx', 
+                          'extern/tribox.c'],
                  include_dirs=['extern', numpy.get_include()],
                  language="c", extra_compile_args=compile_args, extra_link_args=link_args))
 
@@ -48,5 +43,5 @@ setup(name='toberone',
       setup_requires=['Cython'],
       install_requires=[],
       ext_modules=cythonize(extensions),
-      packages=['toblerone', 'pvcore', 'pvtools']
+      packages=['pvtools']
 )
