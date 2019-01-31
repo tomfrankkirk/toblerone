@@ -1,3 +1,7 @@
+# Functions to estimate the PVs of the cerebral cortex and subcortical 
+# structures. These are wrappers around the core Toblerone functions 
+# that handle the aggregate various pieces of information into overall results
+
 import functools
 import multiprocessing
 import warnings
@@ -10,8 +14,21 @@ from . import pvcore
 from .classes import Hemisphere, Structure, Surface, Patch
 
 
-
 def cortex(hemispheres, refSpace, supersampler, cores):
+    """Estimate the PVs of the cortex. 
+
+    Args: 
+        hemispheres: a list of Hemisphere objects (one or two), each 
+            containing the appropriate surface objects (in voxel coords)
+        refSpace: an ImageSpace within which PVs are required
+        supersampler: supersampling factor (3-vector) to use for estimation
+        cores: number of processor cores to use
+
+    Returns: 
+        (PVs, mask) arrays of size refSpace.imgSize, containing the PVs
+            themselves and a boolean mask of voxels lying at least
+            partially within the cortex 
+    """
 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
     FoVoffset, FoVsize = toblerone._determineFullFoV(surfs, refSpace)
@@ -35,12 +52,12 @@ def cortex(hemispheres, refSpace, supersampler, cores):
         with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
             for _, r in tqdm.tqdm(enumerate(p.imap(voxelise, surfs)), 
                 total=len(surfs), desc=desc, 
-                bar_format=toblerone.BAR_FORMAT, ascii=True):
+                bar_format=pvcore.BAR_FORMAT, ascii=True):
                 fills.append(r)
 
     else: 
         for idx in tqdm.trange(len(surfs), desc=desc, 
-            bar_format=toblerone.BAR_FORMAT, ascii=True):
+            bar_format=pvcore.BAR_FORMAT, ascii=True):
             fills.append(voxelise(surfs[idx]))
 
     [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
@@ -100,29 +117,43 @@ def cortex(hemispheres, refSpace, supersampler, cores):
 
     # Form the surface mask (3D logical) as any voxel containing GM or 
     # intersecting the cortex (these definitions should always be equivalent)
-    assocsMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
+    ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
     for h in hemispheres:
         for s in h.surfs(): 
-            assocsMask[s.LUT] = True
-    assocsMask[outPVs[:,0] > 0] = True 
+            ctxMask[s.LUT] = True
+    ctxMask[outPVs[:,0] > 0] = True 
 
     # Reshape images back into 4D or 3D images
     outPVs = np.reshape(outPVs, (FoVsize[0], FoVsize[1], \
         FoVsize[2], 3))
-    assocsMask = np.reshape(assocsMask, tuple(FoVsize[0:3]))
+    ctxMask = np.reshape(ctxMask, tuple(FoVsize[0:3]))
 
     # Extract the output within the FoV of the reference image
     outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
         FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
-    assocsMask = assocsMask[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
+    ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
         FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
 
-    return outPVs, assocsMask
+    return outPVs, ctxMask
 
 
 def structure(refSpace, cores, supersampler, struct):
+    """Estimate the PVs of a structure denoted by a single surface. Note
+    that the results should be interpreted simply as "fraction of each 
+    voxel lying within the structure", and it is ambiguous as to what tissue
+    lies outside the structure
+
+    Args: 
+        refSpace: an ImageSpace within which PVs are required
+        cores: number of processor cores to use
+        supersampler: supersampling factor (3-vector) to use for estimation
+        struct: Structure object containing the surface (in voxel coords)
+
+    Returns: 
+        an array of size refSpace.imgSize containing the PVs. 
+    """
 
     surf = struct.surf
     surf.calculateXprods()

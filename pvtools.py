@@ -97,13 +97,13 @@ def estimate_all(**kwargs):
         with multiprocessing.Pool(kwargs['cores']) as p: 
             for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
                 total=len(structures), desc=desc, 
-                bar_format=toblerone.BAR_FORMAT, ascii=True):
+                bar_format=pvcore.BAR_FORMAT, ascii=True):
                     results.append(r)
 
     else: 
         for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
             total=len(structures), desc=desc, 
-            bar_format=toblerone.BAR_FORMAT, ascii=True):
+            bar_format=pvcore.BAR_FORMAT, ascii=True):
                 results.append(r)
 
     output = { k: o for (k,o) in zip(FIRSTsurfs.keys(), results) }
