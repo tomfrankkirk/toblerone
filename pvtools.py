@@ -7,6 +7,7 @@ from concurrent.futures import ProcessPoolExecutor
 import warnings
 import functools
 import copy
+import shutil
 
 import nibabel
 import numpy as np
@@ -19,49 +20,74 @@ from .classes import Surface, CommonParser, STRUCTURES
 from pvtools import estimators 
 from pvtools import fileutils
 
-def estimate_all(**kwargs):
+def make_pvtools_dir(struct, path=None, cores=None):
 
-    kwargs = enforce_and_load_common_arguments(**kwargs)
+    if cores is None: 
+        cores = max([1, multiprocessing.cpu_count() - 1 ])
 
-    if not kwargs.get('outdir'):
-        kwargs['outdir'] = op.join(op.dirname(kwargs['ref']), 'pvtools')
-        fileutils.weak_mkdir(kwargs['outdir'])
+    if path is None: 
+        name = fileutils.splitExts(struct)[0] + '_pvtools'
+        path = op.join(op.dirname(struct), name)
+
+    fileutils.weak_mkdir(path)
+
+    newStruct = op.join(path, 'struct.nii.gz')
+    shutil.copy(struct, newStruct)
 
     # Run first if not given a FS dir
     processes = []
-    if not kwargs.get('FSdir'):
-        kwargs['FSdir'] = op.join(kwargs.get('outdir'), 'fs')
+    FSdir = op.join(path, 'fs')
+    if not op.isdir(FSdir):
         proc = multiprocessing.Process(
             target=pvcore._runFreeSurfer, 
-            args=(kwargs['struct'], kwargs['outdir']))
+            args=(newStruct, path))
         processes.append(proc)
 
     # Run first if not given a first dir
-    if not kwargs.get('firstdir'):
-        kwargs['firstdir'] = op.join(kwargs['outdir'], 'first')
-        fileutils.weak_mkdir(kwargs['firstdir'])
+    firstdir = op.join(path, 'first')
+    if not op.isdir(firstdir):
+        fileutils.weak_mkdir(firstdir)
         proc = multiprocessing.Process(
             target=pvcore._runFIRST, 
-            args=(kwargs['struct'], kwargs['firstdir']))
+            args=(newStruct, firstdir))
         processes.append(proc)
 
     # Run FAST if not given a FAST dir
-    if not kwargs.get('fastdir'):
-        kwargs['fastdir'] = op.join(kwargs['outdir'], 'fast')
-        fileutils.weak_mkdir(kwargs['fastdir'])
+    fastdir = op.join(path, 'fast')
+    if not op.isdir(fastdir):
+        fileutils.weak_mkdir(fastdir)
         proc = multiprocessing.Process(
             target=pvcore._runFAST, 
-            args=(kwargs['struct'], kwargs['fastdir']))
+            args=(newStruct, fastdir))
         processes.append(proc)
 
-    if len(processes) <= kwargs['cores']:
+    if len(processes) <= cores:
         [ p.start() for p in processes ]
         [ p.join() for p in processes ]
     else:
         for p in processes: 
             p.start()
             p.join()
-      
+
+
+
+def estimate_all(**kwargs):
+
+    kwargs = enforce_and_load_common_arguments(**kwargs)
+
+    if not kwargs.get('pvdir'):
+        if not kwargs.get('outdir'):
+            kwargs['outdir'] = op.dirname(kwargs['ref'])
+
+        name = fileutils.splitExts(kwargs['ref'])[0] + '_pvtools'
+        print("Running FreeSurfer, FIRST and FAST inside", name)
+        make_pvtools_dir(kwargs['struct'], kwargs['outdir'],
+            name, kwargs['cores'])
+
+    kwargs['fastdir'] = op.join(kwargs['pvdir'], 'fast')
+    kwargs['firstdir'] = op.join(kwargs['pvdir'], 'first')
+    kwargs['FSdir'] = op.join(kwargs['pvdir'], 'fs')
+
     for kw in ['FSdir', 'firstdir', 'fastdir']:
         print("Using {}: {}".format(kw, kwargs[kw]))
    
@@ -78,7 +104,7 @@ def estimate_all(**kwargs):
     spc.saveImage(CSF, fasts['FAST_CSF'])
 
     for t, f in fasts.items():
-        outpath = op.join(kwargs['outdir'], t + '.nii.gz')
+        outpath = op.join(kwargs['pvdir'], t + '.nii.gz')
         resample(f, kwargs['ref'], outpath, kwargs['struct2ref'])
 
     # Process subcortical structures first. 
@@ -108,12 +134,11 @@ def estimate_all(**kwargs):
 
     output = { k: o for (k,o) in zip(FIRSTsurfs.keys(), results) }
 
-    # Now do the cortex
+    # Now do the cortex, then stack the whole lot 
     ctx, ctxmask = estimate_cortex(**kwargs)
     output['cortex'] = ctx 
     output['cortexmask'] = ctxmask
-
-    # Finally, flatten individual results onto single volume. 
+    output['all'] = stack_images(output)
 
     return output 
 
