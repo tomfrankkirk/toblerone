@@ -140,10 +140,6 @@ def estimate_all_cmd(*args):
     parser.add_argument('-bet', type=str, required=False)
     kwargs = parser.parse(args)
 
-    if not kwargs.get('outdir'):
-        kwargs['outdir'] = op.join(op.dirname(kwargs['ref']), 'pvtools')
-    fileutils.weak_mkdir(kwargs['outdir'])
-
     output = pvtools.estimate_all(**kwargs)
 
     # Save each individual output. 
