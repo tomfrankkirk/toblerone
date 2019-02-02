@@ -60,64 +60,88 @@ def voxelise(imgSize, surface):
             surface. Use reshape(imgSize) as required. 
     """
 
-    # Test along the largest dim possible to minimise number of loops
-    # We loop over the other two dims 
-    dim = np.argmax(imgSize)
-
     try: 
 
+        # Project rays along the largest dimension to classify as many voxels
+        # at once as we can 
+        dim = np.argmax(imgSize)
         mask = np.zeros(np.prod(imgSize), dtype=bool)
-        otherDims = [ (dim+1)%3, (dim+2)%3 ]
+        otherdims = [0,1,2]; 
+        otherdims.remove(dim)
+        d1, d2 = tuple(otherdims)
         startPoint = np.zeros(3, dtype=np.float32)
 
-        for (d1,d2) in itertools.product(
-            range(imgSize[otherDims[0]]), range(imgSize[otherDims[1]])):
 
-            # Defined the start/end of the ray and gather all 
-            # linear indices of voxels along the ray
-            IJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
-            IJK[:,dim] = np.arange(0, imgSize[dim])
-            IJK[:,otherDims[0]] = d1
-            IJK[:,otherDims[1]] = d2
-            startPoint[otherDims] = [d1, d2]
-            voxRange = np.ravel_multi_index((IJK[:,0], IJK[:,1], IJK[:,2]), 
-                imgSize)
+        # The lazy way of working out strides through the voxel grid, 
+        # regardless of what dimension we are projecting rays along. Define
+        # a single ray of voxels, convert to linear indices and calculate 
+        # the stride from that. 
+        allIJKs = np.vstack(np.unravel_index(surface.LUT, imgSize)).T
+        rayIJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
+        rayIJK[:,dim] = np.arange(0, imgSize[dim])
+        rayIJK[:,d1] = allIJKs[0,d1]
+        rayIJK[:,d2] = allIJKs[0,d2]
+        linearInds = np.ravel_multi_index((rayIJK[:,0], rayIJK[:,1], 
+            rayIJK[:,2]), imgSize)
+        stride = linearInds[1] - linearInds[0]
 
-            # Find all associated triangles lying along this ray
-            # and test for intersection
+        # We now cycle through each voxel in the LUT, check which ray it 
+        # lies on, calculate the indices of all other voxels on this ray, 
+        # load the surface patches for all these voxels and find ray 
+        # intersections to classify the voxel centres. Finally, we remove
+        # the entire set of ray voxels from our copy of the LUT to whittle
+        # it down slowly. 
+        LUT = copy.deepcopy(surface.LUT)
+        while LUT.size: 
+
+            # Where does the ray that passes through this voxel start?
+            # Load all other voxels on this ray
+            startPoint[[d1,d2]] = [allIJKs[0,d1], allIJKs[0,d2]]
+            startInd = np.ravel_multi_index(startPoint.astype(np.int32), imgSize)
+            voxRange = np.arange(startInd, startInd + (imgSize[dim])*stride, 
+                stride)
+            assert voxRange.size == imgSize[dim], 'Incorrect voxRange size'
+
+            # Check to see which are present in the LUT / allIJKs arrays, 
+            # remove them 
+            remove = np.in1d(LUT, voxRange)
+            LUT = LUT[~remove]
+            allIJKs = allIJKs[~remove,:]
+            
+            # Load patches along this ray, we can assert that at least 
+            # one patch must be returned. Find intersections 
             patches = surface.toPatchesForVoxels(voxRange)
+            assert patches is not None, 'No patches returned for voxel in LUT'
+            intersectionMus = _findRayTriangleIntersections2D(startPoint, \
+                patches, dim)
 
-            if patches is not None:
-                intersectionMus = _findRayTriangleIntersections2D(startPoint, \
-                    patches, dim)
+            if not intersectionMus.shape[0]:
+                continue
+            
+            # If intersections were found, perform a parity test. 
+            # Any ray should make an even number of intersections
+            # as it crosses from -ve to +ve infinity
+            if (intersectionMus.shape[0] % 2):
+                raise RuntimeError("fillSurfaceAlongDimension: \
+                    odd number of intersections found. Does the FoV \
+                    cover the full extents of the surface?")
 
-                if not intersectionMus.shape[0]:
-                    continue
-                
-                # If intersections were found, perform a parity test. 
-                # Any ray should make an even number of intersections
-                # as it crosses from -ve to +ve infinity
-                if (intersectionMus.shape[0] % 2):
-                    raise RuntimeError("fillSurfaceAlongDimension: \
-                        odd number of intersections found. Does the FoV \
-                        cover the full extents of the surface?")
+            # Calculate points of intersection along the ray. 
+            sorted = np.argsort(intersectionMus)
+            intDs = startPoint[dim] + (intersectionMus[sorted])
 
-                # Calculate points of intersection along the ray
-                sorted = np.argsort(intersectionMus)
-                intDs = startPoint[dim] + (intersectionMus[sorted])
+            # Assignment. All voxels before the first point of intersection
+            # are outside. The mask is already zeroed for these. All voxels
+            # between point 1 and n could be in or out depending on parity
+            for i in range(1, len(sorted)+1):
 
-                # Assignment. All voxels before the first point of intersection
-                # are outside. The mask is already zeroed for these. All voxels
-                # between point 1 and n could be in or out depending on parity
-                for i in range(1, len(sorted)+1):
-
-                    # Starting from infinity, all points between an odd numbered
-                    # intersection and the next even one are inside the mask 
-                    # Points beyond the last intersection are outside the mask
-                    if ((i % 2) & ((i+1) <= len(sorted))):
-                        indices = ((IJK[:,dim] > intDs[i-1]) 
-                            & (IJK[:,dim] < intDs[i]))
-                        mask[voxRange[indices]] = 1
+                # Starting from infinity, all points between an odd numbered
+                # intersection and the next even one are inside the mask 
+                # Points beyond the last intersection are outside the mask
+                if ((i % 2) & ((i+1) <= len(sorted))):
+                    indices = ((rayIJK[:,dim] > intDs[i-1]) 
+                        & (rayIJK[:,dim] < intDs[i]))
+                    mask[voxRange[indices]] = 1
 
         return mask
 
