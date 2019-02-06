@@ -157,7 +157,7 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
 
     # Interpolate. 
     out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.imgSize, mode='constant', order=3)
+        output_shape=destSpace.imgSize, mode='constant', order=4)
 
     # Due to the spline interpolants, the resampled output can go outside
     # the original min,max of the input data 
@@ -372,7 +372,8 @@ def _runFreeSurfer(struct, dir):
     pwd = os.getcwd()
     os.chdir(dir)
     cmd = 'recon-all -i {} -all -subjid fs -sd .'.format(struct)
-    print("Preparing to call FreeSurfer: this will take ~10 hours\n")
+    print("Calling FreeSurfer on", struct)
+    print("This will take ~10 hours")
     _shellCommand(cmd)
     os.chdir(pwd)
 
@@ -383,12 +384,13 @@ def _runFIRST(struct, dir):
         dir: path to directory in which FIRST will be run
     """
 
+    fileutils.weak_mkdir(dir)
     nameroot, _ = fileutils.splitExts(struct)
     struct = op.abspath(struct)
     pwd = os.getcwd()
     os.chdir(dir)
     cmd = 'run_first_all -i {} -o {}'.format(struct, nameroot)
-    print("Preparing to call FIRST\n")
+    print("Calling FIRST on", struct)
     _shellCommand(cmd)
     os.chdir(pwd)
 
@@ -399,10 +401,13 @@ def _runFAST(struct, dir):
         dir: path to directory in which FAST will be run
     """
 
+    fileutils.weak_mkdir(dir)
     struct = op.abspath(struct)
     pwd = os.getcwd()
+    newstruct = op.abspath(op.join(dir, op.split(struct)[1]))
+    shutil.copy(struct, newstruct)
     os.chdir(dir)
-    cmd = 'fast {}'.format(struct)
-    print("Preparing to call FAST\n")
+    cmd = 'fast {}'.format(newstruct)
+    print("Calling FAST on", struct)
     _shellCommand(cmd)
     os.chdir(pwd)
