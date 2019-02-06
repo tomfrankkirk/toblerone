@@ -66,7 +66,7 @@ def voxelise(imgSize, surface):
         # at once as we can 
         dim = np.argmax(imgSize)
         mask = np.zeros(np.prod(imgSize), dtype=bool)
-        otherdims = [0,1,2]; 
+        otherdims = [0,1,2]
         otherdims.remove(dim)
         d1, d2 = tuple(otherdims)
         startPoint = np.zeros(3, dtype=np.float32)
