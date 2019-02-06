@@ -3,11 +3,11 @@ import os.path as op
 import argparse
 import itertools
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
 import warnings
 import functools
 import copy
 import shutil
+import time 
 
 import nibabel
 import numpy as np
@@ -20,7 +20,116 @@ from .classes import Surface, CommonParser, STRUCTURES
 from pvtools import estimators 
 from pvtools import fileutils
 
-def make_pvtools_dir(struct, path=None, cores=None):
+
+# Simply apply a function to list of arguments.
+# Used for multiprocessing shell commands. 
+def apply_func(func, args):
+    func(*args)
+
+
+def timer(func):
+    """Timing decorator, prints duration in minutes"""
+
+    def timed_function(*args, **kwargs):
+        t1 = time.time()
+        out = func(*args, **kwargs)
+        t2 = time.time()
+        print("Elapsed time: %.1f minutes" % ((t2-t1)//60))
+        return out 
+    
+    return timed_function
+
+
+def enforce_and_load_common_arguments(func):
+    """Decorator to enforce and pre-processes common arguments in a 
+    kwargs dict that are used across multiple pvtools functions. Note
+    some function-specific checking is still required. This intercepts the
+    kwargs dict passed to the caller, does some checking and modification 
+    in place, and then returns to the caller. The following args are handled:
+
+    Args:
+        ref: path to a reference image in which to operate 
+        struct2ref: path to file or 4x4 array representing transformation
+            between structural space (that of the surfaces) and reference. 
+            If given as 'I', identity matrix will be used. 
+        flirt: bool denoting that the struct2ref is a FLIRT transform.
+            This means it requires special treatment. If set, then it will be
+            pre-processed in place by this function, and then the flag will 
+            be set back to false when the kwargs dict is returned to the caller
+        struct: if FLIRT given, then the path to the structural image used
+            for surface generation is required for said special treatment
+        cores: maximum number of cores to parallelise tasks across 
+            (default is N-1)
+    """
+    
+    def enforcer(**kwargs):
+        # Reference image path 
+        if not kwargs.get('ref'):
+            raise RuntimeError("Path to reference image must be given")
+
+        if not op.isfile(kwargs['ref']):
+            raise RuntimeError("Reference image does not exist")
+
+        # Structural to reference transformation. Either as array or path
+        # to file containing matrix
+        if not any([type(kwargs.get('struct2ref')) is str, 
+            type(kwargs.get('struct2ref')) is np.ndarray]):
+            raise RuntimeError("struct2ref transform must be given (either path", 
+                "or np.array object)")
+
+        else:
+            s2r = kwargs['struct2ref']
+
+            if (type(s2r) is str): 
+                if s2r == 'I':
+                    matrix = np.identity(4)
+                else:
+                    _, matExt = op.splitext(kwargs['struct2ref'])
+
+                    try: 
+                        if matExt == '.txt':
+                            matrix = np.loadtxt(kwargs['struct2ref'], 
+                                dtype=np.float32)
+                        elif matExt in ['.npy', 'npz', '.pkl']:
+                            matrix = np.load(kwargs['struct2ref'])
+                        else: 
+                            matrix = np.fromfile(kwargs['struct2ref'], 
+                                dtype=np.float32)
+                    except Exception as e:
+                        warnings.warn("""Could not load struct2ref matrix. 
+                            File should be any type valid with numpy.load().""")
+                        raise e 
+
+                kwargs['struct2ref'] = matrix
+
+        if not kwargs['struct2ref'].shape == (4,4):
+            raise RuntimeError("struct2ref must be a 4x4 matrix")
+
+        # If FLIRT transform we need to do some clever preprocessing
+        # We then set the flirt flag to false again (otherwise later steps will 
+        # repeat the tricks and end up reverting to the original - those steps don't
+        # need to know what we did here, simply that it is now world-world again)
+        if kwargs.get('flirt'):
+            if not kwargs.get('struct'):
+                raise RuntimeError("If using a FLIRT transform, the path to the \
+                    structural image must also be given")
+            kwargs['struct2ref'] = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
+                kwargs['struct2ref'])
+            kwargs['flirt'] = False 
+
+        if not kwargs.get('cores'):
+            kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
+
+        return kwargs
+
+    def enforced(**kwargs):
+        kwargs = enforcer(**kwargs)
+        return func(**kwargs)
+
+    return enforced
+
+
+def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
 
     if cores is None: 
         cores = max([1, multiprocessing.cpu_count() - 1 ])
@@ -30,83 +139,68 @@ def make_pvtools_dir(struct, path=None, cores=None):
         path = op.join(op.dirname(struct), name)
 
     fileutils.weak_mkdir(path)
-
-    newStruct = op.join(path, 'struct.nii.gz')
-    shutil.copy(struct, newStruct)
+    structcopy = op.join(path, 'struct.nii.gz')
+    structbraincopy = op.join(path, 'struct_brain.nii.gz')
+    for o,p in zip([struct, struct_brain], [structcopy, structbraincopy]):
+        shutil.copy(o,p)
 
     # Run first if not given a FS dir
     processes = []
-    FSdir = op.join(path, 'fs')
-    if not op.isdir(FSdir):
-        proc = multiprocessing.Process(
-            target=pvcore._runFreeSurfer, 
-            args=(newStruct, path))
-        processes.append(proc)
+    fsdir = op.join(path, 'fs')
+    if not op.isdir(fsdir):
+        processes.append([pvcore._runFreeSurfer, (structcopy, path)])
 
     # Run first if not given a first dir
     firstdir = op.join(path, 'first')
     if not op.isdir(firstdir):
-        fileutils.weak_mkdir(firstdir)
-        proc = multiprocessing.Process(
-            target=pvcore._runFIRST, 
-            args=(newStruct, firstdir))
-        processes.append(proc)
+        processes.append([pvcore._runFIRST, (structcopy, firstdir)])
 
     # Run FAST if not given a FAST dir
     fastdir = op.join(path, 'fast')
     if not op.isdir(fastdir):
-        fileutils.weak_mkdir(fastdir)
-        proc = multiprocessing.Process(
-            target=pvcore._runFAST, 
-            args=(newStruct, fastdir))
-        processes.append(proc)
+        processes.append([pvcore._runFAST, (structbraincopy, fastdir)])
 
-    if len(processes) <= cores:
-        [ p.start() for p in processes ]
-        [ p.join() for p in processes ]
+    if cores > 1:
+        with multiprocessing.Pool(cores) as p: 
+            p.starmap(apply_func, processes)
     else:
-        for p in processes: 
-            p.start()
-            p.join()
+        for f, args in processes: 
+            f(*args)
 
 
-
+@timer
+@enforce_and_load_common_arguments
 def estimate_all(**kwargs):
 
-    kwargs = enforce_and_load_common_arguments(**kwargs)
+    # If not provided with a pvdir, then create 
+    if kwargs.get('pvdir') is None:
+        name = fileutils.splitExts(kwargs['struct'])[0] + '_pvtools'
+        path = op.join(op.dirname(kwargs['struct']), name)
+        print("Preparing a pvtools directory at", path)
+        make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
+            path, kwargs['cores'])
 
-    if not kwargs.get('pvdir'):
-        if not kwargs.get('outdir'):
-            kwargs['outdir'] = op.dirname(kwargs['ref'])
+    # If provided with a non-existent path as the pvdir, then create
+    # one at this location
+    elif ((type(kwargs['pvdir']) is str) and 
+        not (fileutils._check_pvdir(kwargs['pvdir']))):
+        print("Preparing a pvtools directory at", kwargs['pvdir'])
+        make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
+            path, kwargs['cores'])
 
-        name = fileutils.splitExts(kwargs['ref'])[0] + '_pvtools'
-        print("Running FreeSurfer, FIRST and FAST inside", name)
-        make_pvtools_dir(kwargs['struct'], kwargs['outdir'],
-            name, kwargs['cores'])
-
-    kwargs['fastdir'] = op.join(kwargs['pvdir'], 'fast')
-    kwargs['firstdir'] = op.join(kwargs['pvdir'], 'first')
-    kwargs['FSdir'] = op.join(kwargs['pvdir'], 'fs')
-
-    for kw in ['FSdir', 'firstdir', 'fastdir']:
-        print("Using {}: {}".format(kw, kwargs[kw]))
+    # We should now have a complete pvdir
+    assert fileutils._check_pvdir(kwargs['pvdir'])
+    for k in ['fast', 'fs', 'first']:
+        key = k + 'dir'
+        kwargs[key] = op.join(kwargs['pvdir'], k)
+        print("Using {}: {}".format(key, kwargs[key]))
    
-
-    # Resample FASTs to reference space. 
+    # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = fileutils._loadFASTdir(kwargs['fastdir'])
-
-    # Redefine FAST CSF
-    GM = nibabel.load(fasts['FAST_GM']).get_fdata()
-    WM = nibabel.load(fasts['FAST_WM']).get_fdata()
-    CSF = 1 - (GM + WM)
-    CSF = pvcore._clipArray(CSF)
-    spc = ImageSpace(fasts['FAST_GM'])
-    spc.saveImage(CSF, fasts['FAST_CSF'])
-
-    for t, f in fasts.items():
-        outpath = op.join(kwargs['pvdir'], t + '.nii.gz')
-        resample(f, kwargs['ref'], outpath, kwargs['struct2ref'])
-
+    output = { t: resample(fasts[t], kwargs['ref'], kwargs['struct2ref'])
+        for t in ['FAST_WM', 'FAST_GM'] } 
+    output['FAST_CSF'] = 1 - (output['FAST_WM'] + output['FAST_GM'])
+        
     # Process subcortical structures first. 
     FIRSTsurfs = fileutils._loadFIRSTdir(kwargs['firstdir'])
     structures = [ Structure(n, s, 'first', kwargs['struct']) 
@@ -132,7 +226,7 @@ def estimate_all(**kwargs):
             bar_format=pvcore.BAR_FORMAT, ascii=True):
                 results.append(r)
 
-    output = { k: o for (k,o) in zip(FIRSTsurfs.keys(), results) }
+    output.update({ k: o for (k,o) in zip(FIRSTsurfs.keys(), results) })
 
     # Now do the cortex, then stack the whole lot 
     ctx, ctxmask = estimate_cortex(**kwargs)
@@ -148,18 +242,15 @@ def estimate_structure_wrapper(substruct, **kwargs):
     return estimate_structure(substruct=substruct, **kwargs)
 
 
+@enforce_and_load_common_arguments
 def estimate_structure(**kwargs):
     """Estimate PVs for a single structure denoted by a single surface"""
 
-    kwargs = enforce_and_load_common_arguments(**kwargs)
     # Check we either have a substruct or surfpath
     if not any([
         kwargs.get('substruct') is not None, 
         kwargs.get('surf') is not None]):
         raise RuntimeError("A path to a surface must be given.")
-
-    # if not kwargs.get('space'):
-    #     raise RuntimeError("Surface coordinate space must be provided (world/first")
 
     if kwargs.get('substruct') is None:
         # We will create a struct using the surf path 
@@ -171,23 +262,22 @@ def estimate_structure(**kwargs):
         substruct = kwargs['substruct']
 
     refSpace = ImageSpace(kwargs['ref'])
-    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
-
+    supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
     overall = np.matmul(refSpace.world2vox, kwargs['struct2ref'])
     substruct.surf.applyTransform(overall)
 
     return estimators.structure(refSpace, 1, supersampler, substruct)
 
 
+@enforce_and_load_common_arguments
 def estimate_cortex(**kwargs):
     """Estimate partial volumes on the cortical ribbon"""
 
-    kwargs = enforce_and_load_common_arguments(**kwargs)
     if not any([
-        kwargs.get('FSdir') is not None, 
+        kwargs.get('fsdir') is not None, 
         any([ kwargs.get(s) is not None 
             for s in ['LWS', 'LPS', 'RWS', 'RPS'] ]) ]):
-        raise RuntimeError("Either a FSdir or paths to LWS/LPS etc"
+        raise RuntimeError("Either a fsdir or paths to LWS/LPS etc"
             "must be given.")
 
     if not kwargs.get('cores'):
@@ -195,8 +285,8 @@ def estimate_cortex(**kwargs):
 
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
-    if kwargs.get('FSdir'):
-        surfdict = fileutils._loadSurfsToDict(kwargs['FSdir'])
+    if kwargs.get('fsdir'):
+        surfdict = fileutils._loadSurfsToDict(kwargs['fsdir'])
         kwargs.update(surfdict)
 
     # What hemispheres are we working with?
@@ -230,14 +320,14 @@ def estimate_cortex(**kwargs):
         s.calculateXprods()
 
     # Set supersampler and estimate. 
-    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
+    supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
     outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
         supersampler, kwargs['cores'])
 
     return (outPVs, cortexMask)
 
 
-def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
+def resample(src, ref, src2ref=np.identity(4), flirt=False):
     """Resample an image via upsampling to an intermediate space followed
     by summation back down to reference space. Wrapper for superResampleImage()
     
@@ -253,15 +343,14 @@ def resample(src, ref, out, src2ref=np.identity(4), flirt=False):
 
     refSpace = ImageSpace(ref)
     factor = np.ceil(refSpace.voxSize).astype(np.int8)
-    resamp = pvcore._superResampleImage(src, factor, refSpace, src2ref)
-    refSpace.saveImage(resamp, out)
+    return pvcore._superResampleImage(src, factor, refSpace, src2ref)
 
 
 def stack_images(images):
 
     # Copy the dict of images as we are going to make changes and dont want 
-    # to screw up the caller's copy 
-    images = copy.deepcopy(images)
+    # to play with the caller's copy 
+    images = copy.copy(images)
     
     # Pop out FAST's estimates  
     csf = images.pop('FAST_CSF').flatten()
@@ -322,81 +411,3 @@ def stack_images(images):
     out = out / sums[:,None]
 
     return out.reshape(shape)
-
-
-def enforce_and_load_common_arguments(**kwargs):
-    """Enforces and pre-processes common arguments in a kwargs dict
-    that are used across multiple pvtools functions. The following
-    args are handled:
-
-    Args:
-        ref: path to a reference image in which to operate 
-        struct2ref: path to file or 4x4 array representing transformation
-            between structural space (that of the surfaces) and reference. 
-            If given as 'I', identity matrix will be used. 
-        flirt: bool denoting that the struct2ref is a FLIRT transform.
-            This means it requires special treatment  
-        struct: if FLIRT given, then the path to the structural image used
-            for surface generation is required for said special treatment
-        cores: maximum number of cores to parallelise tasks across 
-            (default is N-1)
-    """
-    
-    # Reference image path 
-    if not kwargs.get('ref'):
-        raise RuntimeError("Path to reference image must be given")
-
-    if not op.isfile(kwargs['ref']):
-        raise RuntimeError("Reference image does not exist")
-
-    # Structural to reference transformation. Either as array or path
-    # to file containing matrix
-    if not any([type(kwargs.get('struct2ref')) is str, 
-        type(kwargs.get('struct2ref')) is np.ndarray]):
-        raise RuntimeError("struct2ref transform must be given (either path", 
-            "or np.array object)")
-
-    else:
-        s2r = kwargs['struct2ref']
-
-        if (type(s2r) is str): 
-            if s2r == 'I':
-                matrix = np.identity(4)
-            else:
-                _, matExt = op.splitext(kwargs['struct2ref'])
-
-                try: 
-                    if matExt == '.txt':
-                        matrix = np.loadtxt(kwargs['struct2ref'], 
-                            dtype=np.float32)
-                    elif matExt in ['.npy', 'npz', '.pkl']:
-                        matrix = np.load(kwargs['struct2ref'])
-                    else: 
-                        matrix = np.fromfile(kwargs['struct2ref'], 
-                            dtype=np.float32)
-                except Exception as e:
-                    warnings.warn("""Could not load struct2ref matrix. 
-                        File should be any type valid with numpy.load().""")
-                    raise e 
-
-            kwargs['struct2ref'] = matrix
-
-    if not kwargs['struct2ref'].shape == (4,4):
-        raise RuntimeError("struct2ref must be a 4x4 matrix")
-
-    # If FLIRT transform we need to do some clever preprocessing
-    # We then set the flirt flag to false again (otherwise later steps will 
-    # repeat the tricks and end up reverting to the original - those steps don't
-    # need to know what we did here, simply that it is now world-world again)
-    if kwargs.get('flirt'):
-        if not kwargs.get('struct'):
-            raise RuntimeError("If using a FLIRT transform, the path to the \
-                structural image must also be given")
-        kwargs['struct2ref'] = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
-            kwargs['struct2ref'])
-        kwargs['flirt'] = False 
-
-    if not kwargs.get('cores'):
-        kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
-
-    return kwargs
