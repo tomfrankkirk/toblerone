@@ -7,6 +7,17 @@ import glob
 
 from .classes import STRUCTURES
 
+
+def _check_pvdir(pvdir):
+    for d in ['fast', 'fs', 'first']:
+        p = op.join(pvdir, d)
+        if not op.isdir(p):
+            print("pvdir is not complete (missing %s)" % p)
+            return False
+
+    return True
+
+
 def _loadFIRSTdir(dir):
     """Load surface paths from a FIRST directory into a dict, accessed by the
     standard keys used by FIRST (eg 'BrStem'). The function will attempt to 
@@ -58,12 +69,12 @@ def _loadFASTdir(dir):
     return paths
 
 
-def _loadSurfsToDict(FSdir):
+def _loadSurfsToDict(fsdir):
     """Load the left/right white/pial surface paths from a FS directory into 
     a dictionary, accessed by the keys LWS/LPS/RPS/RWS
     """
 
-    sdir = op.realpath(op.join(FSdir, 'surf'))
+    sdir = op.realpath(op.join(fsdir, 'surf'))
 
     if not op.isdir(sdir):
         raise RuntimeError("Subject's surf directory does not exist")
@@ -80,11 +91,44 @@ def _loadSurfsToDict(FSdir):
     return surfs
 
 
+def default_output_path(dir, fname, suffix='', ext=True):
+    """Produce a default path from a dir, filename, optionally adding
+    a suffix and preserving extensions. 
+
+    Args: 
+        dir: directory to serve as path root
+        fname: file for the basename, eg file1.txt -> file1
+        suffix: to add onto the file eg _suff -> file1_suff
+        ext: bool, preserve the extension of the fname 
+
+    Returns: 
+        path
+    """
+    
+    if op.isfile(dir):
+        dir = op.dirname(dir)
+    fname = op.split(fname)[1]
+    fname, fexts = splitExts(fname)
+    name = _addSuffixToFilename(suffix, fname)
+    out = op.join(dir, name)
+    if ext:
+        out = out + fexts 
+    return out 
+
+
 def _addSuffixToFilename(suffix, fname):
     """Add suffix to filename, whilst preserving original extension, eg:
     'file.ext1.ext2' + '_suffix' -> 'file_suffix.ext1.ext2'"""
+    head = op.split(fname)[0]
     fname, ext = splitExts(fname)   
-    return fname + suffix + ext 
+    return op.join(head, fname + suffix + ext)
+
+def _addPrefixToFilename(prefix, fname):
+    """Add prefix to filename, whilst preserving original extension, eg:
+    'prefix_' + file.ext1.ext2' -> 'prefix_file_suffix.ext1.ext2'"""
+    head = op.split(fname)[0]
+    fname, ext = splitExts(fname)   
+    return op.join(head, prefix + fname + ext)
 
 
 def splitExts(fname):
