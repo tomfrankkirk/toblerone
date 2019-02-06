@@ -65,7 +65,7 @@ class ImageSpace(object):
     def __init__(self, path):
 
         if not op.isfile(path):
-            raise RuntimeError("Image does not exist")
+            raise RuntimeError("Image %s does not exist" % path)
 
         img = nibabel.load(path)
         self.imgSize = img.header['dim'][1:4]
@@ -435,8 +435,6 @@ class CommonParser(argparse.ArgumentParser):
         self.add_argument('-struct2ref', type=str, required=True) 
         self.add_argument('-flirt', action='store_true')
         self.add_argument('-struct', type=str, required=False)
-        self.add_argument('-outdir', type=str, required=False)
-        self.add_argument('-name', type=str, required=False)
         self.add_argument('-cores', type=int, required=False)
 
 
