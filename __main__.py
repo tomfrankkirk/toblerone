@@ -9,6 +9,47 @@ from . import pvtools
 from .classes import ImageSpace, CommonParser
 from . import fileutils
 
+def estimate_cortex_cmd(*args):
+
+    # Parse the common arguments and store as kwargs
+    # Then run the parser specific to this function and add those in
+    parser = CommonParser()
+    parser.add_argument('-out', type=str, required=False)
+    parser.add_argument('-fsdir', type=str, required=False)
+    parser.add_argument('-LWS', type=str, required=False)
+    parser.add_argument('-LPS', type=str, required=False)
+    parser.add_argument('-RWS', type=str, required=False)        
+    parser.add_argument('-RPS', type=str, required=False)
+    parser.add_argument('-hard', action='store_true')
+    parser.add_argument('-nostack', action='store_true', required=False)
+    parser.add_argument('-saveassocs', action='store_true', required=False)
+    kwargs = parser.parse(args)
+
+    # Preparation
+    if not kwargs.get('out'):
+        kwargs['out'] = fileutils.default_output_path(kwargs['ref'], 
+            kwargs['ref'])
+
+    outPath = fileutils._addSuffixToFilename('_cortex_pvs', kwargs['out'])
+    maskPath = fileutils._addSuffixToFilename('_cortexmask', kwargs['out'])
+
+    # Estimation
+    PVs, mask = pvtools.estimate_cortex(**kwargs)
+
+    # Output
+    refSpace = ImageSpace(kwargs['ref'])
+    if not kwargs.get('nosave'):
+        print("Saving output to", kwargs['outdir'])
+        refSpace.saveImage(mask, maskPath)
+
+        if kwargs.get('nostack'):
+            for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
+                refSpace.saveImage(PVs[:,:,:,i], 
+                    fileutils._addSuffixToFilename(t, outPath))
+        else:
+            refSpace.saveImage(PVs, outPath)
+
+
 def resample_cmd(*args):
 
     parser = CommonParser()
@@ -31,76 +72,6 @@ def resample_cmd(*args):
     pvtools.resample(**kwargs)
 
 
-def estimate_cortex_cmd(*args):
-
-    # Parse the common arguments and store as kwargs
-    # Then run the parser specific to this function and add those in
-    parser = CommonParser()
-    parser.add_argument('-LWS', type=str, required=False)
-    parser.add_argument('-LPS', type=str, required=False)
-    parser.add_argument('-RWS', type=str, required=False)        
-    parser.add_argument('-RPS', type=str, required=False)
-    parser.add_argument('-hard', action='store_true')
-    parser.add_argument('-nostack', action='store_true', required=False)
-    parser.add_argument('-saveassocs', action='store_true', required=False)
-    kwargs = parser.parse(args)
-
-    # Preparation
-
-    inExt = op.splitext(kwargs['ref'])[-1]
-    if not inExt in [".nii", ".gz", ".mgh", ".mgz"]:
-        raise RuntimeError("Reference must be in the \
-        following formats: nii, nii.gz, mgh, mgz")
-
-    if '.nii.gz' in kwargs['ref']:
-        inExt = '.nii.gz'
-
-    # Prepare output directory. Default to same as ref image
-    if kwargs.get('outdir'):
-        if not op.isdir(kwargs['outdir']):
-            os.mkdir(kwargs['outdir'])
-    else: 
-        dname = op.dirname(kwargs['ref'])
-        if dname == '':
-            dname = os.getcwd()
-        kwargs['outdir'] = dname
-
-    # Prepare the output filename. If not given then we pull it 
-    # from the reference
-    if  kwargs.get('name'):
-        name = kwargs['name']
-    else:  
-        name = kwargs['ref']
-
-    name = op.split(name)[-1]
-    outExt = '.nii.gz'
-    for e in ['.nii.gz', '.nii']:
-        if e in name: 
-            outExt = e 
-            name = name.replace(e, '')
-
-    outPath = op.join(kwargs['outdir'], name + outExt)
-    maskPath = op.join(kwargs['outdir'], name + '_surfmask' + outExt)
-
-    # Estimation
-
-    PVs, mask = pvtools.estimate_cortex(**kwargs)
-
-    # Output
-    refSpace = ImageSpace(kwargs['ref'])
-    if not kwargs.get('nosave'):
-        print("Saving output to", kwargs['outdir'])
-        refSpace.saveImage(mask, maskPath)
-
-        tissues = ['GM', 'WM', 'NB']
-        if kwargs.get('nostack'):
-            for t in range(3):
-                refSpace.saveImage(PVs[:,:,:,t], 
-                    fileutils._addSuffixToFilename('_' + tissues[t], outPath))
-        else:
-            refSpace.saveImage(PVs, outPath)
-
-
 def estimate_structure_cmd(*args):
 
     # Parse the common arguments and store as kwargs
@@ -108,47 +79,62 @@ def estimate_structure_cmd(*args):
     parser = CommonParser()
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
+    parser.add_argument('-out', type=str, required=False)
     kwargs = parser.parse(args)
 
-    # Setup
-    surfdir, surfname = op.split(kwargs['surf'])
-    surfname, _ = fileutils.splitExts(surfname)
-    outname = surfname
-
-    if kwargs.get('outdir') is None:
-        kwargs['outdir'] = surfdir
-    else: 
-        if not op.exists(kwargs['outdir']):
-            os.mkdir(kwargs['outdir'])
+    if kwargs.get('out') is None:
+        surfname = fileutils.splitExts(kwargs['surf'])[0]
+        kwargs['out'] = fileutils.default_output_path(kwargs['ref'], 
+            kwargs['ref'], '_%s_pvs'%surfname)
 
     # Estimate
     PVs = pvtools.estimate_structure(**kwargs)
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
-    path = op.join(kwargs['outdir'], outname + '_pvs.nii.gz')
-    refSpace.saveImage(PVs, path)
+    refSpace.saveImage(PVs, kwargs['out'])
+
 
 
 def estimate_all_cmd(*args):
     
     # parse stuff here
     parser = CommonParser()
-    parser.add_argument('-FSdir', type=str, required=False)
-    parser.add_argument('-firstdir', type=str, required=False)
-    parser.add_argument('-fastdir', type=str, required=False)
-    parser.add_argument('-bet', type=str, required=False)
+    parser.add_argument('-struct_brain', type=str, requred=False)
+    parser.add_argument('-pvdir', type=str, required=False)
+    parser.add_argument('-nostack', action='store_true', required=False)
     kwargs = parser.parse(args)
+    
+    # Unless we have been given prepared pvdir, we will provide the path
+    # to the next function to create one
+    if not ((type(kwargs.get('pvdir')) is str) 
+        and op.isdir(kwargs.get('pvdir'))):
 
-    output = pvtools.estimate_all(**kwargs)
+        kwargs['pvdir'] = fileutils.default_output_path(
+            kwargs['struct'], kwargs['struct'], '_pvtools', False)
 
     # Save each individual output. 
+    output = pvtools.estimate_all(**kwargs)
     refSpace = ImageSpace(kwargs['ref'])
+    outdir = op.join(kwargs['pvdir'], fileutils.splitExts(kwargs['ref'])[0] +
+        '_intermediate')
+    fileutils.weak_mkdir(outdir)
+
     for k, o in output.items():
-        outpath = op.join(kwargs['outdir'], k + '_pvs.nii.gz')
-        if k == 'cortexmask':
-            outpath = op.join(kwargs['outdir'], k + '.nii.gz')
-        refSpace.saveImage(o, outpath)
+        outpath = op.join(outdir, fileutils._addSuffixToFilename('_' + k, 
+            op.split(kwargs['ref'])[1]))
+
+        if kwargs.get('nostack') and ((k == 'all') or (k == 'cortex')):
+            if k == 'all':
+                outpath = op.join(kwargs['pvdir'], (fileutils.
+                    _addSuffixToFilename('_pvs', op.split(kwargs['ref'])[1])))
+
+            for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
+                refSpace.saveImage(o[:,:,:,i], 
+                    fileutils._addSuffixToFilename(t, outpath))
+
+        else: 
+            refSpace.saveImage(o, outpath)
 
 
 if __name__ == '__main__':
@@ -224,7 +210,7 @@ a reference image. Use the -FS flag to run FreeSurfer first to produce surfaces 
 
 Required arguments: 
     -ref           path to reference image for which to estimate PVs
-    -FSdir         path to a FreeSurfer subject directory; surfaces will be loaded from the /surf dir. 
+    -fsdir         path to a FreeSurfer subject directory; surfaces will be loaded from the /surf dir. 
                         Alternative to LWS/LPS/RWS/RPS, in .gii or .white/.pial format
     -LWS, -LPS    paths to left hemisphere white and pial surfaces respectively 
     -RWS, -RPS    as above for right hemisphere
