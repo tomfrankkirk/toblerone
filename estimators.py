@@ -40,30 +40,23 @@ def cortex(hemispheres, refSpace, supersampler, cores):
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
-    supersampler = np.ceil(refSpace.voxSize).astype(np.int8)
     voxList = pvcore.getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
     
     # Fill in whole voxels (ie, no PVs), then match the results of the map
     # to respective surfaces.
     voxelise = functools.partial(toblerone.voxelise, FoVsize)
     fills = []
-    desc = ' Filling cortex'
     if cores > 1:
         with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
-            for _, r in tqdm.tqdm(enumerate(p.imap(voxelise, surfs)), 
-                total=len(surfs), desc=desc, 
-                bar_format=pvcore.BAR_FORMAT, ascii=True):
+            for _, r in enumerate(p.imap(voxelise, surfs)):
                 fills.append(r)
-
     else: 
-        for idx in tqdm.trange(len(surfs), desc=desc, 
-            bar_format=pvcore.BAR_FORMAT, ascii=True):
-            fills.append(voxelise(surfs[idx]))
+        for surf in surfs:
+            fills.append(voxelise(surf))
 
     [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
 
     # Estimate fractions for each surface
-    print("Estimating cortex")
     for h in hemispheres:
         if np.any(np.max(np.abs(h.inSurf.points)) > 
             np.max(np.abs(h.outSurf.points))):
