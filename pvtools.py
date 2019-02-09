@@ -8,6 +8,7 @@ import functools
 import copy
 import shutil
 import time 
+import glob 
 
 import nibabel
 import numpy as np
@@ -63,6 +64,7 @@ def enforce_and_load_common_arguments(func):
     """
     
     def enforcer(**kwargs):
+
         # Reference image path 
         if not kwargs.get('ref'):
             raise RuntimeError("Path to reference image must be given")
@@ -70,6 +72,18 @@ def enforce_and_load_common_arguments(func):
         if not op.isfile(kwargs['ref']):
             raise RuntimeError("Reference image does not exist")
 
+        # If given a pvdir we can load the structural image in 
+        if kwargs.get('pvdir'):
+            if not fileutils._check_pvdir(kwargs['pvdir']):
+                raise RuntimeError("pvdir is not complete: it must contain" + 
+                    "fast, fs and first subdirectories")
+
+            s = op.join(kwargs['pvdir'], 'struct.nii.gz')
+            if not op.isfile(s):
+                raise RuntimeError("Could not find struct.nii.gz in the pvdir")
+
+            kwargs['struct'] = s
+ 
         # Structural to reference transformation. Either as array or path
         # to file containing matrix
         if not any([type(kwargs.get('struct2ref')) is str, 
@@ -87,7 +101,7 @@ def enforce_and_load_common_arguments(func):
                     _, matExt = op.splitext(kwargs['struct2ref'])
 
                     try: 
-                        if matExt == '.txt':
+                        if matExt in ['.txt', '.mat']:
                             matrix = np.loadtxt(kwargs['struct2ref'], 
                                 dtype=np.float32)
                         elif matExt in ['.npy', 'npz', '.pkl']:
@@ -138,6 +152,7 @@ def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
         name = fileutils.splitExts(struct)[0] + '_pvtools'
         path = op.join(op.dirname(struct), name)
 
+    print("Preparing a pvtools directory at", path)
     fileutils.weak_mkdir(path)
     structcopy = op.join(path, 'struct.nii.gz')
     structbraincopy = op.join(path, 'struct_brain.nii.gz')
@@ -172,24 +187,32 @@ def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
 @enforce_and_load_common_arguments
 def estimate_all(**kwargs):
 
+    print("Estimating PVs for", kwargs['ref'])
+
+    # paths = {}
+    # structs = (STRUCTURES) + ['cortex_GM', 'cortex_WM',
+    #     'cortex_nonbrain', 'FAST_WM', 'FAST_GM', 'FAST_CSF']
+    # files = glob.glob('testdata/T1_pvtools/ref_intermediate/*.nii.gz')
+    # for f in files: 
+    #     fname = op.split(f)[1]
+    #     for s in structs: 
+    #         if s in fname: 
+    #             paths[s] = f 
+    # assert (len(paths) == len(structs))
+    # output = { s: nibabel.load(f).get_fdata() for s, f in paths.items() }
+
     # If not provided with a pvdir, then create 
-    if kwargs.get('pvdir') is None:
-        name = fileutils.splitExts(kwargs['struct'])[0] + '_pvtools'
-        path = op.join(op.dirname(kwargs['struct']), name)
-        print("Preparing a pvtools directory at", path)
-        make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
-            path, kwargs['cores'])
+    if (kwargs.get('pvdir') is None) or ((type(kwargs['pvdir']) is str)
+        and not (fileutils._check_pvdir(kwargs['pvdir']))):
+        if kwargs['pvdir'] is None:
+            name = fileutils.splitExts(kwargs['struct'])[0] + '_pvtools'
+            kwargs['pvdir'] = op.join(op.dirname(kwargs['struct']), name)
 
-    # If provided with a non-existent path as the pvdir, then create
-    # one at this location
-    elif ((type(kwargs['pvdir']) is str) and 
-        not (fileutils._check_pvdir(kwargs['pvdir']))):
-        print("Preparing a pvtools directory at", kwargs['pvdir'])
         make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
-            path, kwargs['cores'])
+            kwargs['pvdir'], kwargs['cores'])
 
-    # We should now have a complete pvdir
-    assert fileutils._check_pvdir(kwargs['pvdir'])
+    # We should now have a complete pvdir, so form paths to fsdir, 
+    # fastdir, firstdir accordingly. 
     for k in ['fast', 'fs', 'first']:
         key = k + 'dir'
         kwargs[key] = op.join(kwargs['pvdir'], k)
@@ -230,9 +253,10 @@ def estimate_all(**kwargs):
 
     # Now do the cortex, then stack the whole lot 
     ctx, ctxmask = estimate_cortex(**kwargs)
-    output['cortex'] = ctx 
+    for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
+        output['cortex' + t] = ctx[:,:,:,i]
     output['cortexmask'] = ctxmask
-    output['all'] = stack_images(output)
+    output['stacked'] = stack_images(output)
 
     return output 
 
@@ -351,16 +375,20 @@ def stack_images(images):
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy 
     images = copy.copy(images)
+    if 'cortexmask' in images: 
+        images.pop('cortexmask')
     
     # Pop out FAST's estimates  
     csf = images.pop('FAST_CSF').flatten()
     wm = images.pop('FAST_WM').flatten()
-    images.pop('FAST_GM')
+    gm = images.pop('FAST_GM')
+    shape = list(gm.shape[0:3]) + [3]
 
     # Pop the cortex estimates and initialise output as all CSF
-    ctx = images.pop('cortex')
-    shape = ctx.shape
-    ctx = ctx.reshape(-1,3)
+    ctxgm = images.pop('cortex_GM').flatten()
+    ctxwm = images.pop('cortex_WM').flatten()
+    ctxnon = images.pop('cortex_nonbrain').flatten()
+    ctx = np.vstack((ctxgm, ctxwm, ctxnon)).T
     out = np.zeros_like(ctx)
     out[:,2] = 1
 
