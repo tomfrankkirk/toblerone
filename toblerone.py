@@ -1014,20 +1014,15 @@ def _determineFullFoV(surfs, refSpace):
     """
 
     # Find the min/max coordinates of the surfaces
-    minFoV = np.floor(np.array(
+    minFoV = np.round(np.array(
         [np.min(s.points, axis=0) for s in surfs]).min(axis=0))
-    maxFoV = np.ceil(np.array(
+    maxFoV = np.round(np.array(
         [np.max(s.points, axis=0) for s in surfs]).max(axis=0))
 
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
-    FoVoffset = np.maximum(-minFoV, np.zeros(3)).astype(np.int16)
-    FoVsize = (np.maximum(refSpace.imgSize, maxFoV).astype(np.int16) +
+    FoVoffset = np.maximum(-minFoV, 0).astype(np.int16)
+    FoVsize = (np.maximum(refSpace.imgSize, maxFoV+1).astype(np.int16) +
         FoVoffset)
 
     return (FoVoffset, FoVsize)
-
-
-
-
-
