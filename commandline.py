@@ -22,7 +22,7 @@ def estimate_cortex_cmd(*args):
     parser.add_argument('-RWS', type=str, required=False)        
     parser.add_argument('-RPS', type=str, required=False)
     parser.add_argument('-hard', action='store_true')
-    parser.add_argument('-nostack', action='store_true', required=False)
+    parser.add_argument('-stack', action='store_true', required=False)
     parser.add_argument('-saveassocs', action='store_true', required=False)
     kwargs = parser.parse(args)
 
@@ -39,16 +39,16 @@ def estimate_cortex_cmd(*args):
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
-    if not kwargs.get('nosave'):
-        print("Saving output to", kwargs['outdir'])
-        refSpace.saveImage(mask, maskPath)
+    print("Saving output to", kwargs['outdir'])
+    refSpace.saveImage(mask, maskPath)
 
-        if kwargs.get('nostack'):
-            for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-                refSpace.saveImage(PVs[:,:,:,i], 
-                    fileutils._addSuffixToFilename(t, outPath))
-        else:
-            refSpace.saveImage(PVs, outPath)
+    if kwargs.get('stack'):
+        refSpace.saveImage(PVs, outPath)    
+    else:
+        for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
+            refSpace.saveImage(PVs[:,:,:,i], 
+            fileutils._addSuffixToFilename(t, outPath))
+
 
 
 def resample_cmd(*args):
@@ -103,7 +103,7 @@ def estimate_all_cmd(*args):
     parser = CommonParser()
     parser.add_argument('-struct_brain', type=str, required=False)
     parser.add_argument('-pvdir', type=str, required=False)
-    parser.add_argument('-nostack', action='store_true', required=False)
+    parser.add_argument('-stack', action='store_true', required=False)
     kwargs = parser.parse(args)
     
     # Unless we have been given prepared pvdir, we will provide the path
@@ -114,29 +114,43 @@ def estimate_all_cmd(*args):
         kwargs['pvdir'] = fileutils.default_output_path(
             kwargs['struct'], kwargs['struct'], '_pvtools', False)
 
-    # Save each individual output. 
     output = pvtools.estimate_all(**kwargs)
-    refSpace = ImageSpace(kwargs['ref'])
-    outdir = op.join(kwargs['pvdir'], fileutils.splitExts(kwargs['ref'])[0] +
-        '_intermediate')
-    fileutils.weak_mkdir(outdir)
 
+    # Output paths. If given an -out argument of the form path/name then we use
+    # path as the output directory and name as the basic filename. Otherwise we
+    # use the pvdir for output and the reference as basic filename. 
+    outdir = ''
+    namebase = ''
+    ext = '.nii.gz'
+    if kwargs.get('out'):
+        outdir = op.split(kwargs['out'])[0]
+        namebase = fileutils.splitExts(kwargs['out'])[0]
+    
+    if not namebase:
+        namebase = fileutils.splitExts(kwargs['ref'])[0]
+
+    if not outdir: 
+        outdir = kwargs['pvdir']
+
+    # Make output dirs if they do not exist. 
+    intermediatedir = op.join(outdir, namebase + '_intermediate')
+    fileutils.weak_mkdir(outdir)
+    fileutils.weak_mkdir(intermediatedir)
+
+    # Load the reference image space and save the various outputs. 
+    # 'stacked' goes in the outdir, all others go in outdir/intermediate 
+    refSpace = ImageSpace(kwargs['ref'])
     for k, o in output.items():
         if k == 'stacked':
-
-            if kwargs.get('nostack'):
-                outpath = op.join(kwargs['pvdir'], op.split(kwargs['ref'])[1])
-
+            path = op.join(outdir, namebase + ext)
+            if kwargs.get('stack'): 
+                refSpace.saveImage(o, 
+                    fileutils._addSuffixToFilename('_'+k, path))
+            else:
                 for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
                     refSpace.saveImage(o[:,:,:,i], 
-                        fileutils._addSuffixToFilename(t, outpath))
-            
-            else: 
-                outpath = op.join(kwargs['pvdir'], op.split(kwargs['ref'])[1])
-                refSpace.saveImage(o, 
-                    fileutils._addSuffixToFilename('_'+k, outpath))
-
+                        fileutils._addSuffixToFilename(t, path))
         else: 
-            outpath = op.join(outdir, fileutils._addSuffixToFilename('_' + k, 
-            op.split(kwargs['ref'])[1]))
-            refSpace.saveImage(o, outpath)
+            path = op.join(intermediatedir, namebase + ext)
+            refSpace.saveImage(o, 
+                fileutils._addSuffixToFilename('_' + k, path))
