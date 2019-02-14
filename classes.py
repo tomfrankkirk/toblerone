@@ -72,6 +72,7 @@ class ImageSpace(object):
         self.voxSize = img.header['pixdim'][1:4]
         self.vox2world = img.affine
         self.world2vox = np.linalg.inv(self.vox2world)
+        self.original = path
 
 
 
@@ -125,8 +126,14 @@ class ImageSpace(object):
         if data.dtype == np.dtype('bool'):
             data = data.astype(np.int8)
 
-        img = nibabel.Nifti2Image(data, self.vox2world)
-        nibabel.save(img, path)
+        orig = nibabel.load(self.original)
+        if type(orig) is nibabel.Nifti1Image:
+            new = nibabel.Nifti1Image(data, self.vox2world, orig.header)
+        elif type(orig) is nibabel.Nifti2Image: 
+            new = nibabel.Nifti2Image(data, self.vox2world, orig.header)
+        else: 
+            raise RuntimeError("Unsupported file format")
+        nibabel.save(new, path)
 
 
 
@@ -433,9 +440,10 @@ class CommonParser(argparse.ArgumentParser):
         super().__init__()
         self.add_argument('-ref', type=str, required=True)
         self.add_argument('-struct2ref', type=str, required=True) 
-        self.add_argument('-flirt', action='store_true')
+        self.add_argument('-flirt', action='store_true', required=False)
         self.add_argument('-struct', type=str, required=False)
         self.add_argument('-cores', type=int, required=False)
+        self.add_argument('-out', type=str, required=False)
 
 
     def parse(self, args):
