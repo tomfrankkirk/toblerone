@@ -189,18 +189,6 @@ def estimate_all(**kwargs):
 
     print("Estimating PVs for", kwargs['ref'])
 
-    # paths = {}
-    # structs = (STRUCTURES) + ['cortex_GM', 'cortex_WM',
-    #     'cortex_nonbrain', 'FAST_WM', 'FAST_GM', 'FAST_CSF']
-    # files = glob.glob('testdata/T1_pvtools/ref_intermediate/*.nii.gz')
-    # for f in files: 
-    #     fname = op.split(f)[1]
-    #     for s in structs: 
-    #         if s in fname: 
-    #             paths[s] = f 
-    # assert (len(paths) == len(structs))
-    # output = { s: nibabel.load(f).get_fdata() for s, f in paths.items() }
-
     # If not provided with a pvdir, then create 
     if (kwargs.get('pvdir') is None) or ((type(kwargs['pvdir']) is str)
         and not (fileutils._check_pvdir(kwargs['pvdir']))):
