@@ -86,7 +86,6 @@ def cortex(hemispheres, refSpace, supersampler, cores):
         # And write into the hemisphere object. 
         h.PVs = hemiPVs
 
-
     # Merge the fill masks by giving priority to GM, then WM, then CSF.
     if len(hemispheres) == 1:
         outPVs = hemispheres[0].PVs
@@ -124,7 +123,7 @@ def cortex(hemispheres, refSpace, supersampler, cores):
     # Extract the output within the FoV of the reference image
     outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
         FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
-        FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
+        FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2], : ]
     ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
         FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
         FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
