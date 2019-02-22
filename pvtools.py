@@ -237,16 +237,27 @@ def estimate_all(**kwargs):
             bar_format=pvcore.BAR_FORMAT, ascii=True):
                 results.append(r)
 
-    output.update({ k: o for (k,o) in zip(FIRSTsurfs.keys(), results) })
+    if kwargs.get('savesurfs'):
+        transformed = {} 
+    else: 
+        transformed = None 
+
+    for key, (pvs, trans) in zip(FIRSTsurfs.keys(), results):
+        output.update({key: pvs})
+        if kwargs.get('savesurfs'): 
+            transformed.update({key: trans})
 
     # Now do the cortex, then stack the whole lot 
-    ctx, ctxmask = estimate_cortex(**kwargs)
+    ctx, ctxmask, trans = estimate_cortex(**kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-        output['cortex' + t] = ctx[:,:,:,i]
+        output['cortex' + t] = (ctx[:,:,:,i])
+    if trans: 
+        transformed.update(trans)
+
     output['cortexmask'] = ctxmask
     output['stacked'] = stack_images(output)
 
-    return output 
+    return output, transformed
 
 
 def estimate_structure_wrapper(substruct, **kwargs):
@@ -275,10 +286,15 @@ def estimate_structure(**kwargs):
 
     refSpace = ImageSpace(kwargs['ref'])
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
-    overall = np.matmul(refSpace.world2vox, kwargs['struct2ref'])
-    substruct.surf.applyTransform(overall)
+    substruct.surf.applyTransform(kwargs['struct2ref'])
+    transformed = None
+    if kwargs.get('savesurfs'):
+        transformed = copy.deepcopy(substruct.surf)
+    substruct.surf.applyTransform(refSpace.world2vox)
+    substruct.surf.calculateXprods()
 
-    return estimators.structure(refSpace, 1, supersampler, substruct)
+    return (estimators.structure(refSpace, 1, supersampler, substruct), 
+        transformed)
 
 
 @enforce_and_load_common_arguments
@@ -322,21 +338,30 @@ def estimate_cortex(**kwargs):
             kwargs['struct2ref'])
 
     # Transforms: surface -> reference -> reference voxels
-    # then calc cross prods 
+    # then calculate cross prods for each surface element 
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ]    
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    overall = np.matmul(refSpace.world2vox, kwargs['struct2ref'])
+    for s in surfs: 
+        s.applyTransform(kwargs['struct2ref'])
+    
+    transformed = None
+    if kwargs.get('savesurfs'):
+        transformed = { s.name: copy.deepcopy(s) for s in surfs }
+
     for s in surfs:
-        s.applyTransform(overall)
+        s.applyTransform(refSpace.world2vox)
         s.calculateXprods()
 
     # Set supersampler and estimate. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
+    # sz = refSpace.imgSize
+    # outPVs = np.zeros((sz[0], sz[1], sz[2], 3))
+    # cortexMask = np.zeros(sz[0:3])
     outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
         supersampler, kwargs['cores'])
 
-    return (outPVs, cortexMask)
+    return (outPVs, cortexMask, transformed)
 
 
 def resample(src, ref, src2ref=np.identity(4), flirt=False):
