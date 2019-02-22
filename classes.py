@@ -45,7 +45,7 @@ class Structure(object):
 
     def __init__(self, name, surfpath, space='world', struct=None):
         self.name = name 
-        self.surf = Surface(surfpath, space=space, struct=struct)
+        self.surf = Surface(surfpath, space=space, struct=struct, name=name)
 
 
 class ImageSpace(object):
@@ -146,8 +146,8 @@ class Hemisphere(object):
     def __init__(self, inpath, outpath, side):
 
         self.side = side 
-        self.inSurf = Surface(inpath) 
-        self.outSurf = Surface(outpath)
+        self.inSurf = Surface(inpath, name=side+'WS') 
+        self.outSurf = Surface(outpath, name=side+'PS')
         self.PVs = None 
         return
 
@@ -177,7 +177,7 @@ class Surface(object):
         struct: if in 'first' space, then path to structural image by FIRST
     """
 
-    def __init__(self, path, space='world', struct=None):
+    def __init__(self, path, space='world', struct=None, name=None):
 
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
@@ -235,10 +235,61 @@ class Surface(object):
         self.tris = ts.astype(np.int32)
         self.xProds = None 
         self.voxelised = None 
+        self.name = name 
+
+
+    def save(self, path):
+        
+        if self.name is None: 
+            warnings.warn('''Surface has no name: will save as type 'Other' ''')
+            self.name = 'Other'
+
+        common = {'Description': 'Surface has been transformed into' + \
+            'a reference image space for PV estimation'}
+
+        m0 = {
+            'GeometricType': 'Anatomical'
+        }
+
+        if self.name in ['LWS', 'LPS', 'RWS', 'RPS']:
+            cortexdict = {
+                side+surf+'S': {
+                    'AnatomicalStructurePrimary': 
+                        'CortexLeft' if side == 'L' else 'CortexRight', 
+                    'AnatomicalStructureSecondary':
+                        'GrayWhite' if surf == 'W' else 'Pial'
+                }
+                for (side,surf) in itertools.product(['L', 'R'], ['P', 'W'])
+            }
+            m0.update(cortexdict[self.name])   
+        
+        else:
+            m0.update({'AnatomicalStructurePrimary': self.name})
+        
+        # Points matrix
+        # 1 corresponds to NIFTI_XFORM_SCANNER_ANAT
+        m0.update(common)
+        ps = nibabel.gifti.GiftiDataArray(self.points, 
+            intent='NIFTI_INTENT_POINTSET', 
+            coordsys=nibabel.gifti.GiftiCoordSystem(1,1), 
+            datatype='NIFTI_TYPE_FLOAT32', 
+            meta=nibabel.gifti.GiftiMetaData.from_dict(m0))
+
+        # Triangles matrix 
+        m1 = {'TopologicalType': 'Closed'}
+        m1.update(common)
+        ts = nibabel.gifti.GiftiDataArray(self.tris, 
+            intent='NIFTI_INTENT_TRIANGLE', 
+            coordsys=nibabel.gifti.GiftiCoordSystem(0,0), 
+            datatype='NIFTI_TYPE_INT32', 
+            meta=nibabel.gifti.GiftiMetaData.from_dict(m1))
+
+        img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
+        nibabel.save(img, path)
 
     
     @classmethod
-    def manual(cls, ps, ts):
+    def manual(cls, ps, ts, name=None):
         """Manual surface constructor using points and triangles arrays"""
 
         if (ps.shape[1] != 3) or (ts.shape[1] != 3):
@@ -249,6 +300,7 @@ class Surface(object):
         s.tris = ts.astype(np.int32)
         s.xProds = None 
         s.voxelised = None 
+        s.name = name
         return s
 
 
@@ -444,6 +496,7 @@ class CommonParser(argparse.ArgumentParser):
         self.add_argument('-struct', type=str, required=False)
         self.add_argument('-cores', type=int, required=False)
         self.add_argument('-out', type=str, required=False)
+        self.add_argument('-savesurfs', action='store_true')
 
 
     def parse(self, args):
