@@ -35,7 +35,7 @@ def estimate_cortex_cmd(*args):
     maskPath = fileutils._addSuffixToFilename('_cortexmask', kwargs['out'])
 
     # Estimation
-    PVs, mask = pvtools.estimate_cortex(**kwargs)
+    PVs, mask, transformed = pvtools.estimate_cortex(**kwargs)
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
@@ -49,6 +49,14 @@ def estimate_cortex_cmd(*args):
             refSpace.saveImage(PVs[:,:,:,i], 
             fileutils._addSuffixToFilename(t, outPath))
 
+    if kwargs.get('savesurfs'):
+        assert transformed is not None 
+        sbase = fileutils.default_output_path(kwargs['ref'], 
+            kwargs['ref'], ext=False)
+        print('Saving transformed surfaces to', op.dirname(sbase))
+        for k, s in transformed.items():
+            sname = fileutils._addSuffixToFilename('_'+k, sbase) + '.surf.gii'
+            s.save(sname)
 
 
 def resample_cmd(*args):
@@ -80,20 +88,27 @@ def estimate_structure_cmd(*args):
     parser = CommonParser()
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
-    parser.add_argument('-out', type=str, required=False)
     kwargs = parser.parse(args)
 
     if kwargs.get('out') is None:
         surfname = fileutils.splitExts(kwargs['surf'])[0]
         kwargs['out'] = fileutils.default_output_path(kwargs['ref'], 
-            kwargs['ref'], '_%s_pvs'%surfname)
+            kwargs['ref'], '_%s_pvs' % surfname)
 
     # Estimate
-    PVs = pvtools.estimate_structure(**kwargs)
+    PVs, transformed = pvtools.estimate_structure(**kwargs)
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
     refSpace.saveImage(PVs, kwargs['out'])
+
+    if kwargs.get('savesurfs'):
+        print('Saving transformed surfaces to', op.dirname(kwargs['out']))
+        assert transformed is not None 
+        fname = op.join(op.dirname(kwargs['out']), 
+            fileutils.splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
+            transformed.name)
+        transformed.save(fname)
 
 
 
@@ -114,7 +129,7 @@ def estimate_all_cmd(*args):
         kwargs['pvdir'] = fileutils.default_output_path(
             kwargs['struct'], kwargs['struct'], '_pvtools', False)
 
-    output = pvtools.estimate_all(**kwargs)
+    output, transformed = pvtools.estimate_all(**kwargs)
 
     # Output paths. If given an -out argument of the form path/name then we use
     # path as the output directory and name as the basic filename. Otherwise we
@@ -154,3 +169,14 @@ def estimate_all_cmd(*args):
             path = op.join(intermediatedir, namebase + ext)
             refSpace.saveImage(o, 
                 fileutils._addSuffixToFilename('_' + k, path))
+
+    if kwargs.get('savesurfs'):
+        assert transformed is not None 
+        print('Saving transformed surfaces to', intermediatedir)
+        for k, s in transformed.items():
+            sname = op.join(intermediatedir, 
+                namebase + '_%s.surf.gii' % s.name)
+            s.save(sname)
+
+
+            
