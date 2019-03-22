@@ -30,6 +30,12 @@ def cortex(hemispheres, refSpace, supersampler, cores):
             partially within the cortex 
     """
 
+    if False:
+        sz = np.concatenate((refSpace.imgSize, [3]))
+        outPVs = np.zeros(sz)
+        mask = np.zeros(sz[0:3])
+        return (outPVs, mask)
+
     surfs = [ s for h in hemispheres for s in h.surfs() ]
     FoVoffset, FoVsize = toblerone._determineFullFoV(surfs, refSpace)
 
@@ -146,6 +152,11 @@ def structure(refSpace, cores, supersampler, struct):
     Returns: 
         an array of size refSpace.imgSize containing the PVs. 
     """
+
+    if False:
+        sz = refSpace.imgSize
+        outPVs = np.zeros(sz)
+        return outPVs
 
     surf = struct.surf
     surf.calculateXprods()
