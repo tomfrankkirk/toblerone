@@ -119,13 +119,16 @@ def estimate_all_cmd(*args):
     parser.add_argument('-struct_brain', type=str, required=False)
     parser.add_argument('-pvdir', type=str, required=False)
     parser.add_argument('-stack', action='store_true', required=False)
-    kwargs = parser.parse(args)
+    kwargs = parser.parse(*args)
     
     # Unless we have been given prepared pvdir, we will provide the path
     # to the next function to create one
-    if not ((type(kwargs.get('pvdir')) is str) 
-        and op.isdir(kwargs.get('pvdir'))):
+    if type(kwargs.get('pvdir')) is str:
 
+        if not op.isdir(kwargs.get('pvdir')):
+            raise RuntimeError("pvdir %s does not exist" % kwargs['pvdir'])
+
+    else:
         kwargs['pvdir'] = fileutils.default_output_path(
             kwargs['struct'], kwargs['struct'], '_pvtools', False)
 
