@@ -384,8 +384,8 @@ def _runFIRST(struct, dir):
         dir: path to directory in which FIRST will be run
     """
 
-    fileutils.weak_mkdir(dir)
-    nameroot, _ = fileutils.splitExts(struct)
+    fileutils._weak_mkdir(dir)
+    nameroot, _ = fileutils._splitExts(struct)
     struct = op.abspath(struct)
     pwd = os.getcwd()
     os.chdir(dir)
@@ -401,7 +401,7 @@ def _runFAST(struct, dir):
         dir: path to directory in which FAST will be run
     """
 
-    fileutils.weak_mkdir(dir)
+    fileutils._weak_mkdir(dir)
     struct = op.abspath(struct)
     pwd = os.getcwd()
     newstruct = op.abspath(op.join(dir, op.split(struct)[1]))

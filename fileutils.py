@@ -9,6 +9,8 @@ from .classes import STRUCTURES
 
 
 def _check_pvdir(pvdir):
+    """Check pvdir contains 'fast', 'fs', 'first' subdirectories"""
+
     for d in ['fast', 'fs', 'first']:
         p = op.join(pvdir, d)
         if not op.isdir(p):
@@ -91,9 +93,9 @@ def _loadSurfsToDict(fsdir):
     return surfs
 
 
-def default_output_path(dir, fname, suffix='', ext=True):
+def _default_output_path(dir, fname, suffix='', ext=True):
     """Produce a default path from a dir, filename, optionally adding
-    a suffix and preserving extensions. 
+    a suffix and preserving extensions of given filename. 
 
     Args: 
         dir: directory to serve as path root
@@ -108,7 +110,7 @@ def default_output_path(dir, fname, suffix='', ext=True):
     if op.isfile(dir):
         dir = op.dirname(dir)
     fname = op.split(fname)[1]
-    fname, fexts = splitExts(fname)
+    fname, fexts = _splitExts(fname)
     name = _addSuffixToFilename(suffix, fname)
     out = op.join(dir, name)
     if ext:
@@ -118,23 +120,28 @@ def default_output_path(dir, fname, suffix='', ext=True):
 
 def _addSuffixToFilename(suffix, fname):
     """Add suffix to filename, whilst preserving original extension, eg:
-    'file.ext1.ext2' + '_suffix' -> 'file_suffix.ext1.ext2'"""
+    'file.ext1.ext2' + '_suffix' -> 'file_suffix.ext1.ext2'
+    """
+
     head = op.split(fname)[0]
-    fname, ext = splitExts(fname)   
+    fname, ext = _splitExts(fname)   
     return op.join(head, fname + suffix + ext)
 
 def _addPrefixToFilename(prefix, fname):
     """Add prefix to filename, whilst preserving original extension, eg:
-    'prefix_' + file.ext1.ext2' -> 'prefix_file_suffix.ext1.ext2'"""
+    'prefix_' + file.ext1.ext2' -> 'prefix_file_suffix.ext1.ext2'
+    """
+
     head = op.split(fname)[0]
-    fname, ext = splitExts(fname)   
+    fname, ext = _splitExts(fname)   
     return op.join(head, prefix + fname + ext)
 
 
-def splitExts(fname):
+def _splitExts(fname):
     """Split all extensions off a filename, eg:
     'file.ext1.ext2' -> ('file', '.ext1.ext2')
     """
+
     fname = op.split(fname)[1]
     ext = ''
     while '.' in fname:
@@ -143,7 +150,8 @@ def splitExts(fname):
     
     return fname, ext
 
-def weak_mkdir(dir):
+def _weak_mkdir(dir):
     """Create a directory if it does not already exist"""
+
     if not op.isdir(dir):
         os.mkdir(dir)

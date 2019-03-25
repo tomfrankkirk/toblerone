@@ -31,6 +31,7 @@ def apply_func(func, args):
 def timer(func):
     """Timing decorator, prints duration in minutes"""
 
+    @functools.wraps(func)
     def timed_function(*args, **kwargs):
         t1 = time.time()
         out = func(*args, **kwargs)
@@ -48,11 +49,14 @@ def enforce_and_load_common_arguments(func):
     kwargs dict passed to the caller, does some checking and modification 
     in place, and then returns to the caller. The following args are handled:
 
-    Args:
+    Required args:
         ref: path to a reference image in which to operate 
         struct2ref: path to file or 4x4 array representing transformation
             between structural space (that of the surfaces) and reference. 
             If given as 'I', identity matrix will be used. 
+
+    Optional args: 
+        pvdir: a pvtools directory (created by make_pvtools_dir)
         flirt: bool denoting that the struct2ref is a FLIRT transform.
             This means it requires special treatment. If set, then it will be
             pre-processed in place by this function, and then the flag will 
@@ -61,8 +65,12 @@ def enforce_and_load_common_arguments(func):
             for surface generation is required for said special treatment
         cores: maximum number of cores to parallelise tasks across 
             (default is N-1)
+
+    Returns: 
+        a modified copy of kwargs dictionary passed to the caller
     """
     
+    @functools.wraps(func)
     def enforcer(**kwargs):
 
         # Reference image path 
@@ -109,6 +117,7 @@ def enforce_and_load_common_arguments(func):
                         else: 
                             matrix = np.fromfile(kwargs['struct2ref'], 
                                 dtype=np.float32)
+
                     except Exception as e:
                         warnings.warn("""Could not load struct2ref matrix. 
                             File should be any type valid with numpy.load().""")
@@ -144,16 +153,25 @@ def enforce_and_load_common_arguments(func):
 
 
 def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
+    """Create a pvtools directory from a T1 and brain-extracted T1 image. 
+    Runs FreeSurfer, FIRST and FAST in parallel using specified number of cores
+
+    Args: 
+        struct: path to T1 
+        struct_brain: path to brain-extracted T1
+        path: will default to location of T1
+        cores: number of cores to use in parallel
+    """
 
     if cores is None: 
         cores = max([1, multiprocessing.cpu_count() - 1 ])
 
     if path is None: 
-        name = fileutils.splitExts(struct)[0] + '_pvtools'
+        name = fileutils._splitExts(struct)[0] + '_pvtools'
         path = op.join(op.dirname(struct), name)
 
     print("Preparing a pvtools directory at", path)
-    fileutils.weak_mkdir(path)
+    fileutils._weak_mkdir(path)
     structcopy = op.join(path, 'struct.nii.gz')
     structbraincopy = op.join(path, 'struct_brain.nii.gz')
     for o,p in zip([struct, struct_brain], [structcopy, structbraincopy]):
@@ -182,10 +200,31 @@ def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
         for f, args in processes: 
             f(*args)
 
-
 @timer
 @enforce_and_load_common_arguments
 def estimate_all(**kwargs):
+    """Estimate PVs for cortex and all structures identified by FIRST within 
+    a reference image space. Use FAST to fill in non-surface PVs. 
+    All arguments are kwargs.
+
+    Required args: 
+        ref: path to reference image for which PVs are required
+        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+        pvdir: path to pvtools directory (created by make_pvtools_dir)
+
+    Optional args: 
+        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        struct: path to structural image from which surfaces were derived
+        cores: number of cores to use (default N-1)
+ 
+    Returns: 
+        (pvs, transformed) both dictionaries. 
+        pvs contains the PVs associated with each individual structure and 
+            also the overall combined result ('stacked')
+        transformed contains copies of each surface transformed into ref space
+    """
 
     print("Estimating PVs for", kwargs['ref'])
 
@@ -193,7 +232,7 @@ def estimate_all(**kwargs):
     if (kwargs.get('pvdir') is None) or ((type(kwargs['pvdir']) is str)
         and not (fileutils._check_pvdir(kwargs['pvdir']))):
         if kwargs['pvdir'] is None:
-            name = fileutils.splitExts(kwargs['struct'])[0] + '_pvtools'
+            name = fileutils._splitExts(kwargs['struct'])[0] + '_pvtools'
             kwargs['pvdir'] = op.join(op.dirname(kwargs['struct']), name)
 
         make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
@@ -267,7 +306,26 @@ def estimate_structure_wrapper(substruct, **kwargs):
 
 @enforce_and_load_common_arguments
 def estimate_structure(**kwargs):
-    """Estimate PVs for a single structure denoted by a single surface"""
+    """Estimate PVs for a structure defined by a single surface. 
+    All arguments are kwargs.
+    
+    Required args: 
+        ref: path to reference image for which PVs are required
+        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+        surf: path to surface (see space argument below)
+
+    Optional args: 
+        space: space in which surface is defined: default is 'world' (mm coords),
+            for FIRST surfaces set 'first' (FSL convention). 
+        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        struct: path to structural image from which surfaces were derived
+        cores: number of cores to use (default N-1)
+ 
+    Returns: 
+        (pvs, transformed) PV image and transformed surface object. 
+    """
 
     # Check we either have a substruct or surfpath
     if not any([
@@ -299,7 +357,35 @@ def estimate_structure(**kwargs):
 
 @enforce_and_load_common_arguments
 def estimate_cortex(**kwargs):
-    """Estimate partial volumes on the cortical ribbon"""
+    """Estimate PVs for L/R cortex. All arguments are kwargs.
+
+    Required args: 
+        ref: path to reference image for which PVs are required
+        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+
+        One of: 
+        fsdir: path to a FreeSurfer subject directory, from which L/R 
+            white/pial surfaces will be loaded 
+        LWS/LPS/RWS/RPS: individual paths to the individual surfaces,
+            eg LWS = Left White surface, RPS = Right Pial surace
+            To estimate for a single hemisphere, only provide surfaces
+            for that side. 
+
+    Optional args: 
+        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        struct: path to structural image from which surfaces were derived
+        cores: number of cores to use (default N-1)
+        stack: stack the estimates for GM/WM/non-brain into a 4D NIFTI, 
+            in that order 
+ 
+    Returns: 
+        (pvs, transformed) both dictionaries. 
+        pvs contains the PVs associated with each individual structure and 
+            also the overall combined result ('stacked')
+        transformed contains copies of each surface transformed into ref space
+    """
 
     if not any([
         kwargs.get('fsdir') is not None, 
@@ -345,9 +431,8 @@ def estimate_cortex(**kwargs):
     for s in surfs: 
         s.applyTransform(kwargs['struct2ref'])
     
-    transformed = None
-    if kwargs.get('savesurfs'):
-        transformed = { s.name: copy.deepcopy(s) for s in surfs }
+    # Transformed copies of the surfaces
+    transformed = copy.deepcopy(surfs)
 
     for s in surfs:
         s.applyTransform(refSpace.world2vox)
@@ -355,9 +440,6 @@ def estimate_cortex(**kwargs):
 
     # Set supersampler and estimate. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
-    # sz = refSpace.imgSize
-    # outPVs = np.zeros((sz[0], sz[1], sz[2], 3))
-    # cortexMask = np.zeros(sz[0:3])
     outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
         supersampler, kwargs['cores'])
 
@@ -384,6 +466,20 @@ def resample(src, ref, src2ref=np.identity(4), flirt=False):
 
 
 def stack_images(images):
+    """Combine the results of estimate_all() into overall PV maps
+    for each tissue. Note that the below logic is entirely specific 
+    to the surfaces produced by FreeSurfer, FIRST and how they may be
+    combined with FAST estimates. If you're going off-piste anywhere else
+    then you probably DON'T want to re-use this logic. 
+
+    Args: 
+        dictionary of PV maps, keyed as follows: all FIRST subcortical
+        structures named by their FIST convention (eg L_Caud); FAST's estimates
+        named as FAST_CSF/WM/GM; cortex estimates as cortex_GM/WM/non_brain
+
+    Returns: 
+        single 4D array of PVs, arranged GM/WM/non-brain in the 4th dim
+    """
 
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy 

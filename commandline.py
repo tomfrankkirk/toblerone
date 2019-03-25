@@ -1,3 +1,7 @@
+# Command line interface for pvtools
+# The following functions are exposed to the __main__.py file and are
+# called when the module is invoked eg python3 -m pvtools
+
 import argparse
 import sys 
 import os.path as op
@@ -11,6 +15,33 @@ from . import fileutils
 
 
 def estimate_cortex_cmd(*args):
+    """Estimate PVs for L/R cortex.
+
+    Required args: 
+        -ref: path to reference image for which PVs are required
+        -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+
+        One of: 
+        -fsdir: path to a FreeSurfer subject directory, from which L/R 
+            white/pial surfaces will be loaded 
+        -LWS/LPS/RWS/RPS: individual paths to the individual surfaces,
+            eg LWS = Left White surface, RPS = Right Pial surace
+            To estimate for a single hemisphere, only provide surfaces
+            for that side. 
+
+    Optional args: 
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -struct: path to structural image from which surfaces were derived
+        -cores: number of cores to use (default N-1)
+        -out: path to save output (default alongside ref, using same basename)
+        -savesurfs: save copies of each surface in reference space. 
+            HIGHLY recommended to check registration quality. 
+        -hard: perform simple segmentation based on voxel centres (no PVs, 
+            useful for masking)
+    """
+    
 
     # Parse the common arguments and store as kwargs
     # Then run the parser specific to this function and add those in
@@ -23,21 +54,19 @@ def estimate_cortex_cmd(*args):
     parser.add_argument('-RPS', type=str, required=False)
     parser.add_argument('-hard', action='store_true')
     parser.add_argument('-stack', action='store_true', required=False)
-    parser.add_argument('-saveassocs', action='store_true', required=False)
     kwargs = parser.parse(args)
 
-    # Preparation
+    # Estimation
+    PVs, mask, transformed = pvtools.estimate_cortex(**kwargs)
+
+    # Output 
     if not kwargs.get('out'):
-        kwargs['out'] = fileutils.default_output_path(kwargs['ref'], 
+        kwargs['out'] = fileutils._default_output_path(kwargs['ref'], 
             kwargs['ref'])
 
     outPath = fileutils._addSuffixToFilename('_cortex_pvs', kwargs['out'])
     maskPath = fileutils._addSuffixToFilename('_cortexmask', kwargs['out'])
 
-    # Estimation
-    PVs, mask, transformed = pvtools.estimate_cortex(**kwargs)
-
-    # Output
     refSpace = ImageSpace(kwargs['ref'])
     print("Saving output to", kwargs['outdir'])
     refSpace.saveImage(mask, maskPath)
@@ -51,7 +80,7 @@ def estimate_cortex_cmd(*args):
 
     if kwargs.get('savesurfs'):
         assert transformed is not None 
-        sbase = fileutils.default_output_path(kwargs['ref'], 
+        sbase = fileutils._default_output_path(kwargs['ref'], 
             kwargs['ref'], ext=False)
         print('Saving transformed surfaces to', op.dirname(sbase))
         for k, s in transformed.items():
@@ -82,17 +111,37 @@ def resample_cmd(*args):
 
 
 def estimate_structure_cmd(*args):
+    """Estimate PVs for a structure defined by a single surface. 
+    
+    Required args: 
+        -ref: path to reference image for which PVs are required
+        -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+        -surf: path to surface (see space argument below)
+
+    Optional args: 
+        space: space in which surface is defined: default is 'world' (mm coords),
+            for FIRST surfaces set 'first' (FSL convention). 
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -struct: path to structural image from which surfaces were derived
+        -cores: number of cores to use (default N-1)
+        -out: path to save output (default alongside ref)
+        -savesurfs: save copies of each surface in reference space. 
+            HIGHLY recommended to check quality of registration. 
+    """
 
     # Parse the common arguments and store as kwargs
     # Then run the parser specific to this function and add those in
     parser = CommonParser()
+    parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
     kwargs = parser.parse(args)
 
     if kwargs.get('out') is None:
-        surfname = fileutils.splitExts(kwargs['surf'])[0]
-        kwargs['out'] = fileutils.default_output_path(kwargs['ref'], 
+        surfname = fileutils._splitExts(kwargs['surf'])[0]
+        kwargs['out'] = fileutils._default_output_path(kwargs['ref'], 
             kwargs['ref'], '_%s_pvs' % surfname)
 
     # Estimate
@@ -106,17 +155,37 @@ def estimate_structure_cmd(*args):
         print('Saving transformed surfaces to', op.dirname(kwargs['out']))
         assert transformed is not None 
         fname = op.join(op.dirname(kwargs['out']), 
-            fileutils.splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
+            fileutils._splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
             transformed.name)
         transformed.save(fname)
 
 
 
 def estimate_all_cmd(*args):
+    """Estimate PVs for cortex and all structures identified by FIRST within 
+    a reference image space. Use FAST to fill in non-surface PVs. 
+    
+    Required args: 
+        -ref: path to reference image for which PVs are required
+        -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+                registration between structural (surface) and reference space.
+                Use 'I' for identity. 
+        -pvdir: path to pvtools directory (created by make_pvtools_dir)
+
+    Optional args: 
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -struct: path to structural image from which surfaces were derived
+        -cores: number of cores to use (default N-1)
+        -out: path to save output (default alongside ref)
+        -stack: stack PVs into 4D NIFTI, arranged GM/WM/non-brain
+        -savesurfs: save copies of each surface in reference space. 
+            HIGHLY recommended to check quality of registration. 
+ 
+    """
     
     # parse stuff here
     parser = CommonParser()
-    parser.add_argument('-struct_brain', type=str, required=False)
+    parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-pvdir', type=str, required=False)
     parser.add_argument('-stack', action='store_true', required=False)
     kwargs = parser.parse(*args)
@@ -124,13 +193,10 @@ def estimate_all_cmd(*args):
     # Unless we have been given prepared pvdir, we will provide the path
     # to the next function to create one
     if type(kwargs.get('pvdir')) is str:
-
         if not op.isdir(kwargs.get('pvdir')):
             raise RuntimeError("pvdir %s does not exist" % kwargs['pvdir'])
-
-    else:
-        kwargs['pvdir'] = fileutils.default_output_path(
-            kwargs['struct'], kwargs['struct'], '_pvtools', False)
+    else: 
+        raise RuntimeError("pvdir must be provided (run make_pvtools_dir()")
 
     output, transformed = pvtools.estimate_all(**kwargs)
 
@@ -142,18 +208,18 @@ def estimate_all_cmd(*args):
     ext = '.nii.gz'
     if kwargs.get('out'):
         outdir = op.split(kwargs['out'])[0]
-        namebase = fileutils.splitExts(kwargs['out'])[0]
+        namebase = fileutils._splitExts(kwargs['out'])[0]
     
     if not namebase:
-        namebase = fileutils.splitExts(kwargs['ref'])[0]
+        namebase = fileutils._splitExts(kwargs['ref'])[0]
 
     if not outdir: 
         outdir = kwargs['pvdir']
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, namebase + '_intermediate')
-    fileutils.weak_mkdir(outdir)
-    fileutils.weak_mkdir(intermediatedir)
+    fileutils._weak_mkdir(outdir)
+    fileutils._weak_mkdir(intermediatedir)
 
     # Load the reference image space and save the various outputs. 
     # 'stacked' goes in the outdir, all others go in outdir/intermediate 
@@ -182,4 +248,22 @@ def estimate_all_cmd(*args):
             s.save(sname)
 
 
-            
+def make_pvtools_dir_cmd(*args): 
+    """Create a pvtools directory from a T1 and brain-extracted T1 image. 
+    Runs FreeSurfer, FIRST and FAST in parallel using specified number of cores
+
+    Args: 
+        -struct: path to T1 
+        -struct_brain: path to brain-extracted T1
+        -path: will default to location of T1
+        -cores: number of cores to use in parallel
+    """
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('struct', type=str, required=True)
+    parser.add_argument('struct_brain', type=str, required=True)
+    parser.add_argument('path', type=str, required=True)
+    parser.add_argument('cores', type=int, required=True)
+    parsed = parser.parse_args(args)
+
+    pvtools.make_pvtools_dir(**parsed)
