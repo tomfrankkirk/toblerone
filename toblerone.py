@@ -1,4 +1,4 @@
-# Core numerical functions for Toblerone 
+# Toblerone: surface-based partial volume estimation. 
 
 # This module contains the key functions that operate on patches of surface (see
 # classes module) to estimate the fraction of a voxel enclosed within said patch.
@@ -9,19 +9,29 @@
 # This module should not be directly interacted with: the modules estimators and 
 # pvtools provide outward-facing wrappers for actual PV estimation. 
 
+
 import copy
+import warnings
 import functools
 import itertools
 import multiprocessing
+import collections
+import os 
+import os.path as op
+import pickle
+import argparse
 
 import numpy as np 
+import nibabel
+import nibabel.freesurfer.io
 import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
+from . import pvcore
 from .ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
     _cytestManyRayTriangleIntersections
-from . import utils 
+from .classes import ImageSpace, Structure, Hemisphere, Surface, Patch
 
 
 # Module level constants ------------------------------------------------------
@@ -30,7 +40,6 @@ ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
     1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int8) - 1
 ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
     6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int8) - 1
-BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 
 # Functions -------------------------------------------------------------------
@@ -242,27 +251,23 @@ def _separatePointClouds(tris):
 
 
 
-def _getVoxList(imgSize, FoVoffset, FoVsize):
-    """Single list of linear voxel indices for all voxels lying within 
-    a grid of size imgSize, contained within a potentially larger grid 
-    of size FoVsize, in which the respective origins are shifted by 
-    FoVoffst. 
+def _distributeObjects(objs, ngroups):
+    """Distribute a set of objects into n groups.
+    For preparing chunks before multiprocessing.pool.map"""
 
-    Args: 
-        imgSize: the size of the grid for which voxels indices are needed
-        FoVoffset: the offset (3-vector) between voxel [0,0,0] of the grid
-            represented by FoVoffset and voxel [0,0,0] of imgSize. 
-        FoVsize: the size of the (potentially) larger voxel grid within which
-            the smaller grid lies (they are at least the same size)
+    chunkSize = np.floor(len(objs) / ngroups).astype(np.int32)
+    chunks = [] 
 
-    Returns: 
-        list of linear voxel indices referenced to the grid FoVsize
-    """
+    for n in range(ngroups):
+        if n != ngroups - 1: 
+            chunks.append(objs[n * chunkSize : (n+1) * chunkSize])
+        else:
+            chunks.append(objs[n * chunkSize :])
 
-    voxSubs = utils._coordinatesForGrid(imgSize)
-    voxSubs = voxSubs + FoVoffset 
-    return np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
-        FoVsize)
+    assert sum(map(len, chunks)) == len(objs), \
+        "Distribute objects error: not all objects distributed"        
+
+    return chunks 
 
 
 
@@ -933,8 +938,8 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    voxIJKs = utils._coordinatesForGrid(FoVsize).astype(np.float32)
-    workerChunks = utils._distributeObjects(voxList, 6*cores)
+    voxIJKs = pvcore._coordinatesForGrid(FoVsize).astype(np.float32)
+    workerChunks = _distributeObjects(voxList, 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, FoVsize, supersampler)
 
@@ -943,7 +948,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     if bool(descriptor):
         iterator = functools.partial(tqdm.tqdm,
             total=len(workerChunks), desc=descriptor, 
-            bar_format=BAR_FORMAT, ascii=True)
+            bar_format=pvcore.BAR_FORMAT, ascii=True)
     else: 
         iterator = iter
 

@@ -9,11 +9,12 @@ import tqdm
 
 import numpy as np
 
-from . import core 
+from . import toblerone
+from . import pvcore 
 from .classes import Hemisphere, Structure, Surface, Patch
 
 
-def _cortex(hemispheres, refSpace, supersampler, cores):
+def cortex(hemispheres, refSpace, supersampler, cores):
     """Estimate the PVs of the cortex. 
 
     Args: 
@@ -36,7 +37,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
         return (outPVs, mask)
 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    FoVoffset, FoVsize = core._determineFullFoV(surfs, refSpace)
+    FoVoffset, FoVsize = toblerone._determineFullFoV(surfs, refSpace)
 
     for s in surfs:
         s.shiftFoV(FoVoffset, FoVsize)
@@ -45,12 +46,11 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
-    voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
+    voxList = pvcore.getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
     
     # Fill in whole voxels (ie, no PVs), then match the results of the map
     # to respective surfaces.
-    print('Voxelising')
-    voxelise = functools.partial(core.voxelise, FoVsize)
+    voxelise = functools.partial(toblerone.voxelise, FoVsize)
     fills = []
     if cores > 1:
         with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
@@ -73,7 +73,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
         for s, d in zip(h.surfs(), ['in', 'out']):
             descriptor = " {} cortex {}".format(h.side, d)
             s.flist = np.intersect1d(voxList, s.LUT).astype(np.int32)
-            f = core._estimateFractions(s, FoVsize, supersampler, 
+            f = toblerone._estimateFractions(s, FoVsize, supersampler, 
                 s.flist, descriptor, cores)
             s.fractions = f 
 
@@ -137,7 +137,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
     return outPVs, ctxMask
 
 
-def _structure(refSpace, cores, supersampler, struct):
+def structure(refSpace, cores, supersampler, struct):
     """Estimate the PVs of a structure denoted by a single surface. Note
     that the results should be interpreted simply as "fraction of each 
     voxel lying within the structure", and it is ambiguous as to what tissue
@@ -161,21 +161,21 @@ def _structure(refSpace, cores, supersampler, struct):
     surf = struct.surf
     surf.calculateXprods()
 
-    FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
+    FoVoffset, FoVsize = toblerone._determineFullFoV([surf], refSpace)
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
-    voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
+    voxList = pvcore.getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
     vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
     if not vlist.size:
         warnings.warn("Surface {} does not lie within reference image"
             .format(struct.name))
 
-    surf.voxelised = core.voxelise(FoVsize, surf)
+    surf.voxelised = toblerone.voxelise(FoVsize, surf)
     desc = '' 
-    fractions = core._estimateFractions(surf, FoVsize, 
+    fractions = toblerone._estimateFractions(surf, FoVsize, 
         supersampler, vlist, desc, cores)
 
     outPVs = surf.voxelised.astype(np.float32)

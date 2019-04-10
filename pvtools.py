@@ -1,17 +1,25 @@
+import os
 import os.path as op
+import argparse
+import itertools
 import multiprocessing
 import warnings
 import functools
 import copy
 import shutil
 import time 
+import glob 
 
+import nibabel
 import numpy as np
 import tqdm
 
-from . import core, estimators, utils, resampling
+from pvtools import toblerone
+from pvtools import pvcore
 from .classes import ImageSpace, Hemisphere, Structure
 from .classes import Surface, CommonParser, STRUCTURES
+from pvtools import estimators 
+from pvtools import fileutils
 
 
 # Simply apply a function to list of arguments.
@@ -74,7 +82,7 @@ def enforce_and_load_common_arguments(func):
 
         # If given a pvdir we can load the structural image in 
         if kwargs.get('pvdir'):
-            if not utils._check_pvdir(kwargs['pvdir']):
+            if not fileutils._check_pvdir(kwargs['pvdir']):
                 raise RuntimeError("pvdir is not complete: it must contain" + 
                     "fast, fs and first subdirectories")
 
@@ -128,7 +136,7 @@ def enforce_and_load_common_arguments(func):
             if not kwargs.get('struct'):
                 raise RuntimeError("If using a FLIRT transform, the path to the \
                     structural image must also be given")
-            kwargs['struct2ref'] = utils._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
+            kwargs['struct2ref'] = pvcore._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
 
@@ -159,11 +167,11 @@ def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
         cores = max([1, multiprocessing.cpu_count() - 1 ])
 
     if path is None: 
-        name = utils._splitExts(struct)[0] + '_pvtools'
+        name = fileutils._splitExts(struct)[0] + '_pvtools'
         path = op.join(op.dirname(struct), name)
 
     print("Preparing a pvtools directory at", path)
-    utils._weak_mkdir(path)
+    fileutils._weak_mkdir(path)
     structcopy = op.join(path, 'struct.nii.gz')
     structbraincopy = op.join(path, 'struct_brain.nii.gz')
     for o,p in zip([struct, struct_brain], [structcopy, structbraincopy]):
@@ -173,17 +181,17 @@ def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
     processes = []
     fsdir = op.join(path, 'fs')
     if not op.isdir(fsdir):
-        processes.append([utils._runFreeSurfer, (structcopy, path)])
+        processes.append([pvcore._runFreeSurfer, (structcopy, path)])
 
     # Run first if not given a first dir
     firstdir = op.join(path, 'first')
     if not op.isdir(firstdir):
-        processes.append([utils._runFIRST, (structcopy, firstdir)])
+        processes.append([pvcore._runFIRST, (structcopy, firstdir)])
 
     # Run FAST if not given a FAST dir
     fastdir = op.join(path, 'fast')
     if not op.isdir(fastdir):
-        processes.append([utils._runFAST, (structbraincopy, fastdir)])
+        processes.append([pvcore._runFAST, (structbraincopy, fastdir)])
 
     if cores > 1:
         with multiprocessing.Pool(cores) as p: 
@@ -222,9 +230,9 @@ def estimate_all(**kwargs):
 
     # If not provided with a pvdir, then create 
     if (kwargs.get('pvdir') is None) or ((type(kwargs['pvdir']) is str)
-        and not (utils._check_pvdir(kwargs['pvdir']))):
+        and not (fileutils._check_pvdir(kwargs['pvdir']))):
         if kwargs['pvdir'] is None:
-            name = utils._splitExts(kwargs['struct'])[0] + '_pvtools'
+            name = fileutils._splitExts(kwargs['struct'])[0] + '_pvtools'
             kwargs['pvdir'] = op.join(op.dirname(kwargs['struct']), name)
 
         make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
@@ -238,13 +246,13 @@ def estimate_all(**kwargs):
         print("Using {}: {}".format(key, kwargs[key]))
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
-    fasts = utils._loadFASTdir(kwargs['fastdir'])
+    fasts = fileutils._loadFASTdir(kwargs['fastdir'])
     output = { t: resample(fasts[t], kwargs['ref'], kwargs['struct2ref'])
         for t in ['FAST_WM', 'FAST_GM'] } 
     output['FAST_CSF'] = 1 - (output['FAST_WM'] + output['FAST_GM'])
         
     # Process subcortical structures first. 
-    FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])
+    FIRSTsurfs = fileutils._loadFIRSTdir(kwargs['firstdir'])
     structures = [ Structure(n, s, 'first', kwargs['struct']) 
         for n, s in FIRSTsurfs.items() ]
     print("The following structures will be estimated:", flush=True)
@@ -259,13 +267,13 @@ def estimate_all(**kwargs):
         with multiprocessing.Pool(kwargs['cores']) as p: 
             for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
                 total=len(structures), desc=desc, 
-                bar_format=core.BAR_FORMAT, ascii=True):
+                bar_format=pvcore.BAR_FORMAT, ascii=True):
                     results.append(r)
 
     else: 
         for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
             total=len(structures), desc=desc, 
-            bar_format=core.BAR_FORMAT, ascii=True):
+            bar_format=pvcore.BAR_FORMAT, ascii=True):
                 results.append(r)
 
     if kwargs.get('savesurfs'):
@@ -343,7 +351,7 @@ def estimate_structure(**kwargs):
     substruct.surf.applyTransform(refSpace.world2vox)
     substruct.surf.calculateXprods()
 
-    return (estimators._structure(refSpace, 1, supersampler, substruct), 
+    return (estimators.structure(refSpace, 1, supersampler, substruct), 
         transformed)
 
 
@@ -373,10 +381,9 @@ def estimate_cortex(**kwargs):
             in that order 
  
     Returns: 
-        (pvs, mask, transformed) both dictionaries. 
+        (pvs, transformed) both dictionaries. 
         pvs contains the PVs associated with each individual structure and 
             also the overall combined result ('stacked')
-        mask is a binary mask of voxels intersecting the cortex
         transformed contains copies of each surface transformed into ref space
     """
 
@@ -393,7 +400,7 @@ def estimate_cortex(**kwargs):
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
     if kwargs.get('fsdir'):
-        surfdict = utils._loadSurfsToDict(kwargs['fsdir'])
+        surfdict = fileutils._loadSurfsToDict(kwargs['fsdir'])
         kwargs.update(surfdict)
 
     # What hemispheres are we working with?
@@ -433,7 +440,7 @@ def estimate_cortex(**kwargs):
 
     # Set supersampler and estimate. 
     supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
-    outPVs, cortexMask = estimators._cortex(hemispheres, refSpace, 
+    outPVs, cortexMask = estimators.cortex(hemispheres, refSpace, 
         supersampler, kwargs['cores'])
 
     return (outPVs, cortexMask, transformed)
@@ -451,11 +458,11 @@ def resample(src, ref, src2ref=np.identity(4), flirt=False):
     """
    
     if flirt:
-        src2ref = utils._adjustFLIRT(src, ref, src2ref)
+        src2ref = pvcore._adjustFLIRT(src, ref, src2ref)
 
     refSpace = ImageSpace(ref)
     factor = np.ceil(refSpace.voxSize).astype(np.int8)
-    return resampling._superResampleImage(src, factor, refSpace, src2ref)
+    return pvcore._superResampleImage(src, factor, refSpace, src2ref)
 
 
 def stack_images(images):
@@ -518,11 +525,11 @@ def stack_images(images):
     # Prepare the WM weights to be used when writing in PVs from subcortical 
     # structures. Lots of tricks are needed to avoid zero- or small-divisions. 
     # These are taken from FAST's WM/CSF estimates. 
-    div = utils._clipArray(wm+csf)
+    div = pvcore._clipArray(wm+csf)
     divmask = (div > 0)
     wmweights = np.zeros_like(wm)
     wmweights[divmask] = wm[divmask] / div[divmask] 
-    wmweights = utils._clipArray(wmweights)
+    wmweights = pvcore._clipArray(wmweights)
 
     # For each subcortical structure, create a mask of the voxels which it 
     # relates to. Write in the PVs as GM

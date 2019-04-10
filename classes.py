@@ -22,13 +22,17 @@ import os.path as op
 import collections
 import multiprocessing
 import functools
+import argparse
+import warnings
 
 import numpy as np 
 import nibabel
 import vtki
 from vtk.util import numpy_support as vtknp
 
-from . import utils, core 
+from . import pvcore
+from . import toblerone
+
 
 STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
     'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
@@ -107,8 +111,8 @@ class ImageSpace(object):
             [-0.5, newSpace.imgSize[1] - 0.5], [-0.5, newSpace.imgSize[2] - 0.5])))
         rvertices = np.array(list(itertools.product([-0.5, self.imgSize[0] - 0.5], 
             [-0.5, self.imgSize[1] - 0.5], [-0.5, self.imgSize[2] - 0.5])))
-        rvertices = utils._affineTransformPoints(rvertices, self.vox2world)
-        svertices = utils._affineTransformPoints(svertices, newSpace.vox2world)
+        rvertices = pvcore._affineTransformPoints(rvertices, self.vox2world)
+        svertices = pvcore._affineTransformPoints(svertices, newSpace.vox2world)
         assert np.all(np.abs(rvertices - svertices) < 1e-6)
 
         return newSpace
@@ -225,7 +229,7 @@ class Surface(object):
             # Convert from FSL scaled voxel mm to struct voxel coords
             # Then to world mm coords
             ps /= structSpace.voxSize
-            ps = utils._affineTransformPoints(ps, structSpace.vox2world)
+            ps = pvcore._affineTransformPoints(ps, structSpace.vox2world)
 
         self.points = ps.astype(np.float32)
         self.tris = ts.astype(np.int32)
@@ -314,7 +318,7 @@ class Surface(object):
     def applyTransform(self, transform):
         """Apply affine transformation (4x4 array) to surface coordinates"""
 
-        self.points = (utils._affineTransformPoints(
+        self.points = (pvcore._affineTransformPoints(
             self.points, transform).astype(np.float32))
 
 
@@ -342,8 +346,8 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= FoVsize): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
-        chunks = core._distributeObjects(np.arange(self.tris.shape[0]), cores)
-        workerFunc = functools.partial(core._formAssociationsWorker, 
+        chunks = toblerone._distributeObjects(np.arange(self.tris.shape[0]), cores)
+        workerFunc = functools.partial(toblerone._formAssociationsWorker, 
             self.tris, self.points, FoVsize)
 
         if cores > 1:
