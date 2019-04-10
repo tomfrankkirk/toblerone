@@ -33,7 +33,7 @@ extensions.append(Extension("ctoblerone",
                  language="c", extra_compile_args=compile_args, extra_link_args=link_args))
 
 # setup parameters
-setup(name='toberone',
+setup(name='ctoberone',
       cmdclass={'build_ext': build_ext},
       version="0.0.1",
       description="Partial volume estimation",
@@ -43,5 +43,5 @@ setup(name='toberone',
       setup_requires=['Cython'],
       install_requires=[],
       ext_modules=cythonize(extensions),
-      packages=['pvtools']
+      packages=['toblerone']
 )

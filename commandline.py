@@ -9,9 +9,8 @@ import os
 
 import numpy as np
 
-from . import pvtools
-from .classes import ImageSpace, CommonParser
-from . import fileutils
+from . import main, utils
+from .classes import CommonParser, ImageSpace
 
 
 def estimate_cortex_cmd(*args):
@@ -46,7 +45,6 @@ def estimate_cortex_cmd(*args):
     # Parse the common arguments and store as kwargs
     # Then run the parser specific to this function and add those in
     parser = CommonParser()
-    parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-fsdir', type=str, required=False)
     parser.add_argument('-LWS', type=str, required=False)
     parser.add_argument('-LPS', type=str, required=False)
@@ -57,15 +55,15 @@ def estimate_cortex_cmd(*args):
     kwargs = parser.parse(args)
 
     # Estimation
-    PVs, mask, transformed = pvtools.estimate_cortex(**kwargs)
+    PVs, mask, transformed = main.estimate_cortex(**kwargs)
 
     # Output 
     if not kwargs.get('out'):
-        kwargs['out'] = fileutils._default_output_path(kwargs['ref'], 
+        kwargs['out'] = utils._default_output_path(kwargs['ref'], 
             kwargs['ref'])
 
-    outPath = fileutils._addSuffixToFilename('_cortex_pvs', kwargs['out'])
-    maskPath = fileutils._addSuffixToFilename('_cortexmask', kwargs['out'])
+    outPath = utils._addSuffixToFilename('_cortex_pvs', kwargs['out'])
+    maskPath = utils._addSuffixToFilename('_cortexmask', kwargs['out'])
 
     refSpace = ImageSpace(kwargs['ref'])
     print("Saving output to", kwargs['outdir'])
@@ -76,15 +74,15 @@ def estimate_cortex_cmd(*args):
     else:
         for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
             refSpace.saveImage(PVs[:,:,:,i], 
-            fileutils._addSuffixToFilename(t, outPath))
+            utils._addSuffixToFilename(t, outPath))
 
     if kwargs.get('savesurfs'):
         assert transformed is not None 
-        sbase = fileutils._default_output_path(kwargs['ref'], 
+        sbase = utils._default_output_path(kwargs['ref'], 
             kwargs['ref'], ext=False)
         print('Saving transformed surfaces to', op.dirname(sbase))
         for k, s in transformed.items():
-            sname = fileutils._addSuffixToFilename('_'+k, sbase) + '.surf.gii'
+            sname = utils._addSuffixToFilename('_'+k, sbase) + '.surf.gii'
             s.save(sname)
 
 
@@ -92,11 +90,8 @@ def resample_cmd(*args):
 
     parser = CommonParser()
 
-    parser.add_argument('-ref', type=str, required=True)
     parser.add_argument('-src', type=str, required=True)
-    parser.add_argument('-out', type=str, required=True)
     parser.add_argument('-aff', type=str, required=False)
-    parser.add_argument('-flirt', action='store_true')
 
     kwargs = parser.parse(args)
 
@@ -107,7 +102,7 @@ def resample_cmd(*args):
     if not src2ref:
         src2ref = np.identity(4)
 
-    pvtools.resample(**kwargs)
+    main.resample(**kwargs)
 
 
 def estimate_structure_cmd(*args):
@@ -134,18 +129,17 @@ def estimate_structure_cmd(*args):
     # Parse the common arguments and store as kwargs
     # Then run the parser specific to this function and add those in
     parser = CommonParser()
-    parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
     kwargs = parser.parse(args)
 
     if kwargs.get('out') is None:
-        surfname = fileutils._splitExts(kwargs['surf'])[0]
-        kwargs['out'] = fileutils._default_output_path(kwargs['ref'], 
+        surfname = utils._splitExts(kwargs['surf'])[0]
+        kwargs['out'] = utils._default_output_path(kwargs['ref'], 
             kwargs['ref'], '_%s_pvs' % surfname)
 
     # Estimate
-    PVs, transformed = pvtools.estimate_structure(**kwargs)
+    PVs, transformed = main.estimate_structure(**kwargs)
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
@@ -155,7 +149,7 @@ def estimate_structure_cmd(*args):
         print('Saving transformed surfaces to', op.dirname(kwargs['out']))
         assert transformed is not None 
         fname = op.join(op.dirname(kwargs['out']), 
-            fileutils._splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
+            utils._splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
             transformed.name)
         transformed.save(fname)
 
@@ -185,10 +179,9 @@ def estimate_all_cmd(*args):
     
     # parse stuff here
     parser = CommonParser()
-    parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-pvdir', type=str, required=False)
     parser.add_argument('-stack', action='store_true', required=False)
-    kwargs = parser.parse(*args)
+    kwargs = parser.parse(args)
     
     # Unless we have been given prepared pvdir, we will provide the path
     # to the next function to create one
@@ -198,7 +191,7 @@ def estimate_all_cmd(*args):
     else: 
         raise RuntimeError("pvdir must be provided (run make_pvtools_dir()")
 
-    output, transformed = pvtools.estimate_all(**kwargs)
+    output, transformed = main.estimate_all(**kwargs)
 
     # Output paths. If given an -out argument of the form path/name then we use
     # path as the output directory and name as the basic filename. Otherwise we
@@ -208,18 +201,18 @@ def estimate_all_cmd(*args):
     ext = '.nii.gz'
     if kwargs.get('out'):
         outdir = op.split(kwargs['out'])[0]
-        namebase = fileutils._splitExts(kwargs['out'])[0]
+        namebase = utils._splitExts(kwargs['out'])[0]
     
     if not namebase:
-        namebase = fileutils._splitExts(kwargs['ref'])[0]
+        namebase = utils._splitExts(kwargs['ref'])[0]
 
     if not outdir: 
         outdir = kwargs['pvdir']
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, namebase + '_intermediate')
-    fileutils._weak_mkdir(outdir)
-    fileutils._weak_mkdir(intermediatedir)
+    utils._weak_mkdir(outdir)
+    utils._weak_mkdir(intermediatedir)
 
     # Load the reference image space and save the various outputs. 
     # 'stacked' goes in the outdir, all others go in outdir/intermediate 
@@ -229,15 +222,15 @@ def estimate_all_cmd(*args):
             path = op.join(outdir, namebase + ext)
             if kwargs.get('stack'): 
                 refSpace.saveImage(o, 
-                    fileutils._addSuffixToFilename('_'+k, path))
+                    utils._addSuffixToFilename('_'+k, path))
             else:
                 for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
                     refSpace.saveImage(o[:,:,:,i], 
-                        fileutils._addSuffixToFilename(t, path))
+                        utils._addSuffixToFilename(t, path))
         else: 
             path = op.join(intermediatedir, namebase + ext)
             refSpace.saveImage(o, 
-                fileutils._addSuffixToFilename('_' + k, path))
+                utils._addSuffixToFilename('_' + k, path))
 
     if kwargs.get('savesurfs'):
         assert transformed is not None 
@@ -263,7 +256,6 @@ def make_pvtools_dir_cmd(*args):
     parser.add_argument('struct', type=str, required=True)
     parser.add_argument('struct_brain', type=str, required=True)
     parser.add_argument('path', type=str, required=True)
-    parser.add_argument('cores', type=int, required=True)
     parsed = parser.parse_args(args)
 
-    pvtools.make_pvtools_dir(**parsed)
+    main.make_pvtools_dir(**parsed)
