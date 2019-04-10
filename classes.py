@@ -72,6 +72,19 @@ class ImageSpace(object):
         self.original = path
 
 
+    @classmethod
+    def saveLike(ref, data, path): 
+        """Save data into the space of an existing image
+
+        Args: 
+            ref: path to image defining space to use 
+            data: ndarray (of appropriate dimensions)
+            path: path to write to 
+        """
+        
+        spc = ImageSpace(ref)
+        spc.saveImage(data, path)
+
 
     def supersample(self, factor):
         """Produce a new image space which is a copy of the current space, 
