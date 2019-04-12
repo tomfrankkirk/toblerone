@@ -1,7 +1,7 @@
 # Class definitions for the pvtools module, as follows: 
 # 
-# Structure: a subcortical structure, consisting of a name (ie, 'Thalamus') and 
-#     corresponding surface. 
+# Structure: a structure defined by a single surface, consisting of a name 
+#     (ie, 'Thalamus') and corresponding surface. 
 # ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and 
 #     inverse, of an image. Used for resampling operations between different 
 #     spaces and also for saving images into said space (eg, save PV estimates 
@@ -39,6 +39,16 @@ TISSUES = ['GM', 'WM', 'CSF']
 
 
 class Structure(object):
+    """A structure defined by a single surface. Attributes: 
+    -name (string)
+    -surf Surface object
+
+    Args: 
+        name: string
+        surfpath: path to surface (.gii/.vtk/FS binary) for structure
+        space: 'world' / 'first' coordinate system surface is in 
+        struct: if 'first', path to structural image used for surface
+    """
 
     def __init__(self, name, surfpath, space='world', struct=None):
         self.name = name 
@@ -46,7 +56,7 @@ class Structure(object):
 
 
 class ImageSpace(object):
-    """The voxel grid of an image, namely: 
+    """The voxel grid of an image. Attributes:  
     -imgSize (dimensions)
     -voxSize (voxel size)
     -vox2world (voxel to world transformation)
@@ -183,8 +193,8 @@ class Surface(object):
     
     Args: 
         path:   path to file (.gii/.vtk/.white/.pial)
-        space:  'world' (default) or 'first'; space that surface is in 
-        struct: if in 'first' space, then path to structural image by FIRST
+        space:  'world' (default) or 'first'; coordinate system of surface
+        struct: if in 'first' space, then path to structural image used by FIRST
     """
 
     def __init__(self, path, space='world', struct=None, name=None):

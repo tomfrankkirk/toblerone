@@ -132,9 +132,11 @@ def enforce_and_load_common_arguments(func):
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
 
+        # Processor cores
         if not kwargs.get('cores'):
             kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
 
+        # Supersampling factor
         sup = kwargs.get('super')
         if sup is not None: 
             try: 
@@ -386,6 +388,7 @@ def estimate_cortex(**kwargs):
             for that side. 
 
     Optional args: 
+        space: space in which surfaces are in (world/first)
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
         cores: number of cores to use (default N-1)
