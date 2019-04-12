@@ -1,4 +1,4 @@
-# Command line interface for pvtools
+# Command line interface for toblerone
 # The following functions are exposed to the __main__.py file and are
 # called when the module is invoked eg python3 -m pvtools
 
