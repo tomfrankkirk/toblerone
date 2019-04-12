@@ -11,7 +11,11 @@ surf_transform
 .DS_Store
 /testdata/FS/*tob*
 *.png 
-ctoblerone.c
+toblerone/ctoblerone.c
 scratch.py
 /testdata/pvtools
 *.pkl
+dist
+toblerone.egg-info
+toblerone/_version.py
+.eggs
