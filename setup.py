@@ -1,3 +1,6 @@
+"""
+Setup script for toblerone
+"""
 import os
 import subprocess
 import re
@@ -82,6 +85,7 @@ def get_version():
     return version
 
 def get_extensions():
+    """ Build Cython extensions """
     extensions = []
     compile_args = []
     link_args = []
@@ -104,7 +108,6 @@ def get_extensions():
     )
     return cythonize(extensions)
 
-# setup parameters
 setup(name=PACKAGE_NAME,
       version=get_version(),
       description="Partial volume estimation",
