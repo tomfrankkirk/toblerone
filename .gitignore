@@ -19,3 +19,5 @@ dist
 toblerone.egg-info
 toblerone/_version.py
 .eggs
+rebuild.sh
+
