@@ -24,9 +24,9 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
         cores: number of processor cores to use
 
     Returns: 
-        (PVs, mask) arrays of size refSpace.imgSize, containing the PVs
-            themselves and a boolean mask of voxels lying at least
-            partially within the cortex 
+        (PVs, mask) 
+            PVs is 4D array with the PVs arranged GM/WM/non-brain in 4th dim
+            mask is boolean mask denoting intersection with any cortical surf
     """
 
     if False:
