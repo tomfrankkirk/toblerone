@@ -1,9 +1,9 @@
 import sys
 
-from .commandline import estimate_all_cmd, estimate_cortex_cmd
-from .commandline import estimate_structure_cmd, resample_cmd, make_pvtools_dir_cmd
+from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
+from toblerone.commandline import estimate_structure_cmd, resample_cmd, make_pvtools_dir_cmd
 
-if __name__ == '__main__':
+def main():
 
     suffix = """Tom Kirk, thomas.kirk@eng.ox.ac.uk
 Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging
@@ -63,3 +63,6 @@ Usage (preface all with "python3 -m pvtools"):
         if not matched:
             print("Unrecognised command")
             print(usage_main + suffix)
+
+if __name__ == '__main__':
+    main()
