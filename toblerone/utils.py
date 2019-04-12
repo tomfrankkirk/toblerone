@@ -12,8 +12,9 @@ import shutil
 import numpy as np 
 import nibabel
 
-from .classes import STRUCTURES
-
+STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
+    'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
+    'R_Thal', 'BrStem']
 
 def _check_pvdir(pvdir):
     """Check pvdir contains 'fast', 'fs', 'first' subdirectories"""

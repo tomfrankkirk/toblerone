@@ -9,10 +9,9 @@ import time
 import numpy as np
 import tqdm
 
-from . import core, estimators, utils, resampling
-from .classes import ImageSpace, Hemisphere, Structure
-from .classes import Surface, CommonParser, STRUCTURES
-
+from toblerone import core, estimators, utils, resampling
+from toblerone.classes import ImageSpace, Hemisphere, Structure
+from toblerone.classes import Surface, CommonParser
 
 # Simply apply a function to list of arguments.
 # Used for multiprocessing shell commands. 

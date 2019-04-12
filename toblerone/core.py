@@ -19,7 +19,7 @@ import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
-from .ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
+from toblerone.ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
     _cytestManyRayTriangleIntersections
 from . import utils 
 
