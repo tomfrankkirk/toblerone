@@ -94,6 +94,7 @@ def get_extensions():
         Extension("toblerone.ctoblerone",
                   sources=[
                       'toblerone/ctoblerone.pyx', 
+                      'src/ctoblerone.c',
                       'src/tribox.c'
                   ],
                   include_dirs=['src', numpy.get_include()],
@@ -116,4 +117,9 @@ setup(name=PACKAGE_NAME,
       packages=find_packages(),
       ext_modules=get_extensions(),
       cmdclass={'build_ext': build_ext},
+      entry_points={
+        'console_scripts' : [
+            'toblerone=toblerone.__main__:main',
+        ],
+    },
 )
