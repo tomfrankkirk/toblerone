@@ -25,15 +25,14 @@ elif sys.platform.startswith('darwin'):
     zlib = "z"
     extra_inc = "."
 
-# T1 map generation extension
-extensions.append(Extension("ctoblerone",
-                 sources=['extern/ctoblerone.pyx', 
-                          'extern/tribox.c'],
-                 include_dirs=['extern', numpy.get_include()],
+extensions.append(Extension("toblerone.ctoblerone",
+                 sources=['toblerone/ctoblerone.pyx', 
+                          'src/tribox.c'],
+                 include_dirs=['src', numpy.get_include()],
                  language="c", extra_compile_args=compile_args, extra_link_args=link_args))
 
 # setup parameters
-setup(name='ctoberone',
+setup(name='toberone',
       cmdclass={'build_ext': build_ext},
       version="0.0.1",
       description="Partial volume estimation",
