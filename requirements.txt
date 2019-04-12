@@ -1,1 +1,7 @@
 cython
+nibabel
+numpy
+scipy
+tqdm
+vtk
+vtki
