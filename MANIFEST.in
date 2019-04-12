@@ -1,3 +1,4 @@
 include LICENSE requirements.txt
 recursive-include toblerone *.pyx
 recursive-include src *.c *.cpp *.h
+recursive-exclude toblerone *.c *.cpp *.h
