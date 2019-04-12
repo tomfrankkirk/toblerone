@@ -15,3 +15,6 @@ toblerone/ctoblerone.c
 scratch.py
 /testdata/pvtools
 *.pkl
+dist
+toblerone.egg-info
+toblerone/_version.py
