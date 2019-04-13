@@ -441,14 +441,16 @@ def estimate_cortex(**kwargs):
     # Transforms: surface -> reference -> reference voxels
     # then calculate cross prods for each surface element 
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
-        for s in sides ]    
+        for s in sides ] 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
     for s in surfs: 
         s.applyTransform(kwargs['struct2ref'])
     
-    # Transformed copies of the surfaces
-    transformed = copy.deepcopy(surfs)
-
+    # Grab transformed copies of the surfaces before going to voxel space
+    surfdict = {}
+    ( surfdict.update(h.surf_dict) for h in hemispheres )
+    transformed = { (k,copy.deepcopy(s)) for (k,s) in surfdict.items() }
+    
     for s in surfs:
         s.applyTransform(refSpace.world2vox)
         s.calculateXprods()
