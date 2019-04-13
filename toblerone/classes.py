@@ -172,6 +172,10 @@ class Hemisphere(object):
         """Iterator over the inner/outer surfaces"""
         return [self.inSurf, self.outSurf]
 
+    def surf_dict(self):
+        """Return surfs as dict with appropriate keys (eg LPS)"""
+        return {self.side + 'WS': self.inSurf, 
+            self.side+'PS': self.outSurf}
 
 
 class Surface(object):
