@@ -63,38 +63,3 @@ char ray_wrapper(float s1, float s2, float s3,
 }   
 
 
-
-
-
-void triPlaneIntersections(const float* points, const int* tris, int nTris, const float* testPnt, const float* ray, int normDF, float* output)
-{
-    float normal[3], v1[3], v2[3], toPoint[3]; 
-    float dotRN, dotPN; 
-
-    for (int t = 0; t < nTris; t++)
-    {
-        const float *p1 = &points[3* tris[0]];
-        const float *p2 = &points[3* tris[1]];
-        const float *p3 = &points[3* tris[2]];
-
-        for (int j=0; j<3; j++) {
-            v1[j] = p3[j] - p1[j];
-            v2[j] = p2[j] - p1[j];
-            toPoint[j] = p1[j] - testPnt[j]; 
-        }
-
-        cross(v1, v2, normal); 
-        dotRN = dot(ray, normal); 
-        dotPN = dot(toPoint, normal); 
-
-        if (dotRN)
-        {
-            output[t] = dotPN / dotRN; 
-        } else {
-            output[t] = 0.0; 
-        }
-    }
-}
-
-
-
