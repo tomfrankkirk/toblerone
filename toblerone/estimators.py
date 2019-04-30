@@ -137,7 +137,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
     return outPVs, ctxMask
 
 
-def _structure(refSpace, cores, supersampler, struct):
+def _structure(refSpace, cores, supersampler, surf):
     """Estimate the PVs of a structure denoted by a single surface. Note
     that the results should be interpreted simply as "fraction of each 
     voxel lying within the structure", and it is ambiguous as to what tissue
@@ -158,9 +158,7 @@ def _structure(refSpace, cores, supersampler, struct):
         outPVs = np.zeros(sz)
         return outPVs
 
-    surf = struct.surf
     surf.calculateXprods()
-
     FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
@@ -171,7 +169,7 @@ def _structure(refSpace, cores, supersampler, struct):
     vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
     if not vlist.size:
         warnings.warn("Surface {} does not lie within reference image"
-            .format(struct.name))
+            .format(surf.name))
 
     surf.voxelised = core.voxelise(FoVsize, surf)
     desc = '' 

@@ -264,8 +264,8 @@ def estimate_all(**kwargs):
         
     # Process subcortical structures first. 
     FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])
-    structures = [ Structure(n, s, 'first', kwargs['struct']) 
-        for n, s in FIRSTsurfs.items() ]
+    structures = [ Surface(s, 'first', kwargs['struct'], name) 
+        for name, surf in FIRSTsurfs.items() ]
     print("The following structures will be estimated:", flush=True)
     [ print(s.name, end=' ') for s in structures ]
     print('Cortex')
@@ -347,22 +347,26 @@ def estimate_structure(**kwargs):
     if kwargs.get('substruct') is None:
         # We will create a struct using the surf path 
         surfname = op.splitext(op.split(kwargs['surf'])[1])[0]
-        substruct = Structure(surfname, kwargs['surf'], kwargs.get('space'), 
-            kwargs['struct'])
+        substruct = Surface(kwargs['surf'], kwargs.get('space'), 
+            kwargs['struct'], surfname)
         
     else: 
         substruct = kwargs['substruct']
 
+    # Load reference space, set supersampler
     refSpace = ImageSpace(kwargs['ref'])
     supersampler = kwargs.get('super')
     if supersampler is None:
         supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
-    substruct.surf.applyTransform(kwargs['struct2ref'])
+
+    # Apply registration and save copies if reqd 
+    substruct.applyTransform(kwargs['struct2ref'])
     transformed = None
     if kwargs.get('savesurfs'):
         transformed = copy.deepcopy(substruct.surf)
-    substruct.surf.applyTransform(refSpace.world2vox)
-    substruct.surf.calculateXprods()
+
+    # Apply transformation to voxel space 
+    substruct.applyTransform(refSpace.world2vox)
 
     return (estimators._structure(refSpace, 1, supersampler, substruct), 
         transformed)
@@ -395,7 +399,7 @@ def estimate_cortex(**kwargs):
             in that order 
  
     Returns: 
-        (pvs, mask, transformed) both dictionaries. 
+        (pvs, mask, transformed) all dictionaries. 
         pvs contains the PVs associated with each individual structure and 
             also the overall combined result ('stacked')
         mask is a binary mask of voxels intersecting the cortex
@@ -453,7 +457,6 @@ def estimate_cortex(**kwargs):
     
     for s in surfs:
         s.applyTransform(refSpace.world2vox)
-        s.calculateXprods()
 
     # Set supersampler and estimate. 
     supersampler = kwargs.get('super')
