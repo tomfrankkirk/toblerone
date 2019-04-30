@@ -5,9 +5,12 @@ from toblerone.commandline import estimate_structure_cmd, resample_cmd, make_pvt
 
 def main():
 
-    suffix = """Tom Kirk, thomas.kirk@eng.ox.ac.uk
+    suffix = 
+"""
+Tom Kirk, thomas.kirk@eng.ox.ac.uk
 Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging
-University of Oxford, 2018"""
+University of Oxford, 2018
+"""
 
 
 
