@@ -34,23 +34,6 @@ from . import utils, core
 TISSUES = ['GM', 'WM', 'CSF']
 
 
-class Structure(object):
-    """A structure defined by a single surface. Attributes: 
-    -name (string)
-    -surf Surface object
-
-    Args: 
-        name: string
-        surfpath: path to surface (.gii/.vtk/FS binary) for structure
-        space: 'world' / 'first' coordinate system surface is in 
-        struct: if 'first', path to structural image used for surface
-    """
-
-    def __init__(self, name, surfpath, space='world', struct=None):
-        self.name = name 
-        self.surf = Surface(surfpath, space=space, struct=struct, name=name)
-
-
 class ImageSpace(object):
     """The voxel grid of an image. Attributes:  
     -imgSize (dimensions)
@@ -79,7 +62,7 @@ class ImageSpace(object):
 
 
     @classmethod
-    def saveLike(ref, data, path): 
+    def save_like(ref, data, path): 
         """Save data into the space of an existing image
 
         Args: 
