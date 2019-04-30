@@ -1,4 +1,4 @@
-"""Volumetric- and surface-based partial volume estimation tools"""
+"""Surface-based partial volume estimation tools"""
 
 from .main import estimate_all, estimate_cortex, estimate_structure, make_pvtools_dir
 
