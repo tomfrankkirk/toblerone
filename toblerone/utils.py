@@ -181,7 +181,7 @@ def _shellCommand(cmd):
         raise e
 
 
-def _runFreeSurfer(struct, dir):
+def _runFreeSurfer(struct, dir, debug=False):
     """Args: 
         struct: path to structural image 
         dir: path to directory in which a subject directory entitled
@@ -192,6 +192,7 @@ def _runFreeSurfer(struct, dir):
     pwd = os.getcwd()
     os.chdir(dir)
     cmd = 'recon-all -i {} -all -subjid fs -sd .'.format(struct)
+    if debug: cmd += ' -dontrun'
     print("Calling FreeSurfer on", struct)
     print("This will take ~10 hours")
     _shellCommand(cmd)
