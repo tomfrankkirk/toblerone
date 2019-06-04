@@ -505,10 +505,11 @@ def stack_images(images):
     """
 
     # Copy the dict of images as we are going to make changes and dont want 
-    # to play with the caller's copy 
+    # to play with the caller's copy. Pop unwanted images
     images = copy.copy(images)
     if 'cortexmask' in images: 
         images.pop('cortexmask')
+        images.pop('BrStem')
     
     # Pop out FAST's estimates  
     csf = images.pop('FAST_CSF').flatten()
