@@ -1,7 +1,5 @@
 # Class definitions for the pvtools module, as follows: 
 # 
-# Structure: a structure defined by a single surface, consisting of a name 
-#     (ie, 'Thalamus') and corresponding surface. 
 # ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and 
 #     inverse, of an image. Used for resampling operations between different 
 #     spaces and also for saving images into said space (eg, save PV estimates 
@@ -238,7 +236,9 @@ class Surface(object):
         self.tris = ts.astype(np.int32)
         self.xProds = None 
         self.voxelised = None 
-        self.name = name 
+        self.name = name
+        self.assocs = None 
+        self.LUT = None  
 
 
     def save(self, path):
@@ -316,6 +316,12 @@ class Surface(object):
             self.points[self.tris[:,2],:] - self.points[self.tris[:,0],:], 
             self.points[self.tris[:,1],:] - self.points[self.tris[:,0],:], 
             axis=1)
+
+    
+    def flipXprods(self):
+        """Flip surface element normals"""
+
+        self.xProds = -1 * self.xProds 
 
 
     def applyTransform(self, transform):
