@@ -10,7 +10,7 @@ import tqdm
 import numpy as np
 
 from . import core 
-from .classes import Hemisphere, Structure, Surface, Patch
+from .classes import Hemisphere, Surface, Patch
 
 
 def _cortex(hemispheres, refSpace, supersampler, cores):
@@ -42,6 +42,11 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
         s.shiftFoV(FoVoffset, FoVsize)
         s.formAssociations(FoVsize, cores)
         s.calculateXprods()
+
+    # Check surface normals and flip if required
+    if not core._checkSurfaceNormals(surfs[0], FoVsize):
+        print("Inverse surface normals detected, flipping orientation")
+        (s.flipXprods() for s in surfs)
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
@@ -147,7 +152,6 @@ def _structure(refSpace, cores, supersampler, surf):
         refSpace: an ImageSpace within which PVs are required
         cores: number of processor cores to use
         supersampler: supersampling factor (3-vector) to use for estimation
-        struct: Structure object containing the surface (in voxel coords)
 
     Returns: 
         an array of size refSpace.imgSize containing the PVs. 
@@ -162,6 +166,11 @@ def _structure(refSpace, cores, supersampler, surf):
     FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
+
+    # Check surface normals and flip if required
+    if not core._checkSurfaceNormals(surf, FoVsize):
+        print("Inverse surface normals detected, flipping orientation")
+        surf.flipXprods()
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
