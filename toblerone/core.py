@@ -168,6 +168,26 @@ def _dotVectorAndMatrix(vec, mat):
     return np.sum(mat * vec, axis=1)
 
 
+def _checkSurfaceNormals(surf, FoVsize):
+    """Check that a surface's normals are inward facing
+    
+    Args: 
+        surf: surface to test
+        space: an ImageSpace, in which the surface vertices are expressed
+            in voxel coordinates and associations have been formed
+    """
+
+    if (surf.xProds is None) or (surf.LUT is None): 
+        raise RuntimeError("surf.calculateXprods and surf.formAssociations" +
+            " must have been called on the surface prior to this function")
+
+    # Produce a point that we expect to be inside 
+    pnt = surf.points[surf.tris[0,:],:].mean(0)
+    inside = pnt + surf.xProds[0,:]
+
+    return _fullRayIntersectionTest(inside, surf, 
+        inside.round(0).astype(np.int32), FoVsize)
+
 
 def _pointGroupsIntersect(grps, tris): 
     """For _separatePointClouds. Break as soon as overlap is found"""
@@ -432,8 +452,8 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, imgSize):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
     all the triangles of a surface (not the reduced form used elsewhere for 
-    speed) This is used to define a root point for the reduced ray intersection
-    test defined in reducedRayIntersectionTest(). 
+    speed). This is used to define a root point for the reduced test. 
+. 
 
     Inputs: 
         testPnt: 1 x 3 vector for point under test
@@ -934,7 +954,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(FoVsize).astype(np.float32)
-    workerChunks = utils._distributeObjects(voxList, 6*cores)
+    workerChunks = utils._distributeObjects(voxList, 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, FoVsize, supersampler)
 
