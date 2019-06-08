@@ -296,6 +296,9 @@ def estimate_structure(**kwargs):
     elif type(kwargs['surf']) is not Surface: 
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
+    else: 
+        surf = kwargs['surf']
+
     # Load reference space, set supersampler
     refSpace = ImageSpace(kwargs['ref'])
     supersampler = kwargs.get('super')
