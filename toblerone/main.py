@@ -202,7 +202,7 @@ def estimate_all(**kwargs):
     kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
     for k in ['fast', 'fs', 'first']:
-        print("Using {} data in: {}".format(k, kwargs[k+'dir']))
+        print("Using {} data in {}".format(k, kwargs[k+'dir']))
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
@@ -314,8 +314,9 @@ def estimate_structure(**kwargs):
     # Apply transformation to voxel space 
     surf.applyTransform(refSpace.world2vox)
 
-    return (estimators._structure(refSpace, 1, supersampler, surf), 
-        transformed)
+    return (estimators._structure(
+            refSpace, 1, supersampler, ('zeros' in kwargs), surf), 
+            transformed)
 
 
 @enforce_and_load_common_arguments
@@ -410,7 +411,7 @@ def estimate_cortex(**kwargs):
         supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
 
     outPVs, cortexMask = estimators._cortex(hemispheres, refSpace, 
-        supersampler, kwargs['cores'])
+        supersampler, kwargs['cores'], ('zeros' in kwargs))
 
     return (outPVs, cortexMask, transformed)
 
