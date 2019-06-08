@@ -202,7 +202,7 @@ def estimate_all(**kwargs):
     kwargs['first'] = op.join(kwargs['anat'], 'first_results')
 
     for k in ['fast', 'fs', 'first']:
-        print("Using {} data in: {}".format(key, kwargs[key]))
+        print("Using {} data in: {}".format(k, kwargs[k]))
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
