@@ -197,12 +197,12 @@ def estimate_all(**kwargs):
 
     # We should now have a complete anat, so form paths to fsdir, 
     # fastdir, firstdir accordingly. 
-    kwargs['fast'] = kwargs['anat']
-    kwargs['fs'] = op.join(kwargs['anat'], 'fs')
-    kwargs['first'] = op.join(kwargs['anat'], 'first_results')
+    kwargs['fastdir'] = kwargs['anat']
+    kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
+    kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
     for k in ['fast', 'fs', 'first']:
-        print("Using {} data in: {}".format(k, kwargs[k]))
+        print("Using {} data in: {}".format(k, kwargs[k+'dir']))
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
