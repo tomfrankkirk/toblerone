@@ -1,6 +1,6 @@
 # Command line interface for toblerone
 # The following functions are exposed to the __main__.py file and are
-# called when the module is invoked eg python3 -m pvtools
+# called when the module is invoked eg python3 -m toblerone
 
 import argparse
 import sys 
@@ -164,7 +164,7 @@ def estimate_all_cmd(*args):
         -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
                 registration between structural (surface) and reference space.
                 Use 'I' for identity. 
-        -pvdir: path to pvtools directory (created by make_pvtools_dir)
+        -pvdir: path to anat directory (created by (run make_surf_anat_dir())
 
     Optional args: 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
@@ -185,11 +185,11 @@ def estimate_all_cmd(*args):
     
     # Unless we have been given prepared pvdir, we will provide the path
     # to the next function to create one
-    if type(kwargs.get('pvdir')) is str:
-        if not op.isdir(kwargs.get('pvdir')):
-            raise RuntimeError("pvdir %s does not exist" % kwargs['pvdir'])
+    if type(kwargs.get('anat')) is str:
+        if not op.isdir(kwargs.get('anat')):
+            raise RuntimeError("anat dir %s does not exist" % kwargs['anat'])
     else: 
-        raise RuntimeError("pvdir must be provided (run make_pvtools_dir()")
+        raise RuntimeError("anat dir must be provided (run make_surf_anat_dir()")
 
     output, transformed = main.estimate_all(**kwargs)
 
@@ -239,23 +239,3 @@ def estimate_all_cmd(*args):
             sname = op.join(intermediatedir, 
                 namebase + '_%s.surf.gii' % s.name)
             s.save(sname)
-
-
-def make_pvtools_dir_cmd(*args): 
-    """Create a pvtools directory from a T1 and brain-extracted T1 image. 
-    Runs FreeSurfer, FIRST and FAST in parallel using specified number of cores
-
-    Args: 
-        -struct: path to T1 
-        -struct_brain: path to brain-extracted T1
-        -path: will default to location of T1
-        -cores: number of cores to use in parallel
-    """
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('struct', type=str, required=True)
-    parser.add_argument('struct_brain', type=str, required=True)
-    parser.add_argument('path', type=str, required=True)
-    parsed = parser.parse_args(args)
-
-    main.make_pvtools_dir(**parsed)
