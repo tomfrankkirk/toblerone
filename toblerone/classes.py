@@ -60,7 +60,7 @@ class ImageSpace(object):
 
 
     @classmethod
-    def save_like(ref, data, path): 
+    def save_like(cls, ref, data, path): 
         """Save data into the space of an existing image
 
         Args: 
