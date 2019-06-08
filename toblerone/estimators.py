@@ -13,7 +13,7 @@ from . import core
 from .classes import Hemisphere, Surface, Patch
 
 
-def _cortex(hemispheres, refSpace, supersampler, cores):
+def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
     """Estimate the PVs of the cortex. 
 
     Args: 
@@ -22,6 +22,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
         refSpace: an ImageSpace within which PVs are required
         supersampler: supersampling factor (3-vector) to use for estimation
         cores: number of processor cores to use
+        zeros: debug tool, write zeros everywhere
 
     Returns: 
         (PVs, mask) 
@@ -29,7 +30,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
             mask is boolean mask denoting intersection with any cortical surf
     """
 
-    if False:
+    if zeros:
         sz = np.concatenate((refSpace.imgSize, [3]))
         outPVs = np.zeros(sz)
         mask = np.zeros(sz[0:3])
@@ -142,7 +143,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores):
     return outPVs, ctxMask
 
 
-def _structure(refSpace, cores, supersampler, surf):
+def _structure(refSpace, cores, supersampler, zeros, surf):
     """Estimate the PVs of a structure denoted by a single surface. Note
     that the results should be interpreted simply as "fraction of each 
     voxel lying within the structure", and it is ambiguous as to what tissue
@@ -152,12 +153,13 @@ def _structure(refSpace, cores, supersampler, surf):
         refSpace: an ImageSpace within which PVs are required
         cores: number of processor cores to use
         supersampler: supersampling factor (3-vector) to use for estimation
+        zeros: debug tool, write zeros everywhere 
 
     Returns: 
         an array of size refSpace.imgSize containing the PVs. 
     """
 
-    if False:
+    if zeros:
         sz = refSpace.imgSize
         outPVs = np.zeros(sz)
         return outPVs
