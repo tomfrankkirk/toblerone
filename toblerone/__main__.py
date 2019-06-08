@@ -1,7 +1,7 @@
 import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
-from toblerone.commandline import estimate_structure_cmd, resample_cmd, make_pvtools_dir_cmd
+from toblerone.commandline import estimate_structure_cmd, resample_cmd 
 
 def main():
 
@@ -19,9 +19,6 @@ University of Oxford, 2018
 PVTOOLS     Tools for estimating partial volumes
 
 Usage (preface all with "python3 -m pvtools"):
-
--make_pvtools_dir       run FreeSurfer, FIRST and FAST and in single directory, 
-                            required before estimate_all()
 
 -estimate_all           estimate PVs across the brain, using FAST for subcortical 
                             and FreeSurfer/Toblerone for cortical tissues
