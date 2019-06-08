@@ -258,9 +258,9 @@ def estimate_all(**kwargs):
     return output, transformed
 
 
-def estimate_structure_wrapper(substruct, **kwargs):
+def estimate_structure_wrapper(surf, **kwargs):
     """Convenience method for parallel processing"""
-    return estimate_structure(substruct=substruct, **kwargs)
+    return estimate_structure(surf=surf, **kwargs)
 
 
 @enforce_and_load_common_arguments
@@ -278,7 +278,6 @@ def estimate_structure(**kwargs):
     Optional args: 
         space: space in which surface is defined: default is 'world' (mm coords),
             for FIRST surfaces set 'first' (FSL convention). 
-        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
         cores: number of cores to use (default N-1)
  
@@ -286,20 +285,16 @@ def estimate_structure(**kwargs):
         (pvs, transformed) PV image and transformed surface object. 
     """
 
-    # Check we either have a substruct or surfpath
-    if not any([
-        kwargs.get('substruct') is not None, 
-        kwargs.get('surf') is not None]):
-        raise RuntimeError("A path to a surface must be given.")
+    # Check we either have a surface object or path to one 
+    if not 'surf' in kwargs:
+        raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
-    if kwargs.get('substruct') is None:
-        # We will create a struct using the surf path 
-        surfname = op.splitext(op.split(kwargs['surf'])[1])[0]
-        substruct = Surface(kwargs['surf'], kwargs.get('space'), 
-            kwargs['struct'], surfname)
-        
-    else: 
-        substruct = kwargs['substruct']
+    if type(kwargs['surf']) is str: 
+        surf = Surface(kwargs['surf'], kwargs['space'], kwargs['struct'], 
+            op.split(kwargs['surf'])[1])
+    
+    elif type(kwargs['surf']) is not Surface: 
+        raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
     # Load reference space, set supersampler
     refSpace = ImageSpace(kwargs['ref'])
@@ -308,15 +303,15 @@ def estimate_structure(**kwargs):
         supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
 
     # Apply registration and save copies if reqd 
-    substruct.applyTransform(kwargs['struct2ref'])
+    surf.applyTransform(kwargs['struct2ref'])
     transformed = None
     if kwargs.get('savesurfs'):
-        transformed = copy.deepcopy(substruct.surf)
+        transformed = copy.deepcopy(surf)
 
     # Apply transformation to voxel space 
-    substruct.applyTransform(refSpace.world2vox)
+    surf.applyTransform(refSpace.world2vox)
 
-    return (estimators._structure(refSpace, 1, supersampler, substruct), 
+    return (estimators._structure(refSpace, 1, supersampler, surf), 
         transformed)
 
 
