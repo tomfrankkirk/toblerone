@@ -16,16 +16,15 @@ STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta',
     'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
     'R_Thal', 'BrStem']
 
-def _check_pvdir(pvdir):
-    """Check pvdir contains 'fast', 'fs', 'first' subdirectories"""
+def check_surf_anat_dir_complete(dir):
+    """Check that dir contains output from FIRST, FAST and FreeSurfer"""
 
-    for d in ['fast', 'fs', 'first']:
-        p = op.join(pvdir, d)
-        if not op.isdir(p):
-            print("pvdir is not complete (missing %s)" % p)
-            return False
+    return all([
+        op.isdir(op.join(dir, 'fs', 'surf')), 
+        op.isdir(op.join(dir, 'first_results')), 
+        op.isfile(op.join(dir, 'T1_fast_pve_0.nii.gz')), 
+    ])
 
-    return True
 
 
 def _loadFIRSTdir(dir):

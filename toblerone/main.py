@@ -35,7 +35,7 @@ def timer(func):
 
 def enforce_and_load_common_arguments(func):
     """Decorator to enforce and pre-processes common arguments in a 
-    kwargs dict that are used across multiple pvtools functions. Note
+    kwargs dict that are used across multiple functions. Note
     some function-specific checking is still required. This intercepts the
     kwargs dict passed to the caller, does some checking and modification 
     in place, and then returns to the caller. The following args are handled:
@@ -47,7 +47,7 @@ def enforce_and_load_common_arguments(func):
             If given as 'I', identity matrix will be used. 
 
     Optional args: 
-        pvdir: a pvtools directory (created by make_pvtools_dir)
+        anat: a fsl_anat directory (created/augmented by make_surf_anat_dir)
         flirt: bool denoting that the struct2ref is a FLIRT transform.
             This means it requires special treatment. If set, then it will be
             pre-processed in place by this function, and then the flag will 
@@ -71,15 +71,15 @@ def enforce_and_load_common_arguments(func):
         if not op.isfile(kwargs['ref']):
             raise RuntimeError("Reference image does not exist")
 
-        # If given a pvdir we can load the structural image in 
-        if kwargs.get('pvdir'):
-            if not utils._check_pvdir(kwargs['pvdir']):
-                raise RuntimeError("pvdir is not complete: it must contain" + 
+        # If given a anat_dir we can load the structural image in 
+        if kwargs.get('anat'):
+            if not utils.check_surf_anat_dir_complete(kwargs['anat']):
+                raise RuntimeError("anat is not complete: it must contain" + 
                     "fast, fs and first subdirectories")
 
-            s = op.join(kwargs['pvdir'], 'struct.nii.gz')
+            s = op.join(kwargs['anat'], 'T1.nii.gz')
             if not op.isfile(s):
-                raise RuntimeError("Could not find struct.nii.gz in the pvdir")
+                raise RuntimeError("Could not find T1.nii.gz in the anat dir")
 
             kwargs['struct'] = s
  
@@ -163,54 +163,6 @@ def enforce_and_load_common_arguments(func):
     return enforced
 
 
-def make_pvtools_dir(struct, struct_brain, path=None, cores=None):
-    """Create a pvtools directory from a T1 and brain-extracted T1 image. 
-    Runs FreeSurfer, FIRST and FAST in parallel using specified number of cores
-
-    Args: 
-        struct: path to T1 
-        struct_brain: path to brain-extracted T1
-        path: will default to location of T1
-        cores: number of cores to use in parallel
-    """
-
-    if cores is None: 
-        cores = max([1, multiprocessing.cpu_count() - 1 ])
-
-    if path is None: 
-        name = utils._splitExts(struct)[0] + '_pvtools'
-        path = op.join(op.dirname(struct), name)
-
-    print("Preparing a pvtools directory at", path)
-    utils._weak_mkdir(path)
-    structcopy = op.join(path, 'struct.nii.gz')
-    structbraincopy = op.join(path, 'struct_brain.nii.gz')
-    for o,p in zip([struct, struct_brain], [structcopy, structbraincopy]):
-        shutil.copy(o,p)
-
-    # Run first if not given a FS dir
-    processes = []
-    fsdir = op.join(path, 'fs')
-    if not op.isdir(fsdir):
-        processes.append([utils._runFreeSurfer, (structcopy, path)])
-
-    # Run first if not given a first dir
-    firstdir = op.join(path, 'first')
-    if not op.isdir(firstdir):
-        processes.append([utils._runFIRST, (structcopy, firstdir)])
-
-    # Run FAST if not given a FAST dir
-    fastdir = op.join(path, 'fast')
-    if not op.isdir(fastdir):
-        processes.append([utils._runFAST, (structbraincopy, fastdir)])
-
-    if cores > 1:
-        with multiprocessing.Pool(cores) as p: 
-            p.starmap(apply_func, processes)
-    else:
-        for f, args in processes: 
-            f(*args)
-
 @timer
 @enforce_and_load_common_arguments
 def estimate_all(**kwargs):
@@ -223,7 +175,7 @@ def estimate_all(**kwargs):
         struct2ref: path to np or text file, or np.ndarray obj, denoting affine
                 registration between structural (surface) and reference space.
                 Use 'I' for identity. 
-        pvdir: path to pvtools directory (created by make_pvtools_dir)
+        anat: path to anat dir directory (created by make_surf_anat_dir)
 
     Optional args: 
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
@@ -239,22 +191,18 @@ def estimate_all(**kwargs):
 
     print("Estimating PVs for", kwargs['ref'])
 
-    # If not provided with a pvdir, then create 
-    if (kwargs.get('pvdir') is None) or ((type(kwargs['pvdir']) is str)
-        and not (utils._check_pvdir(kwargs['pvdir']))):
-        if kwargs['pvdir'] is None:
-            name = utils._splitExts(kwargs['struct'])[0] + '_pvtools'
-            kwargs['pvdir'] = op.join(op.dirname(kwargs['struct']), name)
+    # If not provided with a anat dir, then create 
+    if 'anat' not in kwargs:
+        raise RuntimeError("An anat dir must be given. See make_surf_anat_dir")
 
-        make_pvtools_dir(kwargs['struct'], kwargs['struct_brain'], 
-            kwargs['pvdir'], kwargs['cores'])
-
-    # We should now have a complete pvdir, so form paths to fsdir, 
+    # We should now have a complete anat, so form paths to fsdir, 
     # fastdir, firstdir accordingly. 
+    kwargs['fast'] = kwargs['anat']
+    kwargs['fs'] = op.join(kwargs['anat'], 'fs')
+    kwargs['first'] = op.join(kwargs['anat'], 'first_results')
+
     for k in ['fast', 'fs', 'first']:
-        key = k + 'dir'
-        kwargs[key] = op.join(kwargs['pvdir'], k)
-        print("Using {}: {}".format(key, kwargs[key]))
+        print("Using {} data in: {}".format(key, kwargs[key]))
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
