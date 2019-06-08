@@ -212,7 +212,7 @@ def estimate_all(**kwargs):
         
     # Process subcortical structures first. 
     FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])
-    structures = [ Surface(s, 'first', kwargs['struct'], name) 
+    structures = [ Surface(surf, 'first', kwargs['struct'], name) 
         for name, surf in FIRSTsurfs.items() ]
     print("The following structures will be estimated:", flush=True)
     [ print(s.name, end=' ') for s in structures ]
