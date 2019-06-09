@@ -191,18 +191,27 @@ def estimate_all(**kwargs):
 
     print("Estimating PVs for", kwargs['ref'])
 
-    # If not provided with a anat dir, then create 
-    if 'anat' not in kwargs:
-        raise RuntimeError("An anat dir must be given. See make_surf_anat_dir")
+    # If anat dir then load the subdirectories for fast etc
+    if 'anat' in kwargs:
+        if not utils.check_surf_anat_dir_complete(kwargs['anat']):
+            raise RuntimeError("anat dir not complete (see make_surf_anat_dir)")
 
-    # We should now have a complete anat, so form paths to fsdir, 
-    # fastdir, firstdir accordingly. 
-    kwargs['fastdir'] = kwargs['anat']
-    kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
-    kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
+        kwargs['fastdir'] = kwargs['anat']
+        kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
+        kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-    for k in ['fast', 'fs', 'first']:
-        print("Using {} data in {}".format(k, kwargs[k+'dir']))
+        for k in ['fast', 'fs', 'first']:
+            print("Using {} data in {}".format(k, kwargs[k+'dir']))
+    
+    else: 
+        if 'fsdir' not in kwargs:
+            if not all([ k in kwargs for k in ['LWS','LPS','RWS','RPS'] ]):
+                raise RuntimeError("If fsdir not given, " + 
+                    "provide paths for LWS,LPS,RWS,RPS")
+        
+        if not (('firstdir' in kwargs) and ('fastdir' in kwargs)):
+            raise RuntimeError("If not using anat dir, fastdir/firstdir required")
+
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
