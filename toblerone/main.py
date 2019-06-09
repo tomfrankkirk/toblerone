@@ -77,6 +77,13 @@ def enforce_and_load_common_arguments(func):
                 raise RuntimeError("anat is not complete: it must contain" + 
                     "fast, fs and first subdirectories")
 
+            kwargs['fastdir'] = kwargs['anat']
+            kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
+            kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
+
+            for k in ['fast', 'fs', 'first']:
+                print("Using {} data in {}".format(k, kwargs[k+'dir']))
+
             s = op.join(kwargs['anat'], 'T1.nii.gz')
             if not op.isfile(s):
                 raise RuntimeError("Could not find T1.nii.gz in the anat dir")
@@ -191,19 +198,9 @@ def estimate_all(**kwargs):
 
     print("Estimating PVs for", kwargs['ref'])
 
-    # If anat dir then load the subdirectories for fast etc
-    if 'anat' in kwargs:
-        if not utils.check_surf_anat_dir_complete(kwargs['anat']):
-            raise RuntimeError("anat dir not complete (see make_surf_anat_dir)")
-
-        kwargs['fastdir'] = kwargs['anat']
-        kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
-        kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
-
-        for k in ['fast', 'fs', 'first']:
-            print("Using {} data in {}".format(k, kwargs[k+'dir']))
-    
-    else: 
+    # If anat dir then various subdirs are loaded by @enforce_common_args
+    # If not then direct load below 
+    if ('anat' not in kwargs):
         if 'fsdir' not in kwargs:
             if not all([ k in kwargs for k in ['LWS','LPS','RWS','RPS'] ]):
                 raise RuntimeError("If fsdir not given, " + 
@@ -211,7 +208,6 @@ def estimate_all(**kwargs):
         
         if not (('firstdir' in kwargs) and ('fastdir' in kwargs)):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
-
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
