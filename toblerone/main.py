@@ -81,9 +81,6 @@ def enforce_and_load_common_arguments(func):
             kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
             kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-            for k in ['fast', 'fs', 'first']:
-                print("Using {} data in {}".format(k, kwargs[k+'dir']))
-
             s = op.join(kwargs['anat'], 'T1.nii.gz')
             if not op.isfile(s):
                 raise RuntimeError("Could not find T1.nii.gz in the anat dir")
@@ -208,6 +205,12 @@ def estimate_all(**kwargs):
         
         if not (('firstdir' in kwargs) and ('fastdir' in kwargs)):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
+
+    for k in ['fast', 'first']:
+        print("Using {} data in {}".format(k, kwargs[k+'dir']))
+
+    if 'fsdir' in kwargs:
+        print("Using fs data in ", kwargs['fsdir'])
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
@@ -258,7 +261,11 @@ def estimate_all(**kwargs):
         transformed.update(trans)
 
     output['cortexmask'] = ctxmask
-    output['stacked'] = stack_images(output)
+    stacked = stack_images(output)
+    output['all_GM'] = stacked[:,:,:,0]
+    output['all_WM'] = stacked[:,:,:,1]
+    output['all_nonbrain'] = stacked[:,:,:,2]
+    output['all_stacked'] = stacked
 
     return output, transformed
 
