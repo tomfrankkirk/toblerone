@@ -45,9 +45,9 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
         s.calculateXprods()
 
     # Check surface normals and flip if required
-    if not core._checkSurfaceNormals(surfs[0], FoVsize) and False:
-        print("Inverse surface normals detected, flipping orientation")
-        (s.flipXprods() for s in surfs)
+    # if not core._checkSurfaceNormals(surfs[0], FoVsize) and False:
+    #     print("Inverse surface normals detected, flipping orientation")
+    #     (s.flipXprods() for s in surfs)
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
@@ -170,9 +170,9 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
     surf.formAssociations(FoVsize, cores)
 
     # Check surface normals and flip if required
-    if not core._checkSurfaceNormals(surf, FoVsize) and False:
-        print("Inverse surface normals detected, flipping orientation")
-        surf.flipXprods()
+    # if not core._checkSurfaceNormals(surf, FoVsize) and False:
+    #     print("Inverse surface normals detected, flipping orientation")
+    #     surf.flipXprods()
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 

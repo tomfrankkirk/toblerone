@@ -474,13 +474,17 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, imgSize):
 
     # Form the ray and fetch all appropriate triangles from assocs data
     patches = surf.toPatchesForVoxels(inds)
-    intXs = _findRayTriangleIntersections2D(testPnt, patches, dim)
 
-    # Classify according to parity of intersections. If odd number of ints
-    # found between -inf and the point under test, then it is inside
-    assert ((intXs.size % 2) == 0), 'Odd number of intersections returned'
+    if patches: 
+        intXs = _findRayTriangleIntersections2D(testPnt, patches, dim)
 
-    return ((np.sum(intXs <= 0) % 2) == 1)
+        # Classify according to parity of intersections. If odd number of ints
+        # found between -inf and the point under test, then it is inside
+        assert ((intXs.size % 2) == 0), 'Odd number of intersections returned'
+        return ((np.sum(intXs <= 0) % 2) == 1)
+    
+    else: 
+        return False 
 
 
 
