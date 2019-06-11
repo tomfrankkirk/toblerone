@@ -32,7 +32,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
 
     if zeros:
         sz = np.concatenate((refSpace.imgSize, [3]))
-        outPVs = np.zeros(sz)
+        outPVs = np.zeros(sz, dtype=np.float32)
         mask = np.zeros(sz[0:3])
         return (outPVs, mask)
 
@@ -45,7 +45,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
         s.calculateXprods()
 
     # Check surface normals and flip if required
-    # if not core._checkSurfaceNormals(surfs[0], FoVsize) and False:
+    # if not core._checkSurfaceNormals(surfs[0], FoVsize):
     #     print("Inverse surface normals detected, flipping orientation")
     #     (s.flipXprods() for s in surfs)
 
@@ -161,7 +161,7 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
 
     if zeros:
         sz = refSpace.imgSize
-        outPVs = np.zeros(sz)
+        outPVs = np.zeros(sz, dtype=np.int32)
         return outPVs
 
     surf.calculateXprods()
@@ -170,7 +170,7 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
     surf.formAssociations(FoVsize, cores)
 
     # Check surface normals and flip if required
-    # if not core._checkSurfaceNormals(surf, FoVsize) and False:
+    # if not core._checkSurfaceNormals(surf, FoVsize):
     #     print("Inverse surface normals detected, flipping orientation")
     #     surf.flipXprods()
 

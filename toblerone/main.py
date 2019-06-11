@@ -231,7 +231,7 @@ def estimate_all(**kwargs):
 
     results = []
     if kwargs['cores'] > 1:
-        with multiprocessing.Pool(kwargs['cores']) as p: 
+        with multiprocessing.Pool(4) as p: 
             for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
                 total=len(structures), desc=desc, 
                 bar_format=core.BAR_FORMAT, ascii=True):
