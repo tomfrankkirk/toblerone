@@ -176,8 +176,9 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
 
     # Prepare for estimation. Generate list of voxels to process:
     # Start with grid, add offset, then flatten to linear indices. 
-    voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
-    vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
+    # TDOO: replace me with a generator expression combined w/ LUT
+    # voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
+    # vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
     if not vlist.size:
         warnings.warn("Surface {} does not lie within reference image"
             .format(surf.name))
