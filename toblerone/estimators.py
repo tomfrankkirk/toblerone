@@ -179,6 +179,7 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
     # TDOO: replace me with a generator expression combined w/ LUT
     # voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
     # vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
+    vlist = surf.LUT
     if not vlist.size:
         warnings.warn("Surface {} does not lie within reference image"
             .format(surf.name))
