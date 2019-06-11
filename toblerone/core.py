@@ -113,9 +113,8 @@ def voxelise(imgSize, surface):
             # Any ray should make an even number of intersections
             # as it crosses from -ve to +ve infinity
             if (intersectionMus.shape[0] % 2):
-                raise RuntimeError("fillSurfaceAlongDimension: \
-                    odd number of intersections found. Does the FoV \
-                    cover the full extents of the surface?")
+                raise RuntimeError("voxelise: odd number of intersections" + 
+                " found. Does the FoV cover the full extents of the surface?")
 
             # Calculate points of intersection along the ray. 
             sorted = np.argsort(intersectionMus)
