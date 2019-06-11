@@ -78,7 +78,8 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
         
         for s, d in zip(h.surfs(), ['in', 'out']):
             descriptor = " {} cortex {}".format(h.side, d)
-            s.flist = np.intersect1d(voxList, s.LUT).astype(np.int32)
+            # s.flist = np.intersect1d(voxList, s.LUT).astype(np.int32)
+            s.flist = s.LUT
             f = core._estimateFractions(s, FoVsize, supersampler, 
                 s.flist, descriptor, cores)
             s.fractions = f 
