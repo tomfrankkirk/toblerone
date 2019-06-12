@@ -337,7 +337,7 @@ def estimate_structure(**kwargs):
     surf.applyTransform(refSpace.world2vox)
 
     return (estimators._structure(
-            refSpace, kwargs['cores'], supersampler, ('zeros' in kwargs), surf), 
+            refSpace, kwargs['cores'], supersampler, bool(kwargs.get('zeros')), surf), 
             transformed)
 
 
@@ -433,7 +433,7 @@ def estimate_cortex(**kwargs):
         supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
 
     outPVs, cortexMask = estimators._cortex(hemispheres, refSpace, 
-        supersampler, kwargs['cores'], ('zeros' in kwargs))
+        supersampler, kwargs['cores'], bool(kwargs.get('zeros')))
 
     return (outPVs, cortexMask, transformed)
 
