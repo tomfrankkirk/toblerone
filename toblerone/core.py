@@ -931,7 +931,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
 
 
 def _estimateFractions(surf, FoVsize, supersampler, \
-    voxList, descriptor, cores):
+    descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
@@ -939,7 +939,6 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         FoVsize: dimensions of voxel grid required to contain surfaces, 
             to which the voxels in voxList are indexed. 
         supersampler: 1 x 3 vector of supersampling factor
-        voxList: list of linear voxel indices within the FoV to process
 
     Returns: 
         vector of size prod(FoV)
