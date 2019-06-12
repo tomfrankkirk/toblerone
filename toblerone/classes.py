@@ -349,7 +349,7 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= FoVsize): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
-        chunks = utils._distributeObjects(np.arange(self.tris.shape[0]), cores)
+        chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, FoVsize)
 
