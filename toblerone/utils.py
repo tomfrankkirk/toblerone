@@ -329,16 +329,20 @@ def _coordinatesForGrid(ofSize):
 
 def _distributeObjects(objs, ngroups):
     """Distribute a set of objects into n groups.
-    For preparing chunks before multiprocessing.pool.map"""
+    For preparing chunks before multiprocessing.pool.map
+    
+    Returns a set of ranges, each of which are index numbers for 
+    the original set of objs 
+    """
 
     chunkSize = np.floor(len(objs) / ngroups).astype(np.int32)
     chunks = [] 
 
     for n in range(ngroups):
         if n != ngroups - 1: 
-            chunks.append(objs[n * chunkSize : (n+1) * chunkSize])
+            chunks.append(range(n * chunkSize, (n+1) * chunkSize))
         else:
-            chunks.append(objs[n * chunkSize :])
+            chunks.append(range(n * chunkSize, len(objs)))
 
     assert sum(map(len, chunks)) == len(objs), \
         "Distribute objects error: not all objects distributed"        
