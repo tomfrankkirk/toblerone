@@ -120,17 +120,11 @@ class ImageSpace(object):
         if not np.all(data.shape[0:3] == self.imgSize):
             raise RuntimeError("Data size does not match image size")
 
-        if data.dtype == np.dtype('bool'):
+        if data.dtype is np.dtype('bool'):
             data = data.astype(np.int8)
 
-        orig = nibabel.load(self.original)
-        if type(orig) is nibabel.Nifti1Image:
-            new = nibabel.Nifti1Image(data, self.vox2world, orig.header)
-        elif type(orig) is nibabel.Nifti2Image: 
-            new = nibabel.Nifti2Image(data, self.vox2world, orig.header)
-        else: 
-            raise RuntimeError("Unsupported file format")
-        nibabel.save(new, path)
+        nii = nibabel.nifti2.Nifti2Image(data, self.vox2world)
+        nibabel.save(nii, path)
 
 
 
