@@ -44,15 +44,6 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
         s.formAssociations(FoVsize, cores)
         s.calculateXprods()
 
-    # Check surface normals and flip if required
-    # if not core._checkSurfaceNormals(surfs[0], FoVsize):
-    #     print("Inverse surface normals detected, flipping orientation")
-    #     (s.flipXprods() for s in surfs)
-
-    # Prepare for estimation. Generate list of voxels to process:
-    # Start with grid, add offset, then flatten to linear indices. 
-    voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
-    
     # Fill in whole voxels (ie, no PVs), then match the results of the map
     # to respective surfaces.
     print('Voxelising')
@@ -78,17 +69,15 @@ def _cortex(hemispheres, refSpace, supersampler, cores, zeros):
         
         for s, d in zip(h.surfs(), ['in', 'out']):
             descriptor = " {} cortex {}".format(h.side, d)
-            # s.flist = np.intersect1d(voxList, s.LUT).astype(np.int32)
-            s.flist = s.LUT
             f = core._estimateFractions(s, FoVsize, supersampler, 
-                s.flist, descriptor, cores)
+                descriptor, cores)
             s.fractions = f 
 
     for h in hemispheres:
         inFractions = (h.inSurf.voxelised).astype(np.float32)
         outFractions = (h.outSurf.voxelised).astype(np.float32)
-        inFractions[h.inSurf.flist] = h.inSurf.fractions
-        outFractions[h.outSurf.flist] = h.outSurf.fractions
+        inFractions[h.inSurf.LUT] = h.inSurf.fractions
+        outFractions[h.outSurf.LUT] = h.outSurf.fractions
 
         # Combine estimates from each surface into whole hemi PV estimates
         hemiPVs = np.zeros((np.prod(FoVsize), 3), dtype=np.float32)
@@ -170,28 +159,17 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
 
-    # Check surface normals and flip if required
-    # if not core._checkSurfaceNormals(surf, FoVsize):
-    #     print("Inverse surface normals detected, flipping orientation")
-    #     surf.flipXprods()
-
-    # Prepare for estimation. Generate list of voxels to process:
-    # Start with grid, add offset, then flatten to linear indices. 
-    # TDOO: replace me with a generator expression combined w/ LUT
-    # voxList = core._getVoxList(refSpace.imgSize, FoVoffset, FoVsize)
-    # vlist = np.intersect1d(voxList, surf.LUT).astype(np.int32)
-    vlist = surf.LUT
-    if not vlist.size:
-        warnings.warn("Surface {} does not lie within reference image"
+    if not surf.LUT:
+        warnings.warn("Surface {} does not lie within reference space"
             .format(surf.name))
 
     surf.voxelised = core.voxelise(FoVsize, surf)
     desc = '' 
     fractions = core._estimateFractions(surf, FoVsize, 
-        supersampler, vlist, desc, cores)
+        supersampler, desc, cores)
 
     outPVs = surf.voxelised.astype(np.float32)
-    outPVs[vlist] = fractions 
+    outPVs[surf.LUT] = fractions 
     outPVs = outPVs.reshape(FoVsize[0], FoVsize[1], FoVsize[2])
 
     # Extract the output within the FoV of the reference image
