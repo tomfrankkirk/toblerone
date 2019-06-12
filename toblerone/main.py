@@ -337,7 +337,7 @@ def estimate_structure(**kwargs):
     surf.applyTransform(refSpace.world2vox)
 
     return (estimators._structure(
-            refSpace, 1, supersampler, ('zeros' in kwargs), surf), 
+            refSpace, kwargs['cores'], supersampler, ('zeros' in kwargs), surf), 
             transformed)
 
 
