@@ -226,12 +226,22 @@ def estimate_all(**kwargs):
     [ print(s.name, end=' ') for s in structures ]
     print('Cortex')
     desc = ' Subcortical structures'
+
+    # Set the pool size for subcortical structures. At high resolutions (0.7)
+    # setting off too many structures in parallel leads to memory problems
+    struct_kwargs = copy.deepcopy(kwargs)
+    if struct_kwargs['cores'] > 1: 
+        pool_size = np.floor(struct_kwargs['cores'] / 2)
+        struct_kwargs['cores'] = 2 
+    else: 
+        pool_size = 1 
+
     estimator = functools.partial(estimate_structure_wrapper, 
-        **kwargs)
+        **struct_kwargs)
 
     results = []
     if kwargs['cores'] > 1:
-        with multiprocessing.Pool(4) as p: 
+        with multiprocessing.Pool(pool_size) as p: 
             for _, r in tqdm.tqdm(enumerate(p.imap(estimator, structures)), 
                 total=len(structures), desc=desc, 
                 bar_format=core.BAR_FORMAT, ascii=True):
