@@ -231,7 +231,7 @@ def estimate_all(**kwargs):
     # setting off too many structures in parallel leads to memory problems
     struct_kwargs = copy.deepcopy(kwargs)
     if struct_kwargs['cores'] > 1: 
-        pool_size = np.floor(struct_kwargs['cores'] / 2).astype(np.int8)
+        pool_size = struct_kwargs['cores'] // 2)
         struct_kwargs['cores'] = 2 
     else: 
         pool_size = 1 
