@@ -159,7 +159,7 @@ def _structure(refSpace, cores, supersampler, zeros, surf):
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
 
-    if not surf.LUT:
+    if not surf.size:
         warnings.warn("Surface {} does not lie within reference space"
             .format(surf.name))
 
