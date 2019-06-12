@@ -89,7 +89,7 @@ class ImageSpace(object):
 
         newSpace = copy.deepcopy(self)
 
-        newSpace.imgSize = self.imgSize * factor
+        newSpace.imgSize = (self.imgSize * factor).round()
         newSpace.voxSize = self.voxSize / factor
         for r in range(3):
             newSpace.vox2world[0:3,r] /= factor[r]
