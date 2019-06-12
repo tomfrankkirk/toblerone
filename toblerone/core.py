@@ -956,7 +956,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(FoVsize).astype(np.float32)
-    workerChunks = utils._distributeObjects(surf.LUT, 33)
+    workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, FoVsize, supersampler)
 
@@ -992,7 +992,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
 
 def _estimateFractionsWorker(surf, voxIJK, imgSize, supersampler, 
-    workerVoxList):
+        workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
     # estimateVoxelFraction can throw, in which case we want to return the 
@@ -1001,7 +1001,7 @@ def _estimateFractionsWorker(surf, voxIJK, imgSize, supersampler,
     try:
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
 
-        for idx, v in enumerate(workerVoxList):
+        for idx, v in enumerate(surf.LUT[workerVoxList]):
             partialVolumes[idx] = _estimateVoxelFraction(surf,
                 voxIJK[v,:], v, imgSize, supersampler)  
         
