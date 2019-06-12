@@ -228,13 +228,14 @@ def estimate_all(**kwargs):
     desc = ' Subcortical structures'
 
     # Set the pool size for subcortical structures. At high resolutions (0.7)
-    # setting off too many structures in parallel leads to memory problems
+    # setting off too many structures in parallel leads to memory problems. 
+    # Furthermore each subcortical must be done in serial (cannot have pools
+    # within pools)
     struct_kwargs = copy.deepcopy(kwargs)
     if struct_kwargs['cores'] > 1: 
-        pool_size = struct_kwargs['cores'] // 2
-        struct_kwargs['cores'] = 2 
-    else: 
-        pool_size = 1 
+        pool_size = min([len(structures), kwargs['cores'], 4])
+        struct_kwargs['cores'] = 1
+
 
     estimator = functools.partial(estimate_structure_wrapper, 
         **struct_kwargs)
