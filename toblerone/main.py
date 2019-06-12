@@ -254,7 +254,6 @@ def estimate_all(**kwargs):
             transformed.update({key: trans})
 
     # Now do the cortex, then stack the whole lot 
-    kwargs['zeros'] = True 
     ctx, ctxmask, trans = estimate_cortex(**kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
         output['cortex' + t] = (ctx[:,:,:,i])
