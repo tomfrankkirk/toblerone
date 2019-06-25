@@ -85,6 +85,9 @@ def _sumArrayBlocks(array, factor):
             corresponding subarray in the input
     """
 
+    if len(factor) != len(array.shape):
+        raise RuntimeError("factor must be of same length as number of dimensions")
+
     outshape = [ int(s/f) for (s,f) in zip(array.shape, factor) ]
     out = np.copy(array)
 
