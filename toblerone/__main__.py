@@ -5,17 +5,17 @@ from toblerone.commandline import estimate_structure_cmd, resample_cmd
 
 def main():
 
-    suffix = 
+    suffix = (
 """
 Tom Kirk, thomas.kirk@eng.ox.ac.uk
 Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging
 University of Oxford, 2018
-"""
+""")
 
 
 
 
-    usage_main = """
+    usage_main = """(
 PVTOOLS     Tools for estimating partial volumes
 
 Usage (preface all with "python3 -m pvtools"):
@@ -31,7 +31,7 @@ Usage (preface all with "python3 -m pvtools"):
 -resample               resample an image onto a reference via integrative method, 
                             applying affine transformation
 
-"""
+""")
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
