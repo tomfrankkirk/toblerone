@@ -15,7 +15,7 @@ University of Oxford, 2018
 
 
 
-    usage_main = """(
+    usage_main = ("""
 PVTOOLS     Tools for estimating partial volumes
 
 Usage (preface all with "python3 -m pvtools"):
