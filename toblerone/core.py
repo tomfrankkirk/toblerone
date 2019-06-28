@@ -93,11 +93,10 @@ def voxelise(imgSize, surface):
                 stride)
             assert voxRange.size == imgSize[dim], 'Incorrect voxRange size'
 
-            # Check to see which are present in the LUT / allIJKs arrays, 
-            # remove them 
-            remove = np.in1d(LUT, voxRange)
-            LUT = LUT[~remove]
-            allIJKs = allIJKs[~remove,:]
+            # Romeve those which are present in the LUT / allIJKs arrays
+            keep = np.isin(LUT, voxRange, assume_unique=True, invert=True)
+            LUT = LUT[keep]
+            allIJKs = allIJKs[keep,:]
             
             # Load patches along this ray, we can assert that at least 
             # one patch must be returned. Find intersections 
