@@ -21,6 +21,7 @@ import collections
 import multiprocessing
 import functools
 import warnings
+import operator
 
 import numpy as np 
 import nibabel
@@ -235,6 +236,22 @@ class Surface(object):
         self.LUT = None  
 
 
+    @classmethod
+    def manual(cls, ps, ts, name=None):
+        """Manual surface constructor using points and triangles arrays"""
+
+        if (ps.shape[1] != 3) or (ts.shape[1] != 3):
+            raise RuntimeError("ps, ts arrays must have N x 3 dimensions")
+
+        s = cls.__new__(cls)
+        s.points = ps.astype(np.float32)
+        s.tris = ts.astype(np.int32)
+        s.xProds = None 
+        s.voxelised = None 
+        s.name = name
+        return s
+
+
     def save(self, path):
         
         if self.name is None: 
@@ -283,22 +300,6 @@ class Surface(object):
 
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
-
-    
-    @classmethod
-    def manual(cls, ps, ts, name=None):
-        """Manual surface constructor using points and triangles arrays"""
-
-        if (ps.shape[1] != 3) or (ts.shape[1] != 3):
-            raise RuntimeError("ps, ts arrays must have N x 3 dimensions")
-
-        s = cls.__new__(cls)
-        s.points = ps.astype(np.float32)
-        s.tris = ts.astype(np.int32)
-        s.xProds = None 
-        s.voxelised = None 
-        s.name = name
-        return s
 
 
     def calculateXprods(self):
@@ -433,14 +434,17 @@ class Surface(object):
         If no patches exist for this list of voxels return None.
         """
 
-        # Concatenate all triangle numbers for the voxels, using the
-        # set constructor to strip out repeats
-        vlists = self.assocs[np.isin(self.LUT, voxIndices)]
+        # Load lists of tri numbers for each voxel index 
+        vlists = self.assocs[np.isin(self.LUT, voxIndices, assume_unique=True)]
 
         if vlists.size:
             triNums = []
             [ triNums.extend(l) for l in vlists ]
             triNums = np.unique(triNums)
+
+            triNums2 = functools.reduce(operator.iconcat, vlists, [])
+            triNums2 = np.unique(triNums2)
+            assert np.array_equal(triNums, triNums2), 'Patch arrays not equal'
 
             return Patch(self.points, self.tris[triNums,:], 
                 self.xProds[triNums,:])
