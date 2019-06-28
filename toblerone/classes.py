@@ -438,18 +438,16 @@ class Surface(object):
         vlists = self.assocs[np.isin(self.LUT, voxIndices, assume_unique=True)]
 
         if vlists.size:
-            triNums = []
-            [ triNums.extend(l) for l in vlists ]
-            triNums = np.unique(triNums)
 
-            triNums2 = functools.reduce(operator.iconcat, vlists, [])
-            triNums2 = np.unique(triNums2)
-            assert np.array_equal(triNums, triNums2), 'Patch arrays not equal'
+            # Flatten the triangle numbers for all these voxels into single list
+            triNums = functools.reduce(operator.iconcat, vlists, [])
+            triNums = np.unique(triNums)
 
             return Patch(self.points, self.tris[triNums,:], 
                 self.xProds[triNums,:])
 
-        return None
+        else: 
+            return None
 
 
     def shiftFoV(self, offset, FoVsize):
