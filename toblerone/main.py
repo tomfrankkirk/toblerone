@@ -225,33 +225,18 @@ def estimate_all(**kwargs):
     print("The following structures will be estimated:", flush=True)
     [ print(s.name, end=' ') for s in structures ]
     print('Cortex')
-    desc = ' Subcortical structures'
+    desc = 'Subcortical structures'
 
-    # Set the pool size for subcortical structures. At high resolutions (0.7)
-    # setting off too many structures in parallel leads to memory problems. 
-    # Furthermore each subcortical must be done in serial (cannot have pools
-    # within pools)
-    struct_kwargs = copy.deepcopy(kwargs)
-    if struct_kwargs['cores'] > 1: 
-        pool_size = min([len(structures), kwargs['cores'], 4])
-        struct_kwargs['cores'] = 1
+    # To estimate against each subcortical structure, we apply the following
+    # partial func to each using a map() call. Carry kwargs from this func 
+    estimator = functools.partial(estimate_structure_wrapper, **kwargs)
 
-
-    estimator = functools.partial(estimate_structure_wrapper, 
-        **kwargs)
-
-    results = []
-    if False:
-        for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
-            total=len(structures), desc=desc, 
-            bar_format=core.BAR_FORMAT, ascii=True):
-                results.append(r)
-
-    else: 
-        for _, r in tqdm.tqdm(enumerate(map(estimator, structures)), 
-            total=len(structures), desc=desc, 
-            bar_format=core.BAR_FORMAT, ascii=True):
-                results.append(r)
+    # This is equivalent to a map(estimator, structures) call
+    # All the extra stuff (tqdm etc) is used for progress bar
+    results = [ pv for _, pv in 
+        tqdm.tqdm(enumerate(map(estimator, structures)), 
+        total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
+        ascii=True) ] 
 
     if kwargs.get('savesurfs'):
         transformed = {} 
