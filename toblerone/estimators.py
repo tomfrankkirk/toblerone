@@ -41,12 +41,13 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     if ones:
         sz = np.concatenate((refSpace.imgSize, [3]))
         outPVs = np.zeros((np.prod(refSpace.imgSize), 3), dtype=np.bool)
-        mask = np.zeros(sz[0:3], dtype=np.bool)
+        mask = np.zeros(np.prod(refSpace.imgSize), dtype=np.bool)
         for s in surfs:
             outPVs[s.LUT,:] = 1 
             mask[s.LUT] = 1 
 
         outPVs = outPVs.reshape(sz)
+        mask = mask.reshape(refSpace.imgSize)
 
     else: 
         # Fill in whole voxels (ie, no PVs), then match the results of the map
