@@ -177,7 +177,7 @@ def _structure(refSpace, cores, supersampler, ones, surf):
 
         outPVs = surf.voxelised.astype(np.float32)
         outPVs[surf.LUT] = fractions 
-        outPVs = outPVs.reshape(*FoVsize[0])
+        outPVs = outPVs.reshape(*FoVsize)
 
         # Extract the output within the FoV of the reference image
         outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
