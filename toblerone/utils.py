@@ -273,6 +273,7 @@ def _adjustFLIRT(source, reference, transform):
         elif xyzt =='11':
             multi = 1e-3
         else: 
+            multi = 1
             Warning("Assuming mm units for transform")
 
         if det > 0:
