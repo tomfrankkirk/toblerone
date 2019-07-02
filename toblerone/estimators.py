@@ -41,17 +41,17 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     if ones:
         sz = np.concatenate((refSpace.imgSize, [3]))
         outPVs = np.zeros((np.prod(refSpace.imgSize), 3), dtype=np.bool)
-        mask = np.zeros(np.prod(refSpace.imgSize), dtype=np.bool)
+        ctxMask = np.zeros(np.prod(refSpace.imgSize), dtype=np.bool)
         for s in surfs:
             outPVs[s.LUT,:] = 1 
-            mask[s.LUT] = 1 
+            ctxMask[s.LUT] = 1 
 
         outPVs = outPVs.reshape(sz)
-        mask = mask.reshape(refSpace.imgSize)
+        ctxMask = ctxMask.reshape(refSpace.imgSize)
 
     else: 
-        # Fill in whole voxels (ie, no PVs), then match the results of the map
-        # to respective surfaces.
+        # Voxelise the surfaces (ie, no PVs), then store the results 
+        # as the 'voxelised' attr of the surfaces 
         print('Voxelising')
         voxelise = functools.partial(core.voxelise, FoVsize)
         fills = []
@@ -65,7 +65,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
 
         [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
 
-        # Estimate fractions for each surface
+        # Estimate PV fractions for each surface
         for h in hemispheres:
             if np.any(np.max(np.abs(h.inSurf.points)) > 
                 np.max(np.abs(h.outSurf.points))):
@@ -79,6 +79,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
                     descriptor, cores)
                 s.fractions = f 
 
+        # Merge the voxelisation results with PVs
         for h in hemispheres:
             inFractions = (h.inSurf.voxelised).astype(np.float32)
             outFractions = (h.outSurf.voxelised).astype(np.float32)
@@ -94,7 +95,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             # And write into the hemisphere object. 
             h.PVs = hemiPVs
 
-        # Merge the fill masks by giving priority to GM, then WM, then CSF.
+        # Merge the hemispheres, giving priority to GM, then WM, then CSF.
         if len(hemispheres) == 1:
             outPVs = hemispheres[0].PVs
         else:
