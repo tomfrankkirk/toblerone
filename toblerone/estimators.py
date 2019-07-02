@@ -43,7 +43,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         outPVs = np.zeros((np.prod(refSpace.imgSize), 3), dtype=np.bool)
         ctxMask = np.zeros(np.prod(refSpace.imgSize), dtype=np.bool)
         for s in surfs:
-            outPVs[s.LUT,:] = 1 
+            outPVs[s.LUT,0] = 1 
             ctxMask[s.LUT] = 1 
 
         outPVs = outPVs.reshape(sz)
