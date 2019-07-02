@@ -273,7 +273,7 @@ def _adjustFLIRT(source, reference, transform):
         elif xyzt =='11':
             multi = 1e-3
         else: 
-            raise RuntimeError("Unknown units")
+            Warning("Assuming mm units for transform")
 
         if det > 0:
             ret[0,0] = -pixdim[0]
