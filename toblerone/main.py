@@ -131,7 +131,7 @@ def enforce_and_load_common_arguments(func):
             if not kwargs.get('struct'):
                 raise RuntimeError("If using a FLIRT transform, the path to the \
                     structural image must also be given")
-            kwargs['struct2ref'] = utils._adjustFLIRT(kwargs['struct'], kwargs['ref'], 
+            kwargs['struct2ref'] = utils._FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
 
@@ -429,7 +429,7 @@ def resample(src, ref, src2ref=np.identity(4), flirt=False):
     """
    
     if flirt:
-        src2ref = utils._adjustFLIRT(src, ref, src2ref)
+        src2ref = utils._FLIRT_to_world(src, ref, src2ref)
 
     refSpace = ImageSpace(ref)
     factor = np.ceil(refSpace.voxSize).astype(np.int8)
