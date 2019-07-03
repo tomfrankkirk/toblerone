@@ -74,7 +74,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
                     "the correct order?")
             
             for s, d in zip(h.surfs(), ['in', 'out']):
-                descriptor = " {} cortex {}".format(h.side, d)
+                descriptor = "{} cortex {}".format(h.side, d)
                 f = core._estimateFractions(s, FoVsize, supersampler, 
                     descriptor, cores)
                 s.fractions = f 
