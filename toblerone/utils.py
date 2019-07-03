@@ -269,7 +269,7 @@ def _getFSLspace(imgPth):
     return ret
 
 
-def _adjustFLIRT(source, reference, transform):
+def _FLIRT_to_world(source, reference, transform):
     """Adjust a FLIRT transformation matrix into a true world-world 
     transform. Required as FSL matrices are encoded in a specific form 
     such that they can only be applied alongside the requisite images (extra
@@ -286,18 +286,38 @@ def _adjustFLIRT(source, reference, transform):
         complete transformation matrix between the two. 
     """
 
-    srcSpace = _getFSLspace(source)
-    refSpace = _getFSLspace(reference)
+    # 'Space' refers to conversion of world -> scaled voxel coordinates, 
+    # with no shift for origin 
+    Ss = _getFSLspace(source)
+    Rs = _getFSLspace(reference)
 
-    refObj = nibabel.load(reference)
-    refAff = refObj.affine 
-    srcObj = nibabel.load(source)
-    srcAff = srcObj.affine 
+    # 'Affine' refers to the voxel -> world conversion matrix 
+    Ra = nibabel.load(reference).affine
+    Sa = nibabel.load(source).affine
 
-    outAff = np.matmul(np.matmul(
-        np.matmul(refAff, np.linalg.inv(refSpace)),
-        transform), srcSpace)
-    return np.matmul(outAff, np.linalg.inv(srcAff))
+    # Work backwards (R->L) to interpret these 
+    out = Ra @ np.linalg.inv(Rs) @ transform @ Ss @ np.linalg.inv(Sa)
+    return out
+
+
+def _world_to_FLIRT(source, reference, transform):
+    """
+    Inverse of _FLIRT_to_world: convert a world-world transform to FLIRT matrix
+    """
+
+    # 'Space' refers to conversion of world -> scaled voxel coordinates, 
+    # with no shift for origin 
+    Ss = _getFSLspace(source)
+    Rs = _getFSLspace(reference)
+
+    # 'Affine' refers to the voxel -> world conversion matrix 
+    Ra = nibabel.load(reference).affine
+    Sa = nibabel.load(source).affine
+
+    # Work backwards (R->L) to interpret these 
+    out = Rs @ np.linalg.inv(Ra) @ transform @ Sa @ np.linalg.inv(Ss)
+    return out
+
 
 
 def _affineTransformPoints(points, affine):
