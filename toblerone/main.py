@@ -205,12 +205,6 @@ def estimate_all(**kwargs):
         
         if not (('firstdir' in kwargs) and ('fastdir' in kwargs)):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
-
-    for k in ['fast', 'first']:
-        print("Using {} data in {}".format(k, kwargs[k+'dir']))
-
-    if 'fsdir' in kwargs:
-        print("Using fs data in ", kwargs['fsdir'])
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])

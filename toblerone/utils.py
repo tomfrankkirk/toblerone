@@ -7,7 +7,8 @@ import copy
 import glob
 import subprocess 
 import sys
-import shutil 
+import shutil
+import warnings 
 
 import numpy as np 
 import nibabel
@@ -274,7 +275,7 @@ def _adjustFLIRT(source, reference, transform):
             multi = 1e-3
         else: 
             multi = 1
-            Warning("Assuming mm units for transform")
+            warnings.warn("Assuming mm units for transform")
 
         if det > 0:
             ret[0,0] = -pixdim[0]
