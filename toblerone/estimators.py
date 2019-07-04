@@ -62,8 +62,8 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             for surf in surfs:
                 fills.append(voxelise(surf))
 
-        
-        ( setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) )
+        for (s,f) in zip(surfs, fills):
+            s.voxelised = f 
 
         # Estimate PV fractions for each surface
         for h in hemispheres:
