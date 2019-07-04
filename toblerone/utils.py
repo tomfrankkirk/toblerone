@@ -17,7 +17,7 @@ STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta',
     'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
     'R_Thal', 'BrStem']
 
-def check_surf_anat_dir_complete(dir):
+def check_anat_dir(dir):
     """Check that dir contains output from FIRST, FAST and FreeSurfer"""
 
     return all([
