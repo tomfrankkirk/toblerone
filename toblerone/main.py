@@ -73,7 +73,7 @@ def enforce_and_load_common_arguments(func):
 
         # If given a anat_dir we can load the structural image in 
         if kwargs.get('anat'):
-            if not utils.check_surf_anat_dir_complete(kwargs['anat']):
+            if not utils.check_anat_dir(kwargs['anat']):
                 raise RuntimeError("anat is not complete: it must contain" + 
                     "fast, fs and first subdirectories")
 
