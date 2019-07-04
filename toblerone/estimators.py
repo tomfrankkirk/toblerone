@@ -52,7 +52,6 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     else: 
         # Voxelise the surfaces (ie, no PVs), then store the results 
         # as the 'voxelised' attr of the surfaces 
-        print('Voxelising')
         voxelise = functools.partial(core.voxelise, FoVsize)
         fills = []
         if cores > 1:
@@ -63,7 +62,8 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             for surf in surfs:
                 fills.append(voxelise(surf))
 
-        [ setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) ]
+        
+        ( setattr(s, 'voxelised', f) for (s,f) in zip(surfs, fills) )
 
         # Estimate PV fractions for each surface
         for h in hemispheres:
@@ -91,13 +91,13 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             hemiPVs[:,1] = inFractions 
             hemiPVs[:,0] = np.maximum(0.0, outFractions - inFractions)
             hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
-
-            # And write into the hemisphere object. 
             h.PVs = hemiPVs
 
         # Merge the hemispheres, giving priority to GM, then WM, then CSF.
+        # Do nothing if just one hemi
         if len(hemispheres) == 1:
             outPVs = hemispheres[0].PVs
+
         else:
             h1, h2 = hemispheres
             outPVs = np.zeros((np.prod(FoVsize), 3), dtype=np.float32)
