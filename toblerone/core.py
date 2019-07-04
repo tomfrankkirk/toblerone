@@ -80,8 +80,7 @@ def voxelise(imgSize, surface):
         # lies on, calculate the indices of all other voxels on this ray, 
         # load the surface patches for all these voxels and find ray 
         # intersections to classify the voxel centres. Finally, we remove
-        # the entire set of ray voxels from our copy of the LUT to whittle
-        # it down slowly. 
+        # the entire set of ray voxels from our copy of the LUT and repeat
         LUT = copy.deepcopy(surface.LUT)
         while LUT.size: 
 
@@ -91,7 +90,6 @@ def voxelise(imgSize, surface):
             startInd = np.ravel_multi_index(startPoint.astype(np.int32), imgSize)
             voxRange = np.arange(startInd, startInd + (imgSize[dim])*stride, 
                 stride)
-            assert voxRange.size == imgSize[dim], 'Incorrect voxRange size'
 
             # Romeve those which are present in the LUT / allIJKs arrays
             keep = np.isin(LUT, voxRange, assume_unique=True, invert=True)
@@ -105,7 +103,7 @@ def voxelise(imgSize, surface):
             intersectionMus = _findRayTriangleIntersections2D(startPoint, \
                 patches, dim)
 
-            if not intersectionMus.shape[0]:
+            if not intersectionMus.size:
                 continue
             
             # If intersections were found, perform a parity test. 
@@ -550,7 +548,6 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
         
         flags[p] = shouldAppend
     
-    # Flip results if required
     if flip:
         flags = ~flags 
     
