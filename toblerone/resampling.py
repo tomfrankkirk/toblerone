@@ -88,6 +88,11 @@ def _sumArrayBlocks(array, factor):
     if len(factor) != len(array.shape):
         raise RuntimeError("factor must be of same length as number of dimensions")
 
+    if np.any(np.mod(factor, np.ones_like(factor))):
+        raise RuntimeError("factor must be of integer values only")
+
+    factor = [ int(f) for f in factor ]
+
     outshape = [ int(s/f) for (s,f) in zip(array.shape, factor) ]
     out = np.copy(array)
 
