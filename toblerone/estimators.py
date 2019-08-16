@@ -53,17 +53,13 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         # Voxelise the surfaces (ie, no PVs), then store the results 
         # as the 'voxelised' attr of the surfaces 
         voxelise = functools.partial(core.voxelise, FoVsize)
-        fills = []
         if cores > 1:
             with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
-                for _, r in enumerate(p.imap(voxelise, surfs)):
-                    fills.append(r)
+                for idx, filled in enumerate(p.imap(voxelise, surfs)):
+                    surfs[idx].voxelised = filled
         else: 
             for surf in surfs:
-                fills.append(voxelise(surf))
-
-        for (s,f) in zip(surfs, fills):
-            s.voxelised = f 
+                s.voxelised = voxelise(surf)
 
         # Estimate PV fractions for each surface
         for h in hemispheres:
