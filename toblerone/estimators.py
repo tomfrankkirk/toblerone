@@ -151,10 +151,10 @@ def _structure(refSpace, cores, supersampler, ones, surf):
         an array of size refSpace.imgSize containing the PVs. 
     """
 
-    surf.calculateXprods()
     FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
     surf.shiftFoV(FoVoffset, FoVsize)
     surf.formAssociations(FoVsize, cores)
+    surf.calculateXprods()
 
     if not surf.LUT.size:
         warnings.warn("Surface {} does not lie within reference space"

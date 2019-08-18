@@ -133,6 +133,11 @@ class Hemisphere(object):
     """The white and pial surfaces of a hemisphere, and a repository to 
     store data when calculating tissue PVs from the fractions of each
     surface
+
+    Args: 
+        inpath: path to white surface
+        outpath: path to pial surface 
+        side: 'L' or 'R' 
     """
 
     def __init__(self, inpath, outpath, side):
@@ -165,7 +170,7 @@ class Surface(object):
     - have formAssociations() called upon it 
     - have calculateXprods() called upon it 
     - have the voxelised property set upon it as follows: 
-        surface.voxelised = toblerone.voxelise(FoVsize, surface)
+        surface.voxelised = toblerone.core.voxelise(FoVsize, surface)
     
     Args: 
         path:   path to file (.gii/.vtk/.white/.pial)
@@ -255,7 +260,7 @@ class Surface(object):
     def save(self, path):
         
         if self.name is None: 
-            warnings.warn('''Surface has no name: will save as type 'Other' ''')
+            warnings.warn("Surface has no name: will save as type 'Other'")
             self.name = 'Other'
 
         common = {'Description': 'Surface has been transformed into' + \

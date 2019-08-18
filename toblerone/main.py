@@ -304,7 +304,7 @@ def estimate_structure(**kwargs):
     refSpace = ImageSpace(kwargs['ref'])
     supersampler = kwargs.get('super')
     if supersampler is None:
-        supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
+        supersampler = np.ceil(refSpace.voxSize / 0.75).astype(np.int8)
 
     # Apply registration and save copies if reqd 
     surf.applyTransform(kwargs['struct2ref'])
@@ -315,9 +315,8 @@ def estimate_structure(**kwargs):
     # Apply transformation to voxel space 
     surf.applyTransform(refSpace.world2vox)
 
-    return (estimators._structure(
-            refSpace, kwargs['cores'], supersampler, bool(kwargs.get('ones')), surf), 
-            transformed)
+    return (estimators._structure(refSpace, kwargs['cores'], supersampler, 
+        bool(kwargs.get('ones')), surf), transformed)
 
 
 @enforce_and_load_common_arguments
@@ -409,7 +408,7 @@ def estimate_cortex(**kwargs):
     # Set supersampler and estimate. 
     supersampler = kwargs.get('super')
     if supersampler is None:
-        supersampler = np.ceil(refSpace.voxSize).astype(np.int8) + 1
+        supersampler = np.ceil(refSpace.voxSize / 0.75).astype(np.int8)
 
     outPVs, cortexMask = estimators._cortex(hemispheres, refSpace, 
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
