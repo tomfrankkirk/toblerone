@@ -519,3 +519,64 @@ def stack_images(images):
     out = out / sums[:,None]
 
     return out.reshape(shape)
+
+
+def fsl_surf_anat(**kwargs):
+    """
+    Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
+
+    Args: 
+        anat: (optional) path to existing fsl_anat dir to augment
+        struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
+        out: output path (default alongside input, named input.anat)
+    """
+
+    # We are either adding to an existing dir, or we are creating 
+    # a fresh one 
+    if ('anat' not in kwargs) and ('struct' not in kwargs):
+        raise RuntimeError("Either a structural image or a path to an " + 
+            "existing fsl_anat dir must be given")
+
+    if kwargs.get('struct') and (not op.isfile(kwargs['struct'])):
+        raise RuntimeError("No struct image given, or does not exist")
+
+    if kwargs.get('anat') and (not op.isdir(kwargs['anat'])):
+        raise RuntimeError("fsl_anat dir does not exist")
+
+    debug = bool(kwargs.get('debug'))
+    anat_exists = ('anat' in kwargs)
+    struct = kwargs['struct']
+
+    # Run fsl_anat if needed. Either use user-supplied name or default
+    if not anat_exists:
+        outname = kwargs.get('out')
+        if not outname:
+            outname = toblerone.utils._splitExts(kwargs['struct'])[0]
+            outname = op.dirname(kwargs['struct']) + outname
+        print("Preparing an fsl_anat dir at %s" % outname)
+        if outname.endswith('.anat'):
+            outname = outname[:-5]
+        cmd = 'fsl_anat -i {} -o {}'.format(struct, outname)
+        subprocess.run(cmd, shell=True)
+        outname += '.anat'
+
+    else:
+        outname = kwargs['anat']
+    
+    # Run the surface steps if reqd. 
+    # Check the cropped T1 exists within anat_dir
+    if not op.isdir(op.join(outname, 'fs', 'surf')) or True:
+        cropped = op.join(outname, 'T1.nii.gz')
+
+        if not op.isfile(cropped):
+            raise RuntimeError("Could not find T1.nii.gz within anat_dir %s" 
+                % outname)
+
+        print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
+        toblerone.utils._runFreeSurfer(cropped, outname, debug)
+
+    if not toblerone.utils.check_anat_dir(outname): 
+        raise RuntimeError("fsl_anat dir should be complete with surfaces") 
+
+    print("fsl_anat dir at %s is now complete with surfaces" % outname)
+    return outname 
