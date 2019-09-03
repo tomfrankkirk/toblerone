@@ -2,19 +2,9 @@ import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
 from toblerone.commandline import estimate_structure_cmd, resample_cmd 
-from toblerone.commandline import fsl_surf_anat_cmd
+from toblerone.commandline import fsl_surf_anat_cmd, suffix 
 
 def main():
-
-    suffix = (
-"""
-Tom Kirk, thomas.kirk@eng.ox.ac.uk
-Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging
-University of Oxford, 2018
-""")
-
-
-
 
     usage_main = ("""
 TOBLERONE     Surface-based partial volume estimation
@@ -54,10 +44,7 @@ Usage:
         for f, n in zip(funcs, names):
             if name == n:
                 matched = True 
-                if fargs:
-                    f(*fargs)
-                else:
-                    print("\n", f.__doc__ + suffix)
+                f(*args)
 
         if not matched:
             print("Unrecognised command")
