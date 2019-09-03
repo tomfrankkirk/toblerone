@@ -156,34 +156,16 @@ def estimate_structure_cmd(*args):
 
 
 def estimate_all_cmd(*args):
-    """Estimate PVs for cortex and all structures identified by FIRST within 
-    a reference image space. Use FAST to fill in non-surface PVs. 
-    
-    Required args: 
-        -ref: path to reference image for which PVs are required
-        -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
-        -pvdir: path to anat directory (created by (run make_surf_anat_dir())
-
-    Optional args: 
-        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
-        -struct: path to structural image from which surfaces were derived
-        -cores: number of cores to use (default N-1)
-        -out: path to save output (default alongside ref)
-        -stack: stack PVs into 4D NIFTI, arranged GM/WM/non-brain
-        -savesurfs: save copies of each surface in reference space. 
-            HIGHLY recommended to check quality of registration. 
- 
-    """
+    if not args: 
+        print(main.estimate_all.__doc__)
     
     # parse stuff here
     parser = CommonParser()
-    parser.add_argument('-pvdir', type=str, required=False)
+    parser.add_argument('-anat', type=str, required=False)
     parser.add_argument('-stack', action='store_true', required=False)
     kwargs = parser.parse(args)
     
-    # Unless we have been given prepared pvdir, we will provide the path
+    # Unless we have been given prepared anat dir, we will provide the path
     # to the next function to create one
     if type(kwargs.get('anat')) is str:
         if not op.isdir(kwargs.get('anat')):
@@ -195,7 +177,7 @@ def estimate_all_cmd(*args):
 
     # Output paths. If given an -out argument of the form path/name then we use
     # path as the output directory and name as the basic filename. Otherwise we
-    # use the pvdir for output and the reference as basic filename. 
+    # use the input directory for output
     outdir = ''
     namebase = ''
     ext = '.nii.gz'
@@ -207,7 +189,7 @@ def estimate_all_cmd(*args):
         namebase = utils._splitExts(kwargs['ref'])[0]
 
     if not outdir: 
-        outdir = kwargs['pvdir']
+        outdir = op.dirname(kwargs['ref'])
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, namebase + '_intermediate')
