@@ -217,13 +217,13 @@ def estimate_all(**kwargs):
 
     # If anat dir then various subdirs are loaded by @enforce_common_args
     # If not then direct load below 
-    if ('anat' not in kwargs):
-        if 'fsdir' not in kwargs:
-            if not all([ k in kwargs for k in ['LWS','LPS','RWS','RPS'] ]):
+    if not bool(kwargs.get('anat')):
+        if not bool(kwargs.get('fsdir')):
+            if not all([ bool(kwargs.get(k)) for k in ['LWS','LPS','RWS','RPS'] ]):
                 raise RuntimeError("If fsdir not given, " + 
                     "provide paths for LWS,LPS,RWS,RPS")
         
-        if not (('firstdir' in kwargs) and ('fastdir' in kwargs)):
+        if not (bool(kwargs.get('fastdir')) and bool(kwargs.get('firstdir'))):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
@@ -308,7 +308,7 @@ def estimate_structure(**kwargs):
     """
 
     # Check we either have a surface object or path to one 
-    if not 'surf' in kwargs:
+    if not bool(kwargs.get('surf')):
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
     if type(kwargs['surf']) is str: 
@@ -557,7 +557,7 @@ def fsl_surf_anat(**kwargs):
 
     # We are either adding to an existing dir, or we are creating 
     # a fresh one 
-    if ('anat' not in kwargs) and ('struct' not in kwargs):
+    if (not bool(kwargs.get('anat'))) and (not bool(kwargs.get('struct'))):
         raise RuntimeError("Either a structural image or a path to an " + 
             "existing fsl_anat dir must be given")
 
