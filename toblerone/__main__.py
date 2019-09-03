@@ -40,6 +40,7 @@ Usage:
         else:
             fargs = []
 
+        print(name)
         matched = False
         for f, n in zip(funcs, names):
             if name == n:
@@ -47,7 +48,7 @@ Usage:
                 if fargs:
                     f(*fargs)
                 else:
-                    print("\n", f.__doc__ + suffix)
+                    print(f.__doc__ + suffix)
 
         if not matched:
             print("Unrecognised command")
