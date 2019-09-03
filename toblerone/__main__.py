@@ -34,12 +34,7 @@ Usage:
 
     if len(args) > 1:
         name = args[1]
-
-        if len(args) > 2:
-            fargs = args[2:]
-        else:
-            fargs = []
-
+        args = args[2:]
         matched = False
         for f, n in zip(funcs, names):
             if name == n:
