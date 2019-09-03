@@ -14,16 +14,25 @@ from toblerone import core, estimators, utils, resampling
 from toblerone.classes import ImageSpace, Hemisphere
 from toblerone.classes import Surface, CommonParser
 
+def hygienic(decorator):
+    def new_decorator(original):
+        wrapped = decorator(original)
+        wrapped.__name__ = original.__name__
+        wrapped.__doc__ = original.__doc__
+        wrapped.__module__ = original.__module__
+        return wrapped
+    return new_decorator
+
 # Simply apply a function to list of arguments.
 # Used for multiprocessing shell commands. 
 def apply_func(func, args):
     func(*args)
 
 
+@hygienic
 def timer(func):
     """Timing decorator, prints duration in minutes"""
 
-    @functools.wraps(func)
     def timed_function(*args, **kwargs):
         t1 = time.time()
         out = func(*args, **kwargs)
@@ -34,6 +43,7 @@ def timer(func):
     return timed_function
 
 
+@hygienic
 def enforce_and_load_common_arguments(func):
     """Decorator to enforce and pre-processes common arguments in a 
     kwargs dict that are used across multiple functions. Note
@@ -62,7 +72,6 @@ def enforce_and_load_common_arguments(func):
         a modified copy of kwargs dictionary passed to the caller
     """
     
-    @functools.wraps(func)
     def enforcer(**kwargs):
 
         # Reference image path 
