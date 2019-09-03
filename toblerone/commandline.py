@@ -163,8 +163,7 @@ def estimate_structure_cmd(*args):
 
 
 def estimate_all_cmd(*args):
-    print(args)
-    if len(args) == 1: 
+    if not args: 
         print(main.estimate_all.__doc__ + suffix)
     
     # parse stuff here
