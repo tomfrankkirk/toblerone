@@ -12,6 +12,13 @@ import numpy as np
 from . import main, utils
 from .classes import CommonParser, ImageSpace
 
+suffix = (
+"""
+Tom Kirk, thomas.kirk@eng.ox.ac.uk
+Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging
+University of Oxford, 2018
+""")
+
 
 def estimate_cortex_cmd(*args):
     """Estimate PVs for L/R cortex.
@@ -157,7 +164,7 @@ def estimate_structure_cmd(*args):
 
 def estimate_all_cmd(*args):
     if not args: 
-        print(main.estimate_all.__doc__)
+        print(main.estimate_all.__doc__ + suffix)
     
     # parse stuff here
     parser = CommonParser()
