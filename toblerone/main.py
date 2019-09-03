@@ -568,7 +568,7 @@ def fsl_surf_anat(**kwargs):
         raise RuntimeError("fsl_anat dir does not exist")
 
     debug = bool(kwargs.get('debug'))
-    anat_exists = ('anat' in kwargs)
+    anat_exists = bool(kwargs.get('anat'))
     struct = kwargs['struct']
 
     # Run fsl_anat if needed. Either use user-supplied name or default
@@ -589,7 +589,7 @@ def fsl_surf_anat(**kwargs):
     
     # Run the surface steps if reqd. 
     # Check the cropped T1 exists within anat_dir
-    if not op.isdir(op.join(outname, 'fs', 'surf')) or True:
+    if not op.isdir(op.join(outname, 'fs', 'surf')):
         cropped = op.join(outname, 'T1.nii.gz')
 
         if not op.isfile(cropped):
