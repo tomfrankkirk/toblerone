@@ -14,7 +14,20 @@ from toblerone import core, estimators, utils, resampling
 from toblerone.classes import ImageSpace, Hemisphere
 from toblerone.classes import Surface, CommonParser
 
-def hygienic(decorator):
+
+# Simply apply a function to list of arguments.
+# Used for multiprocessing shell commands. 
+def apply_func(func, args):
+    func(*args)
+
+
+def cascade_attributes(decorator):
+    """
+    Overrride default decorator behaviour to preserve docstrings etc
+    of decorated functions - functools.wraps didn't seem to work. 
+    See https://stackoverflow.com/questions/6394511/python-functools-wraps-equivalent-for-classes
+    """
+
     def new_decorator(original):
         wrapped = decorator(original)
         wrapped.__name__ = original.__name__
@@ -23,13 +36,8 @@ def hygienic(decorator):
         return wrapped
     return new_decorator
 
-# Simply apply a function to list of arguments.
-# Used for multiprocessing shell commands. 
-def apply_func(func, args):
-    func(*args)
 
-
-@hygienic
+@cascade_attributes
 def timer(func):
     """Timing decorator, prints duration in minutes"""
 
@@ -43,7 +51,7 @@ def timer(func):
     return timed_function
 
 
-@hygienic
+@cascade_attributes
 def enforce_and_load_common_arguments(func):
     """Decorator to enforce and pre-processes common arguments in a 
     kwargs dict that are used across multiple functions. Note
