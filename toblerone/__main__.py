@@ -19,19 +19,17 @@ University of Oxford, 2018
     usage_main = ("""
 PVTOOLS     Tools for estimating partial volumes
 
-Usage (preface all with "python3 -m pvtools"):
+Usage:
 
--estimate_all           estimate PVs across the brain, using FAST for subcortical 
-                            and FreeSurfer/Toblerone for cortical tissues
+-estimate_all           estimate PVs across the brain, for both cortical and subcortical
+                            structures
 
--estimate_cortex        estimate PVs for the cortex using FreeSurfer/Toblerone
+-estimate_cortex        estimate PVs for the cortex
 
--estimate_structure     estimate PVs for a subcortical structure defined by a
-                            single surface
+-estimate_structure     estimate PVs for a structure defined by a single surface 
 
 -fsl_surf_anat          run fsl_anat and augment output with FreeSurfer (pre-processing
                             step for other Toblerone functions)
-
 """)
 
 
