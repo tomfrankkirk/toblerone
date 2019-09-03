@@ -53,7 +53,8 @@ def timer(func):
 
 @cascade_attributes
 def enforce_and_load_common_arguments(func):
-    """Decorator to enforce and pre-processes common arguments in a 
+    """
+    Decorator to enforce and pre-processes common arguments in a 
     kwargs dict that are used across multiple functions. Note
     some function-specific checking is still required. This intercepts the
     kwargs dict passed to the caller, does some checking and modification 
@@ -188,7 +189,8 @@ def enforce_and_load_common_arguments(func):
 @timer
 @enforce_and_load_common_arguments
 def estimate_all(**kwargs):
-    """Estimate PVs for cortex and all structures identified by FIRST within 
+    """
+    Estimate PVs for cortex and all structures identified by FIRST within 
     a reference image space. Use FAST to fill in non-surface PVs. 
     All arguments are kwargs.
 
@@ -202,7 +204,7 @@ def estimate_all(**kwargs):
     Optional args: 
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
-        cores: number of cores to use (default N-1)
+        cores: number of cores to use 
  
     Returns: 
         (pvs, transformed) both dictionaries. 
@@ -284,7 +286,8 @@ def estimate_structure_wrapper(surf, **kwargs):
 
 @enforce_and_load_common_arguments
 def estimate_structure(**kwargs):
-    """Estimate PVs for a structure defined by a single surface. 
+    """
+    Estimate PVs for a structure defined by a single surface. 
     All arguments are kwargs.
     
     Required args: 
@@ -298,7 +301,7 @@ def estimate_structure(**kwargs):
         space: space in which surface is defined: default is 'world' (mm coords),
             for FIRST surfaces set 'first' (FSL convention). 
         struct: path to structural image from which surfaces were derived
-        cores: number of cores to use (default N-1)
+        cores: number of cores to use 
  
     Returns: 
         (pvs, transformed) PV image and transformed surface object. 
@@ -339,7 +342,8 @@ def estimate_structure(**kwargs):
 
 @enforce_and_load_common_arguments
 def estimate_cortex(**kwargs):
-    """Estimate PVs for L/R cortex. All arguments are kwargs.
+    """
+    Estimate PVs for L/R cortex. All arguments are kwargs.
 
     Required args: 
         ref: path to reference image for which PVs are required
@@ -359,13 +363,13 @@ def estimate_cortex(**kwargs):
         space: space in which surfaces are in (world/first)
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
-        cores: number of cores to use (default N-1)
+        cores: number of cores to use 
         stack: stack the estimates for GM/WM/non-brain into a 4D NIFTI, 
             in that order 
  
     Returns: 
         (pvs, mask, transformed) all dictionaries. 
-        pvs contains the PVs associated with each individual structure and 
+        pvs contains the PVs associated with each named structure and 
             also the overall combined result ('stacked')
         mask is a binary mask of voxels intersecting the cortex
         transformed contains copies of each surface transformed into ref space
@@ -435,7 +439,8 @@ def estimate_cortex(**kwargs):
 
 
 def resample(src, ref, src2ref=np.identity(4), flirt=False):
-    """Resample an image via upsampling to an intermediate space followed
+    """
+    Resample an image via upsampling to an intermediate space followed
     by summation back down to reference space. Wrapper for superResampleImage()
     
     Args:
@@ -454,7 +459,8 @@ def resample(src, ref, src2ref=np.identity(4), flirt=False):
 
 
 def stack_images(images):
-    """Combine the results of estimate_all() into overall PV maps
+    """
+    Combine the results of estimate_all() into overall PV maps
     for each tissue. Note that the below logic is entirely specific 
     to the surfaces produced by FreeSurfer, FIRST and how they may be
     combined with FAST estimates. If you're going off-piste anywhere else
