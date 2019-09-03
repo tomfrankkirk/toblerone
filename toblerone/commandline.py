@@ -239,3 +239,20 @@ def estimate_all_cmd(*args):
             sname = op.join(intermediatedir, 
                 namebase + '_%s.surf.gii' % s.name)
             s.save(sname)
+
+def fsl_surf_anat_cmd(*args):
+    """
+    Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
+
+    Args: 
+        anat: (optional) path to existing fsl_anat dir to augment
+        struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
+        out: output path (default alongside input, named input.anat)
+    """
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-anat', type=str, required=False)
+    parser.add_argument('-struct', type=str, required=False)
+    parser.add_argument('-out', type=str, required=False)
+    kwargs = parser.parse(args)
+    main.fsl_surf_anat(**kwargs)

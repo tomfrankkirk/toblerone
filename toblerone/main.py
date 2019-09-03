@@ -5,6 +5,7 @@ import functools
 import copy
 import shutil
 import time 
+import subprocess
 
 import numpy as np
 import tqdm
@@ -551,7 +552,7 @@ def fsl_surf_anat(**kwargs):
     if not anat_exists:
         outname = kwargs.get('out')
         if not outname:
-            outname = toblerone.utils._splitExts(kwargs['struct'])[0]
+            outname = utils._splitExts(kwargs['struct'])[0]
             outname = op.dirname(kwargs['struct']) + outname
         print("Preparing an fsl_anat dir at %s" % outname)
         if outname.endswith('.anat'):
@@ -573,9 +574,9 @@ def fsl_surf_anat(**kwargs):
                 % outname)
 
         print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
-        toblerone.utils._runFreeSurfer(cropped, outname, debug)
+        utils._runFreeSurfer(cropped, outname, debug)
 
-    if not toblerone.utils.check_anat_dir(outname): 
+    if not utils.check_anat_dir(outname): 
         raise RuntimeError("fsl_anat dir should be complete with surfaces") 
 
     print("fsl_anat dir at %s is now complete with surfaces" % outname)

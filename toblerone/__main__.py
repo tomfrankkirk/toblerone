@@ -2,6 +2,7 @@ import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
 from toblerone.commandline import estimate_structure_cmd, resample_cmd 
+from toblerone.commandline import fsl_surf_anat_cmd
 
 def main():
 
@@ -28,15 +29,15 @@ Usage (preface all with "python3 -m pvtools"):
 -estimate_structure     estimate PVs for a subcortical structure defined by a
                             single surface
 
--resample               resample an image onto a reference via integrative method, 
-                            applying affine transformation
+-fsl_surf_anat          run fsl_anat and augment output with FreeSurfer (pre-processing
+                            step for other Toblerone functions)
 
 """)
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, resample_cmd]
-    names = ['-estimate_all', '-estimate_cortex', '-estimate_structure' '-resample']
+        estimate_structure_cmd, fsl_surf_anat_cmd]
+    names = ['-estimate_all', '-estimate_cortex', '-estimate_structure' '-fsl_surf_anat']
 
     args = sys.argv
 
