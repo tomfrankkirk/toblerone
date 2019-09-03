@@ -34,12 +34,20 @@ Usage:
 
     if len(args) > 1:
         name = args[1]
-        args = args[2:]
+
+        if len(args) > 2:
+            fargs = args[2:]
+        else:
+            fargs = []
+
         matched = False
         for f, n in zip(funcs, names):
             if name == n:
                 matched = True 
-                f(*args)
+                if fargs:
+                    f(*fargs)
+                else:
+                    print("\n", f.__doc__ + suffix)
 
         if not matched:
             print("Unrecognised command")

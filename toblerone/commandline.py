@@ -21,7 +21,8 @@ University of Oxford, 2018
 
 
 def estimate_cortex_cmd(*args):
-    """Estimate PVs for L/R cortex.
+    """
+    Estimate PVs for L/R cortex.
 
     Required args: 
         -ref: path to reference image for which PVs are required
@@ -40,12 +41,11 @@ def estimate_cortex_cmd(*args):
     Optional args: 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         -struct: path to structural image from which surfaces were derived
-        -cores: number of cores to use (default N-1)
+        -cores: number of cores to use 
         -out: path to save output (default alongside ref, using same basename)
         -savesurfs: save copies of each surface in reference space. 
             HIGHLY recommended to check registration quality. 
-        -hard: perform simple segmentation based on voxel centres (no PVs, 
-            useful for masking)
+        -ones: perform simple segmentation based on voxel centres (debug)
     """
     
 
@@ -57,7 +57,7 @@ def estimate_cortex_cmd(*args):
     parser.add_argument('-LPS', type=str, required=False)
     parser.add_argument('-RWS', type=str, required=False)        
     parser.add_argument('-RPS', type=str, required=False)
-    parser.add_argument('-hard', action='store_true')
+    parser.add_argument('-ones', action='store_true')
     parser.add_argument('-stack', action='store_true', required=False)
     kwargs = parser.parse(args)
 
@@ -113,7 +113,8 @@ def resample_cmd(*args):
 
 
 def estimate_structure_cmd(*args):
-    """Estimate PVs for a structure defined by a single surface. 
+    """
+    Estimate PVs for a structure defined by a single surface. 
     
     Required args: 
         -ref: path to reference image for which PVs are required
@@ -127,10 +128,12 @@ def estimate_structure_cmd(*args):
             for FIRST surfaces set 'first' (FSL convention). 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         -struct: path to structural image from which surfaces were derived
-        -cores: number of cores to use (default N-1)
+        -cores: number of cores to use 
         -out: path to save output (default alongside ref)
         -savesurfs: save copies of each surface in reference space. 
             HIGHLY recommended to check quality of registration. 
+        -ones: perform simple segmentation based on voxel centres (debug)
+
     """
 
     # Parse the common arguments and store as kwargs
@@ -138,6 +141,7 @@ def estimate_structure_cmd(*args):
     parser = CommonParser()
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
+    parser.add_argument('-ones', action='store_true')
     kwargs = parser.parse(args)
 
     if kwargs.get('out') is None:
@@ -163,13 +167,44 @@ def estimate_structure_cmd(*args):
 
 
 def estimate_all_cmd(*args):
-    if not args: 
-        print(main.estimate_all.__doc__ + suffix)
+    """
+    Estimate PVs for cortex and all structures identified by FIRST within 
+    a reference image space. Use FAST to fill in non-surface PVs. 
     
-    # parse stuff here
+    Required args: 
+        -ref: path to reference image for which PVs are required
+        -struct2ref: path to np or text file denoting registration between 
+            structural (surface) and reference space. Use 'I' for identity. 
+        -anat: path to anat directory (see fsl_surf_anat)
+
+    Alternatvies to anat argument (-struct must also be supplied): 
+        -fsdir: FreeSurfer subject directory, OR: 
+            -LWS/-LPS/-RWS/-RPS paths to individual surfaces (L/R white/pial)
+        -firstdir: FIRST directory
+        -fastdir: FAST directory 
+
+    Optional args: 
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -struct: path to structural image from which surfaces were derived
+        -cores: number of cores to use
+        -out: path to save output (default alongside ref)
+        -stack: stack PVs into 4D NIFTI, arranged GM/WM/non-brain
+        -savesurfs: save copies of each surface in reference space. 
+            HIGHLY recommended to check quality of registration. 
+        -ones: perform simple segmentation based on voxel centres (debug)
+    """
+    
     parser = CommonParser()
     parser.add_argument('-anat', type=str, required=False)
     parser.add_argument('-stack', action='store_true', required=False)
+    parser.add_argument('-fsdir', type=str, required=False)
+    parser.add_argument('-firstdir', type=str, required=False)
+    parser.add_argument('-fastdir', type=str, required=False)
+    parser.add_argument('-LWS', type=str, required=False)
+    parser.add_argument('-LPS', type=str, required=False)
+    parser.add_argument('-RWS', type=str, required=False)        
+    parser.add_argument('-RPS', type=str, required=False)
+    parser.add_argument('-ones', action='store_true')
     kwargs = parser.parse(args)
     
     # Unless we have been given prepared anat dir, we will provide the path
@@ -178,7 +213,7 @@ def estimate_all_cmd(*args):
         if not op.isdir(kwargs.get('anat')):
             raise RuntimeError("anat dir %s does not exist" % kwargs['anat'])
     else: 
-        raise RuntimeError("anat dir must be provided (run make_surf_anat_dir()")
+        raise RuntimeError("anat dir must be provided (run fsl_surf_anat()")
 
     output, transformed = main.estimate_all(**kwargs)
 
@@ -196,10 +231,11 @@ def estimate_all_cmd(*args):
         namebase = utils._splitExts(kwargs['ref'])[0]
 
     if not outdir: 
-        outdir = op.dirname(kwargs['ref'])
+        outdir = op.join(op.dirname(kwargs['ref'],
+            namebase + '_surfpvs'))
 
     # Make output dirs if they do not exist. 
-    intermediatedir = op.join(outdir, namebase + '_intermediate')
+    intermediatedir = op.join(outdir, 'intermediate')
     utils._weak_mkdir(outdir)
     utils._weak_mkdir(intermediatedir)
 
