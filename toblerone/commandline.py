@@ -279,5 +279,5 @@ def fsl_surf_anat_cmd(*args):
     parser.add_argument('-anat', type=str, required=False)
     parser.add_argument('-struct', type=str, required=False)
     parser.add_argument('-out', type=str, required=False)
-    kwargs = parser.parse(args)
+    kwargs = parser.parse_args(args)
     main.fsl_surf_anat(**kwargs)
