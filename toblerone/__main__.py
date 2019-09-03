@@ -17,7 +17,7 @@ University of Oxford, 2018
 
 
     usage_main = ("""
-PVTOOLS     Tools for estimating partial volumes
+TOBLERONE     Surface-based partial volume estimation
 
 Usage:
 
