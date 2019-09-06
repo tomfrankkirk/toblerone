@@ -25,7 +25,10 @@ import operator
 
 import numpy as np 
 import nibabel
-import vtki
+try:
+    import vtki
+except ImportError:
+    import pyvista as vtki
 from vtk.util import numpy_support as vtknp
 
 from . import utils, core 
