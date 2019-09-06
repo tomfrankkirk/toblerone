@@ -4,4 +4,4 @@ numpy
 scipy
 tqdm
 vtk
-vtki
+pyvista
