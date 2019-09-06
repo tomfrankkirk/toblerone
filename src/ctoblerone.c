@@ -18,7 +18,9 @@ char testRayTriangleIntersection(const float tri[3][3], const float start[3], in
 {
     char intersection = 0; 
 
-    for (int j = 2, i = 0; i < 3; ++i) //start with the wraparound case
+    int i, j;
+    j=2;
+    for (i=0; i < 3; ++i) //start with the wraparound case
     {
         if ((tri[i][ax1] < start[ax1]) != (tri[j][ax1] < start[ax1]))
         {//if one vertex is on one side of the point in the x direction, and the other is on the other side (equal case is treated as greater)
