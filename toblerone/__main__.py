@@ -2,7 +2,7 @@ import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
 from toblerone.commandline import estimate_structure_cmd, resample_cmd 
-from toblerone.commandline import fsl_surf_anat_cmd, suffix 
+from toblerone.commandline import fsl_fs_anat_cmd, suffix 
 
 def main():
 
@@ -18,15 +18,15 @@ Usage:
 
 -estimate_structure     estimate PVs for a structure defined by a single surface 
 
--fsl_surf_anat          run fsl_anat and augment output with FreeSurfer (pre-processing
+-fsl_fs_anat          run fsl_anat and augment output with FreeSurfer (pre-processing
                             step for other Toblerone functions)
 """)
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, fsl_surf_anat_cmd]
+        estimate_structure_cmd, fsl_fs_anat_cmd]
     names = ['-estimate_all', '-estimate_cortex', '-estimate_structure', 
-        '-fsl_surf_anat']
+        '-fsl_fs_anat']
 
     args = sys.argv
 

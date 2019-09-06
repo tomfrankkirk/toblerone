@@ -545,7 +545,7 @@ def stack_images(images):
     return out.reshape(shape)
 
 
-def fsl_surf_anat(**kwargs):
+def fsl_fs_anat(**kwargs):
     """
     Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
 

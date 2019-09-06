@@ -175,7 +175,7 @@ def estimate_all_cmd(*args):
         -ref: path to reference image for which PVs are required
         -struct2ref: path to np or text file denoting registration between 
             structural (surface) and reference space. Use 'I' for identity. 
-        -anat: path to anat directory (see fsl_surf_anat)
+        -anat: path to anat directory (see fsl_fs_anat)
 
     Alternatvies to anat argument (-struct must also be supplied): 
         -fsdir: FreeSurfer subject directory, OR: 
@@ -213,7 +213,7 @@ def estimate_all_cmd(*args):
         if not op.isdir(kwargs.get('anat')):
             raise RuntimeError("anat dir %s does not exist" % kwargs['anat'])
     else: 
-        raise RuntimeError("anat dir must be provided (run fsl_surf_anat()")
+        raise RuntimeError("anat dir must be provided (run fsl_fs_anat()")
 
     output, transformed = main.estimate_all(**kwargs)
 
@@ -265,7 +265,7 @@ def estimate_all_cmd(*args):
                 namebase + '_%s.surf.gii' % s.name)
             s.save(sname)
 
-def fsl_surf_anat_cmd(*args):
+def fsl_fs_anat_cmd(*args):
     """
     Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
 
@@ -280,4 +280,4 @@ def fsl_surf_anat_cmd(*args):
     parser.add_argument('-struct', type=str, required=False)
     parser.add_argument('-out', type=str, required=False)
     kwargs = vars(parser.parse_args(args))
-    main.fsl_surf_anat(**kwargs)
+    main.fsl_fs_anat(**kwargs)
