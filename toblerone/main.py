@@ -588,16 +588,16 @@ def fsl_fs_anat(**kwargs):
         outname = kwargs['anat']
     
     # Run the surface steps if reqd. 
-    # Check the cropped T1 exists within anat_dir
+    # Check the fullfov T1 exists within anat_dir
     if not op.isdir(op.join(outname, 'fs', 'surf')):
-        cropped = op.join(outname, 'T1.nii.gz')
+        fullfov = op.join(outname, 'T1_fullfov.nii.gz')
 
-        if not op.isfile(cropped):
-            raise RuntimeError("Could not find T1.nii.gz within anat_dir %s" 
+        if not op.isfile(fullfov):
+            raise RuntimeError("Could not find T1_fullfov.nii.gz within anat_dir %s" 
                 % outname)
 
         print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
-        utils._runFreeSurfer(cropped, outname, debug)
+        utils._runFreeSurfer(fullfov, outname, debug)
 
     if not utils.check_anat_dir(outname): 
         raise RuntimeError("fsl_anat dir should be complete with surfaces") 
