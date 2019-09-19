@@ -141,7 +141,7 @@ class ImageSpace(object):
 
         Args: 
             surfs: singular or list of surface objects 
-            reference: path to image to use as reference space
+            reference: ImageSpace object or path to image to use 
 
         Returns: 
             ImageSpace object, with a shifted origin and potentially different
@@ -154,7 +154,8 @@ class ImageSpace(object):
         else: 
             slits = surfs 
 
-        space = ImageSpace(reference)
+        if type(reference) is str: 
+            space = ImageSpace(reference)
 
         # Extract min and max vox coords in the reference space 
         min_max = np.zeros((2*len(slist), 3))
@@ -405,29 +406,20 @@ class Surface(object):
             dest_space: ImageSpace from which the current index_space derives
 
         Updates: 
-            A new copy of the surface, with the following properties updated:
             points, LUT, assocs, xProds
         """
 
-        if not self.index_space.derives_from(dest_space):
-            raise RuntimeError("The destination space does not derive from" +
-                " the current index space")
-
         # Get the offset and size of the current index space 
         ref_space = self.index_space
-        new_surf = copy.copy(self)
         FoVoffset = ref_space.offset 
         FoVsize = self.index_space.FoVsize 
 
-        # List voxel indices in the current index space 
-        # List corresponding voxel coordinates in the destination space 
-        # ref2dest_fltr selects voxel indices from the current space that 
-        # are also contained within the destination space 
+        # Get a filter for voxel of the current index space that are still 
+        # present in the dest_space 
         ref_inds = np.arange(np.prod(FoVsize))
         ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, FoVsize)).T
         ref_voxs_in_dest -= FoVoffset
-        ref2dest_fltr = np.logical_and(np.all(ref_voxs_in_dest > - 1, 1), 
-            np.all(ref_voxs_in_dest < dest_space.FoVsize, 1))
+        ref2dest_fltr = self.reindexing_filter(dest_space)
 
         # Update LUT: produce filter of ref voxel inds within the current LUT
         # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
@@ -452,15 +444,50 @@ class Surface(object):
 
         # Lastly update the points: map them back to world mm coordinates 
         # and use the world2vox of the dest space 
-        new_surf.applyTransform(ref_space.vox2world)
-        new_surf.applyTransform(dest_space.world2vox)
+        self.applyTransform(ref_space.vox2world)
+        self.applyTransform(dest_space.world2vox)
 
-        new_surf.LUT = newLUT
-        new_surf.assocs = newassocs
-        new_surf.voxelised = newvoxelised
-        new_surf.index_space = dest_space
-        new_surf.offset = None
-        return new_surf 
+        self.LUT = newLUT
+        self.assocs = newassocs
+        self.voxelised = newvoxelised
+        self.index_space = dest_space
+        self.offset = None
+
+
+    def reindexing_filter(self, dest_space):
+        """
+        Logical filter of voxels in the current index space that lie within 
+        dest_space. Use for extracting PV estimates from index space back to
+        the space from which the index space derives. 
+
+        Args: 
+            dest_space: ImageSpace object from which current index space derives
+
+        Returns: 
+            flat np bool array, sized for the current index space FoV, true 
+            where the corresponding voxel index lies within dest space
+        """
+
+        if not self.index_space.derives_from(dest_space):
+            raise RuntimeError("The destination space does not derive from" +
+                " the current index space")
+
+        # Get the offset and size of the current index space 
+        ref_space = self.index_space
+        FoVoffset = ref_space.offset 
+        FoVsize = self.index_space.FoVsize 
+
+        # List voxel indices in the current index space 
+        # List corresponding voxel coordinates in the destination space 
+        # ref2dest_fltr selects voxel indices from the current space that 
+        # are also contained within the destination space 
+        ref_inds = np.arange(np.prod(FoVsize))
+        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, FoVsize)).T
+        ref_voxs_in_dest -= FoVoffset
+        ref2dest_fltr = np.logical_and(np.all(ref_voxs_in_dest > - 1, 1), 
+            np.all(ref_voxs_in_dest < dest_space.FoVsize, 1))
+
+        return ref2dest_fltr
 
 
     def calculateXprods(self):
