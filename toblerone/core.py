@@ -35,28 +35,28 @@ BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Functions -------------------------------------------------------------------
 
-def voxelise(imgSize, surface):
+def voxelise(FoVsize, surface):
     """Voxelise (create binary in/out mask) a surface within a voxel grid
-    of size imgSize. Surface coordinates must be in 0-indexed voxel units, 
-    as will the voxel grid be interpreted (ie, 0 : imgSize - 1 in xyz). 
+    of size FoVsize. Surface coordinates must be in 0-indexed voxel units, 
+    as will the voxel grid be interpreted (ie, 0 : FoVsize - 1 in xyz). 
     Method is defined as static on the class for compataibility with 
     multiprocessing.Pool().
 
     Args: 
-        imgSize: 3-vector of voxel grid dimensions
+        FoVsize: 3-vector of voxel grid dimensions
         surface: surface object. 
 
     Returns: 
         a flat boolean mask indicating voxels contained within the
-            surface. Use reshape(imgSize) as required. 
+            surface. Use reshape(FoVsize) as required. 
     """
 
     try: 
 
         # Project rays along the largest dimension to classify as many voxels
         # at once as we can 
-        dim = np.argmax(imgSize)
-        mask = np.zeros(np.prod(imgSize), dtype=bool)
+        dim = np.argmax(FoVsize)
+        mask = np.zeros(np.prod(FoVsize), dtype=bool)
         otherdims = [0,1,2]
         otherdims.remove(dim)
         d1, d2 = tuple(otherdims)
@@ -67,13 +67,13 @@ def voxelise(imgSize, surface):
         # regardless of what dimension we are projecting rays along. Define
         # a single ray of voxels, convert to linear indices and calculate 
         # the stride from that. 
-        allIJKs = np.vstack(np.unravel_index(surface.LUT, imgSize)).T
-        rayIJK = np.zeros((imgSize[dim], 3), dtype=np.int16)
-        rayIJK[:,dim] = np.arange(0, imgSize[dim])
+        allIJKs = np.vstack(np.unravel_index(surface.LUT, FoVsize)).T
+        rayIJK = np.zeros((FoVsize[dim], 3), dtype=np.int16)
+        rayIJK[:,dim] = np.arange(0, FoVsize[dim])
         rayIJK[:,d1] = allIJKs[0,d1]
         rayIJK[:,d2] = allIJKs[0,d2]
         linearInds = np.ravel_multi_index((rayIJK[:,0], rayIJK[:,1], 
-            rayIJK[:,2]), imgSize)
+            rayIJK[:,2]), FoVsize)
         stride = linearInds[1] - linearInds[0]
 
         # We now cycle through each voxel in the LUT, check which ray it 
@@ -87,8 +87,8 @@ def voxelise(imgSize, surface):
             # Where does the ray that passes through this voxel start?
             # Load all other voxels on this ray
             startPoint[[d1,d2]] = [allIJKs[0,d1], allIJKs[0,d2]]
-            startInd = np.ravel_multi_index(startPoint.astype(np.int32), imgSize)
-            voxRange = np.arange(startInd, startInd + (imgSize[dim])*stride, 
+            startInd = np.ravel_multi_index(startPoint.astype(np.int32), FoVsize)
+            voxRange = np.arange(startInd, startInd + (FoVsize[dim])*stride, 
                 stride)
 
             # Romeve those which are present in the LUT / allIJKs arrays
@@ -148,10 +148,10 @@ def _quickCross(a, b):
 
 
 
-def _filterPoints(points, voxCent, voxSize):
+def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""
 
-    return np.all(np.less_equal(np.abs(points - voxCent), voxSize/2), axis=1)
+    return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
 
 
 
@@ -258,16 +258,16 @@ def _separatePointClouds(tris):
 
 
 
-def _getVoxList(imgSize, FoVoffset, FoVsize):
+def _getVoxList(FoVsize, FoVoffset, FoVsize):
     """Single list of linear voxel indices for all voxels lying within 
-    a grid of size imgSize, contained within a potentially larger grid 
+    a grid of size FoVsize, contained within a potentially larger grid 
     of size FoVsize, in which the respective origins are shifted by 
     FoVoffst. 
 
     Args: 
-        imgSize: the size of the grid for which voxels indices are needed
+        FoVsize: the size of the grid for which voxels indices are needed
         FoVoffset: the offset (3-vector) between voxel [0,0,0] of the grid
-            represented by FoVoffset and voxel [0,0,0] of imgSize. 
+            represented by FoVoffset and voxel [0,0,0] of FoVsize. 
         FoVsize: the size of the (potentially) larger voxel grid within which
             the smaller grid lies (they are at least the same size)
 
@@ -275,7 +275,7 @@ def _getVoxList(imgSize, FoVoffset, FoVsize):
         list of linear voxel indices referenced to the grid FoVsize
     """
 
-    voxSubs = utils._coordinatesForGrid(imgSize)
+    voxSubs = utils._coordinatesForGrid(FoVsize)
     voxSubs = voxSubs + FoVoffset 
     return np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
         FoVsize)
@@ -286,7 +286,7 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
     """Worker function for use with multiprocessing. See formAssociations"""
 
     workerResults = {}
-    voxSize = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 
     for t in triInds:
 
@@ -303,7 +303,7 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
 
         for voxel in neighbourhood: 
 
-            if _ctestTriangleVoxelIntersection(voxel, voxSize, tri):
+            if _ctestTriangleVoxelIntersection(voxel, vox_size, tri):
 
                 ind = np.ravel_multi_index(voxel.astype(np.int16), 
                     FoVsize)
@@ -444,7 +444,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
 
 
 
-def _fullRayIntersectionTest(testPnt, surf, voxIJK, imgSize):
+def _fullRayIntersectionTest(testPnt, surf, voxIJK, FoVsize):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
     all the triangles of a surface (not the reduced form used elsewhere for 
@@ -455,18 +455,18 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, imgSize):
         testPnt: 1 x 3 vector for point under test
         surf: complete surface object
         voxIJK: the IJK subscripts of the voxel in which the testPnt lies
-        imgSize: the dimensions of the image in voxels
+        FoVsize: the dimensions of the image in voxels
 
     Returns: 
         bool flag if the point lies within the surface
     """
 
     # Get the voxel indices that lie along the ray (inc the current vox)
-    dim = np.argmin(imgSize)
-    subs = np.tile(voxIJK, (imgSize[dim], 1)).astype(np.int32)
-    subs[:,dim] = np.arange(0, imgSize[dim])
+    dim = np.argmin(FoVsize)
+    subs = np.tile(voxIJK, (FoVsize[dim], 1)).astype(np.int32)
+    subs[:,dim] = np.arange(0, FoVsize[dim])
     inds = np.ravel_multi_index((subs[:,0], subs[:,1], subs[:,2]),
-        imgSize)
+        FoVsize)
 
     # Form the ray and fetch all appropriate triangles from assocs data
     patches = surf.toPatchesForVoxels(inds)
@@ -555,14 +555,14 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
 
 
 
-def _findTrianglePlaneIntersections(patch, voxCent, voxSize):
+def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
     """Find points of intersection of all triangle edges within a patch with 
     the faces of a voxel given by cent and size. 
 
     Args: 
         patch: patch object for region surface within the voxel
         voxCent: 1 x 3 vector of voxel centre
-        voxSize: 1 x 3 vector of voxel dimensions
+        vox_size: 1 x 3 vector of voxel dimensions
 
     Returns: 
         n x 3 matrix of n intersection coordinates 
@@ -592,7 +592,7 @@ def _findTrianglePlaneIntersections(patch, voxCent, voxSize):
         pNormal[dim] = 1
 
         for k in [-0.5, 0.5]: 
-            pPlane = voxCent + (k * pNormal * voxSize[dim])
+            pPlane = voxCent + (k * pNormal * vox_size[dim])
 
             # Filter to edge vectors that are non-zero in this dimension 
             fltr = np.flatnonzero(edgeVecs[:,dim])
@@ -604,7 +604,7 @@ def _findTrianglePlaneIntersections(patch, voxCent, voxSize):
             mus = (pPlane - pStart)[:,dim] / edgeVecs[fltr,dim]
             pInts = pStart + (edgeVecs[fltr,:].T * mus).T 
             pInts2D = pInts - pPlane 
-            keep = np.all(np.abs(pInts2D) <= (voxSize/2), 1)    
+            keep = np.all(np.abs(pInts2D) <= (vox_size/2), 1)    
             keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
             intXs = np.vstack((intXs, pInts[keep,:]))
 
@@ -677,7 +677,7 @@ def _safeFormHull(points):
 
 
 
-def _classifyVoxelViaRecursion(patch, voxCent, voxSize, containedFlag):
+def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     """Classify a voxel via recursion (not using convex hulls)"""
 
     # Create a grid of 125 subvoxels, calculate fraction by simply testing
@@ -687,9 +687,9 @@ def _classifyVoxelViaRecursion(patch, voxCent, voxSize, containedFlag):
     sX = np.arange(1 / (2 * super2), 1, 1 / super2, dtype=np.float32) - 0.5
     sX, sY, sZ = np.meshgrid(sX, sX, sX)
     subVoxCents = np.vstack((
-        sX.flatten() * voxSize[0], 
-        sY.flatten() * voxSize[1],  
-        sZ.flatten() * voxSize[2])).T + voxCent
+        sX.flatten() * vox_size[0], 
+        sY.flatten() * vox_size[1],  
+        sZ.flatten() * vox_size[2])).T + voxCent
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
@@ -725,13 +725,13 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
 
 
 
-def _getAllSubVoxCorners(supersampler, voxCent, voxSize):
+def _getAllSubVoxCorners(supersampler, voxCent, vox_size):
     """Produce a grid of subvoxel vertices within a given voxel.
 
     Args: 
         supersampler: 1 x 3 vector of supersampling factor
         voxCent: 1 x 3 vector centre of voxel
-        voxSize: 1 x 3 vector voxel dimensions
+        vox_size: 1 x 3 vector voxel dimensions
     
     Returns: 
         s x 3 matrix of subvoxel vertices, arranged by linear index
@@ -739,20 +739,20 @@ def _getAllSubVoxCorners(supersampler, voxCent, voxSize):
     """
 
     # Get the origin for the grid of vertices (corner with smallest xyz)
-    root = voxCent - (voxSize/2)
+    root = voxCent - (vox_size/2)
 
     # Grid will have s+1 points in each dimension 
     X, Y, Z = np.meshgrid(
-        np.linspace(root[0], root[0] + voxSize[0], supersampler[0] + 1),
-        np.linspace(root[1], root[1] + voxSize[1], supersampler[1] + 1),
-        np.linspace(root[2], root[2] + voxSize[2], supersampler[2] + 1))
+        np.linspace(root[0], root[0] + vox_size[0], supersampler[0] + 1),
+        np.linspace(root[1], root[1] + vox_size[1], supersampler[1] + 1),
+        np.linspace(root[2], root[2] + vox_size[2], supersampler[2] + 1))
 
     return (np.vstack((X.flatten(), Y.flatten(), Z.flatten()))
         .astype(np.float32).T)
 
 
 
-def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
+def _estimateVoxelFraction(surf, voxIJK, voxIdx, FoVsize, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -770,20 +770,20 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
     # print(voxIdx)
 
     # Hardcode voxel size as we now work in voxel coords. Intialise results
-    voxSize = np.array([1,1,1], dtype=np.int8)
+    vox_size = np.array([1,1,1], dtype=np.int8)
     inFraction = 0.0
 
     # Set up the subvoxel sizes and vols. 
-    subVoxSize = (1.0 / supersampler).astype(np.float32)
-    subVoxVol = np.prod(subVoxSize).astype(np.float32)
+    subvox_size = (1.0 / supersampler).astype(np.float32)
+    subVoxVol = np.prod(subvox_size).astype(np.float32)
 
     # Rebase triangles and points for this voxel
     patch = surf.toPatch(voxIdx)
     assert np.all(_cyfilterTriangles(patch.tris, patch.points,
-        voxIJK, voxSize.astype(np.float32)))
+        voxIJK, vox_size.astype(np.float32)))
 
     # Test all subvox corners now and store the results for later
-    allCorners = _getAllSubVoxCorners(supersampler, voxIJK, voxSize)
+    allCorners = _getAllSubVoxCorners(supersampler, voxIJK, vox_size)
     voxCentFlag = surf.voxelised[voxIdx]
     allCornerFlags = _reducedRayIntersectionTest(allCorners, patch,
         voxIJK, ~voxCentFlag)
@@ -810,7 +810,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
 
         # Do any triangles intersect the subvox?
         triFltr = _cyfilterTriangles(patch.tris, patch.points, 
-            subVoxCent, subVoxSize)
+            subVoxCent, subvox_size)
 
         # CASE 1 --------------------------------------------------------------
 
@@ -848,13 +848,13 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
                 # Filter down surface nodes that are in the subvox
                 localPs = patch.points[np.unique(smallPatch.tris),:]
                 localPs = localPs[_filterPoints(localPs, subVoxCent, 
-                    subVoxSize)]
+                    subvox_size)]
                 
                 # Gather points together in preparation for forming 
                 # hulls (the corners will be added just beforehand)
                 hullPts = np.vstack( (localPs, edgeIntXs, \
                     _findTrianglePlaneIntersections(smallPatch, \
-                    subVoxCent, subVoxSize)) )
+                    subVoxCent, subvox_size)) )
 
                 if verbose: print('Hulls: mixed in/out')
 
@@ -884,7 +884,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
                 V = _safeFormHull(hullPts)
                 if not V: 
                     L2fraction = _classifyVoxelViaRecursion(smallPatch, \
-                        subVoxCent, subVoxSize, subVoxFlag)
+                        subVoxCent, subvox_size, subVoxFlag)
                     inFraction += (subVoxVol * L2fraction) 
                 else:
                     inFraction += np.matmul(classes, [V, (subVoxVol - V)])       
@@ -904,7 +904,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, imgSize, supersampler):
                         print("Fold detected, using recursion")
 
                     L2fraction = _classifyVoxelViaRecursion(smallPatch, 
-                        subVoxCent, subVoxSize, subVoxFlag)
+                        subVoxCent, subvox_size, subVoxFlag)
                     inFraction += (L2fraction * subVoxVol)
                     subVoxClassified = True 
             
@@ -987,7 +987,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
 
 
-def _estimateFractionsWorker(surf, voxIJK, imgSize, supersampler, 
+def _estimateFractionsWorker(surf, voxIJK, FoVsize, supersampler, 
         workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
@@ -999,7 +999,7 @@ def _estimateFractionsWorker(surf, voxIJK, imgSize, supersampler,
 
         for idx, v in enumerate(surf.LUT[workerVoxList]):
             partialVolumes[idx] = _estimateVoxelFraction(surf,
-                voxIJK[v,:], v, imgSize, supersampler)  
+                voxIJK[v,:], v, FoVsize, supersampler)  
         
         return partialVolumes
 
@@ -1035,7 +1035,7 @@ def _determineFullFoV(surfs, refSpace):
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
     FoVoffset = np.maximum(-minFoV, 0).astype(np.int16)
-    FoVsize = (np.maximum(refSpace.imgSize, maxFoV+1).astype(np.int16) +
+    FoVsize = (np.maximum(refSpace.FoVsize, maxFoV+1).astype(np.int16) +
         FoVoffset)
 
     return (FoVoffset, FoVsize)
