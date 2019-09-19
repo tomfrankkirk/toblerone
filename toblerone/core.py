@@ -257,31 +257,6 @@ def _separatePointClouds(tris):
     return groups 
 
 
-
-def _getVoxList(FoVsize, FoVoffset, FoVsize):
-    """Single list of linear voxel indices for all voxels lying within 
-    a grid of size FoVsize, contained within a potentially larger grid 
-    of size FoVsize, in which the respective origins are shifted by 
-    FoVoffst. 
-
-    Args: 
-        FoVsize: the size of the grid for which voxels indices are needed
-        FoVoffset: the offset (3-vector) between voxel [0,0,0] of the grid
-            represented by FoVoffset and voxel [0,0,0] of FoVsize. 
-        FoVsize: the size of the (potentially) larger voxel grid within which
-            the smaller grid lies (they are at least the same size)
-
-    Returns: 
-        list of linear voxel indices referenced to the grid FoVsize
-    """
-
-    voxSubs = utils._coordinatesForGrid(FoVsize)
-    voxSubs = voxSubs + FoVoffset 
-    return np.ravel_multi_index((voxSubs[:,0], voxSubs[:,1], voxSubs[:,2]),
-        FoVsize)
-
-
-
 def _formAssociationsWorker(tris, points, FoVsize, triInds):
     """Worker function for use with multiprocessing. See formAssociations"""
 
