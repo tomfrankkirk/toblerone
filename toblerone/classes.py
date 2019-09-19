@@ -131,7 +131,7 @@ class ImageSpace(object):
         nibabel.save(nii, path)
 
     @classmethod
-    def minimal_enclosing(surfs, reference):
+    def minimal_enclosing(cls, surfs, reference):
         """
         Return the minimal space required to enclose a set of surfaces. 
         This space will be based upon the reference, sharing its voxel 
@@ -179,6 +179,16 @@ class ImageSpace(object):
 
         return space 
 
+    def derives_from(self, parent):
+        det1 = np.linalg.det(parent.vox2world[0:3,0:3])
+        det2 = np.linalg.det(self.vox2world[0:3,0:3])
+        v1 = parent.vox_size
+        v2 = self.vox_size 
+        offset = (self.offset is not None) 
+        return all([ 
+            np.abs(det1 - det2) < 1e-9, 
+            np.all(np.abs(v1 - v2) < 1e-6), 
+            offset ])
 
 class Hemisphere(object): 
     """The white and pial surfaces of a hemisphere, and a repository to 
@@ -214,14 +224,6 @@ class Surface(object):
     """Encapsulates a surface's points, triangles and associations data.
     Create either by passing a file path (as below) or use the static class 
     method Surface.manual() to directly pass points and triangles.
-
-    NB before using a surface with the estimateFractions method (the key step
-    in estimating PVs), the surface must:
-    - be transformed into voxel space (surface.applyTransformation())
-    - have formAssociations() called upon it 
-    - have calculateXprods() called upon it 
-    - have the voxelised property set upon it as follows: 
-        surface.voxelised = toblerone.core.voxelise(FoVsize, surface)
     
     Args: 
         path:   path to file (.gii/.vtk/.white/.pial)
@@ -290,6 +292,7 @@ class Surface(object):
         self.name = name
         self.assocs = None 
         self.LUT = None  
+        self.index_space = None 
 
 
     @classmethod
@@ -305,6 +308,7 @@ class Surface(object):
         s.xProds = None 
         s.voxelised = None 
         s.name = name
+        s.index_space = None 
         return s
 
 
@@ -356,6 +360,107 @@ class Surface(object):
 
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
+
+    def index_for(self, space):
+        """
+        Index a surface to an ImageSpace. The space must enclose the surface 
+        completely (see ImageSpace.minimal_enclosing()). The surface will be 
+        transformed into voxel coordinates for the space, triangle/voxel 
+        associations calculated and stored on the surface's LUT and assocs 
+        attributes, surface normals calculated (triangle cross products) and
+        finally voxelised within the space (binary mask of voxels contained in 
+        the surface). See also Surface.reindex_for() method. 
+
+        Args: 
+            space: ImageSpace object large enough to contain the surface
+
+        Updates: 
+            self.points: converted into voxel coordinates for the space
+            self.assocs: list of triangles intersecting each voxel of the space
+            self.LUT: table of voxel indices to index self.assocs 
+            self.xProds: triangle cross products, voxel coordinates
+        """
+
+        self.applyTransform(space.world2vox)
+        maxFoV = self.points.max(0).round()
+        minFoV = self.points.min(0).round()
+        if np.any(minFoV < -1) or np.any(maxFoV > space.FoVsize -1):
+            raise RuntimeError("Space should be large enough to enclose surface")
+
+        self.formAssociations(space.FoVsize, 8)
+        self.calculateXprods()
+        self.voxelised = core.voxelise(space.FoVsize, self)
+        self.index_space = space 
+
+    def reindex_for(self, dest_space):
+        """ 
+        Re-index a surface for a space that derives from the space for which
+        the space is currently indexed. For example, if the current index 
+        space was produced using ImageSpace.minimal_enclosing(), then it cannot
+        be assumed to cover the same FoV as the space of the reference image
+        that was used to generate it. This function can be used to update the 
+        properties of that surface to match this original reference space. 
+
+        Args: 
+            dest_space: ImageSpace from which the current index_space derives
+
+        Updates: 
+            A new copy of the surface, with the following properties updated:
+            points, LUT, assocs, xProds
+        """
+
+        if not self.index_space.derives_from(dest_space):
+            raise RuntimeError("The destination space does not derive from" +
+                " the current index space")
+
+        # Get the offset and size of the current index space 
+        ref_space = self.index_space
+        new_surf = copy.copy(self)
+        FoVoffset = ref_space.offset 
+        FoVsize = self.index_space.FoVsize 
+
+        # List voxel indices in the current index space 
+        # List corresponding voxel coordinates in the destination space 
+        # ref2dest_fltr selects voxel indices from the current space that 
+        # are also contained within the destination space 
+        ref_inds = np.arange(np.prod(FoVsize))
+        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, FoVsize)).T
+        ref_voxs_in_dest -= FoVoffset
+        ref2dest_fltr = np.logical_and(np.all(ref_voxs_in_dest > - 1, 1), 
+            np.all(ref_voxs_in_dest < dest_space.FoVsize, 1))
+
+        # Update LUT: produce filter of ref voxel inds within the current LUT
+        # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
+        # coords corresponding to accepted voxels in the LUT into dest_space 
+        LUTfltr = np.isin(ref_inds, self.LUT)
+        LUTfltr = np.logical_and(LUTfltr, ref2dest_fltr)
+        newLUT = np.ravel_multi_index(ref_voxs_in_dest[LUTfltr,:].T, 
+            dest_space.FoVsize)
+
+        # Update associations table. Accept all those that correspond to 
+        # accepted LUT entries 
+        newassocs = self.assocs[np.isin(self.LUT, ref_inds[LUTfltr])]
+
+        # Update the voxelisation mask. Convert accepted voxel coordinates 
+        # into voxel indices within destination space. These correspond to
+        # the values in the new voxelisation mask that should be updated
+        # using the extracted values from the existing voxelisation mask 
+        ref_inds_subspace = np.ravel_multi_index(
+            ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.FoVsize)
+        newvoxelised = np.zeros(dest_space.FoVsize, dtype=bool).flatten()
+        newvoxelised[ref_inds_subspace] = self.voxelised[ref2dest_fltr]
+
+        # Lastly update the points: map them back to world mm coordinates 
+        # and use the world2vox of the dest space 
+        new_surf.applyTransform(ref_space.vox2world)
+        new_surf.applyTransform(dest_space.world2vox)
+
+        new_surf.LUT = newLUT
+        new_surf.assocs = newassocs
+        new_surf.voxelised = newvoxelised
+        new_surf.index_space = dest_space
+        new_surf.offset = None
+        return new_surf 
 
 
     def calculateXprods(self):
