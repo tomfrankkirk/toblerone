@@ -135,7 +135,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     return outPVs, ctxMask
 
 
-def _structure(refSpace, cores, supersampler, ones, surf):
+def _structure(cores, supersampler, ones, surf):
     """Estimate the PVs of a structure denoted by a single surface. Note
     that the results should be interpreted simply as "fraction of each 
     voxel lying within the structure", and it is ambiguous as to what tissue
@@ -151,20 +151,20 @@ def _structure(refSpace, cores, supersampler, ones, surf):
         an array of size refSpace.FoVsize containing the PVs. 
     """
 
-    FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
-    surf.shiftFoV(FoVoffset, FoVsize)
-    surf.formAssociations(FoVsize, cores)
-    surf.calculateXprods()
+    if not surf.index_space:
+        raise RuntimeError("Surface has not been indexed into a spaxce." + 
+            "See Surface.index_for()")
 
     if not surf.LUT.size:
         warnings.warn("Surface {} does not lie within reference space"
             .format(surf.name))
 
+    FoVsize = surf.index_space.FoVsize 
+
     if ones: 
-        sz = refSpace.FoVsize
-        outPVs = np.zeros(np.prod(sz), dtype=np.bool)
+        outPVs = np.zeros(np.prod(FoVsize), dtype=np.bool)
         outPVs[surf.LUT] = 1 
-        outPVs = outPVs.reshape(sz)
+        outPVs = outPVs.reshape(FoVsize)
 
     else:
         surf.voxelised = core.voxelise(FoVsize, surf)
@@ -175,10 +175,5 @@ def _structure(refSpace, cores, supersampler, ones, surf):
         outPVs = surf.voxelised.astype(np.float32)
         outPVs[surf.LUT] = fractions 
         outPVs = outPVs.reshape(*FoVsize)
-
-        # Extract the output within the FoV of the reference image
-        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.FoVsize[0], \
-            FoVoffset[1] : FoVoffset[1] + refSpace.FoVsize[1], \
-            FoVoffset[2] : FoVoffset[2] + refSpace.FoVsize[2] ]
 
     return outPVs
