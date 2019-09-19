@@ -156,6 +156,8 @@ class ImageSpace(object):
 
         if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
+        else: 
+            space = reference
 
         # Extract min and max vox coords in the reference space 
         min_max = np.zeros((2*len(slist), 3))
