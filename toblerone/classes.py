@@ -154,7 +154,7 @@ class ImageSpace(object):
         else: 
             slits = surfs 
 
-        if type(reference) is not type(ImageSpace): 
+        if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
 
         # Extract min and max vox coords in the reference space 
