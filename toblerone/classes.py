@@ -38,8 +38,8 @@ TISSUES = ['GM', 'WM', 'CSF']
 
 class ImageSpace(object):
     """The voxel grid of an image. Attributes:  
-    -imgSize (dimensions)
-    -voxSize (voxel size)
+    -size (dimensions)
+    -vox_size (voxel size)
     -vox2world (voxel to world transformation)
     -world2voxel (inverse)
 
@@ -56,11 +56,11 @@ class ImageSpace(object):
             raise RuntimeError("Image %s does not exist" % path)
 
         img = nibabel.load(path)
-        self.imgSize = img.header['dim'][1:4]
-        self.voxSize = img.header['pixdim'][1:4]
+        self.size = img.header['dim'][1:4]
+        self.vox_size = img.header['pixdim'][1:4]
         self.vox2world = img.affine
         self.world2vox = np.linalg.inv(self.vox2world)
-        self.original = path
+        self.offset = None 
 
 
     @classmethod
@@ -93,8 +93,8 @@ class ImageSpace(object):
 
         newSpace = copy.deepcopy(self)
 
-        newSpace.imgSize = (self.imgSize * factor).round()
-        newSpace.voxSize = self.voxSize / factor
+        newSpace.FoVsize = (self.FoVsize * factor).round()
+        newSpace.vox_size = self.vox_size / factor
         for r in range(3):
             newSpace.vox2world[0:3,r] /= factor[r]
 
@@ -108,10 +108,10 @@ class ImageSpace(object):
         newSpace.vox2world[0:3,3] = new 
 
         # Check the bounds of the new voxel grid we have created
-        svertices = np.array(list(itertools.product([-0.5, newSpace.imgSize[0] - 0.5], 
-            [-0.5, newSpace.imgSize[1] - 0.5], [-0.5, newSpace.imgSize[2] - 0.5])))
-        rvertices = np.array(list(itertools.product([-0.5, self.imgSize[0] - 0.5], 
-            [-0.5, self.imgSize[1] - 0.5], [-0.5, self.imgSize[2] - 0.5])))
+        svertices = np.array(list(itertools.product([-0.5, newSpace.FoVsize[0] - 0.5], 
+            [-0.5, newSpace.FoVsize[1] - 0.5], [-0.5, newSpace.FoVsize[2] - 0.5])))
+        rvertices = np.array(list(itertools.product([-0.5, self.FoVsize[0] - 0.5], 
+            [-0.5, self.FoVsize[1] - 0.5], [-0.5, self.FoVsize[2] - 0.5])))
         rvertices = utils._affineTransformPoints(rvertices, self.vox2world)
         svertices = utils._affineTransformPoints(svertices, newSpace.vox2world)
         assert np.all(np.abs(rvertices - svertices) < 1e-6)
@@ -121,7 +121,7 @@ class ImageSpace(object):
 
     def saveImage(self, data, path):
 
-        if not np.all(data.shape[0:3] == self.imgSize):
+        if not np.all(data.shape[0:3] == self.FoVsize):
             raise RuntimeError("Data size does not match image size")
 
         if data.dtype is np.dtype('bool'):
@@ -130,6 +130,54 @@ class ImageSpace(object):
         nii = nibabel.nifti2.Nifti2Image(data, self.vox2world)
         nibabel.save(nii, path)
 
+    @classmethod
+    def minimal_enclosing(surfs, reference):
+        """
+        Return the minimal space required to enclose a set of surfaces. 
+        This space will be based upon the reference, sharing its voxel 
+        size and i,j,k unit vectors from the voxel2world matrix, but 
+        will may have a different FoV. The offset of the voxel coord system
+        relative to reference will be stored as the space.offset attribute
+
+        Args: 
+            surfs: singular or list of surface objects 
+            reference: path to image to use as reference space
+
+        Returns: 
+            ImageSpace object, with a shifted origin and potentially different
+                FoV relative to the reference. Subtract offset from coords in 
+                this space to return them to original reference coords. 
+        """
+
+        if type(surfs) is not list: 
+            slist = [surfs]
+        else: 
+            slits = surfs 
+
+        space = ImageSpace(reference)
+
+        # Extract min and max vox coords in the reference space 
+        min_max = np.zeros((2*len(slist), 3))
+        for sidx,s in enumerate(slist):
+            ps = utils._affineTransformPoints(s.points, space.world2vox)
+            min_max[sidx*2,:] = ps.min(0)
+            min_max[sidx*2 + 1,:] = ps.max(0)
+    
+        minFoV = min_max.min(0).round().astype(np.int16)
+        maxFoV = min_max.max(0).round().astype(np.int16)
+
+        # Fix the offset relative to reference and minimal size 
+        FoVoffset = -minFoV
+        FoVsize = maxFoV - minFoV + 1
+
+        # Adjust the origin of the new coord system using the offset size 
+        offset_mm = space.vox2world[0:3,0:3] @ FoVoffset
+        space.FoVsize = FoVsize 
+        space.vox2world[0:3,3] -= offset_mm
+        space.world2vox = np.linalg.inv(space.vox2world)
+        space.offset = FoVoffset 
+
+        return space 
 
 
 class Hemisphere(object): 
@@ -227,12 +275,12 @@ class Surface(object):
             if np.linalg.det(structSpace.vox2world) > 0:
                 
                 # Flip X coords from [0, n-1] to [n-1, 0] by adding a shift vector
-                N = structSpace.imgSize[0]
+                N = structSpace.FoVsize[0]
                 ps[:,0] = (N-1) - ps[:,0]
 
             # Convert from FSL scaled voxel mm to struct voxel coords
             # Then to world mm coords
-            ps /= structSpace.voxSize
+            ps /= structSpace.vox_size
             ps = utils._affineTransformPoints(ps, structSpace.vox2world)
 
         self.points = ps.astype(np.float32)
