@@ -39,15 +39,15 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         s.calculateXprods()
 
     if ones:
-        sz = np.concatenate((refSpace.imgSize, [3]))
-        outPVs = np.zeros((np.prod(refSpace.imgSize), 3), dtype=np.bool)
-        ctxMask = np.zeros(np.prod(refSpace.imgSize), dtype=np.bool)
+        sz = np.concatenate((refSpace.FoVsize, [3]))
+        outPVs = np.zeros((np.prod(refSpace.FoVsize), 3), dtype=np.bool)
+        ctxMask = np.zeros(np.prod(refSpace.FoVsize), dtype=np.bool)
         for s in surfs:
             outPVs[s.LUT,0] = 1 
             ctxMask[s.LUT] = 1 
 
         outPVs = outPVs.reshape(sz)
-        ctxMask = ctxMask.reshape(refSpace.imgSize)
+        ctxMask = ctxMask.reshape(refSpace.FoVsize)
 
     else: 
         # Voxelise the surfaces (ie, no PVs), then store the results 
@@ -125,12 +125,12 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         ctxMask = np.reshape(ctxMask, tuple(FoVsize[0:3]))
 
         # Extract the output within the FoV of the reference image
-        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
-            FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
-            FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2], : ]
-        ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0],
-            FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1],
-            FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
+        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.FoVsize[0],
+            FoVoffset[1] : FoVoffset[1] + refSpace.FoVsize[1],
+            FoVoffset[2] : FoVoffset[2] + refSpace.FoVsize[2], : ]
+        ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.FoVsize[0],
+            FoVoffset[1] : FoVoffset[1] + refSpace.FoVsize[1],
+            FoVoffset[2] : FoVoffset[2] + refSpace.FoVsize[2] ]
 
     return outPVs, ctxMask
 
@@ -148,7 +148,7 @@ def _structure(refSpace, cores, supersampler, ones, surf):
         ones: debug tool, write ones in voxels containing triangles 
 
     Returns: 
-        an array of size refSpace.imgSize containing the PVs. 
+        an array of size refSpace.FoVsize containing the PVs. 
     """
 
     FoVoffset, FoVsize = core._determineFullFoV([surf], refSpace)
@@ -161,7 +161,7 @@ def _structure(refSpace, cores, supersampler, ones, surf):
             .format(surf.name))
 
     if ones: 
-        sz = refSpace.imgSize
+        sz = refSpace.FoVsize
         outPVs = np.zeros(np.prod(sz), dtype=np.bool)
         outPVs[surf.LUT] = 1 
         outPVs = outPVs.reshape(sz)
@@ -177,8 +177,8 @@ def _structure(refSpace, cores, supersampler, ones, surf):
         outPVs = outPVs.reshape(*FoVsize)
 
         # Extract the output within the FoV of the reference image
-        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.imgSize[0], \
-            FoVoffset[1] : FoVoffset[1] + refSpace.imgSize[1], \
-            FoVoffset[2] : FoVoffset[2] + refSpace.imgSize[2] ]
+        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.FoVsize[0], \
+            FoVoffset[1] : FoVoffset[1] + refSpace.FoVsize[1], \
+            FoVoffset[2] : FoVoffset[2] + refSpace.FoVsize[2] ]
 
     return outPVs

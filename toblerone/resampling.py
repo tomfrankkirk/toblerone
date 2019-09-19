@@ -20,7 +20,7 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
         src2dest: 4x4 transformation matrix to apply during resampling
 
     Returns: 
-        array of size destSpace.imgSize
+        array of size destSpace.FoVsize
     """
 
     # Transform the destination grid into world coordinates, aligned with src
@@ -29,7 +29,7 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
 
     # Interpolate. 
     out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.imgSize, mode='constant', order=4)
+        output_shape=destSpace.FoVsize, mode='constant', order=4)
 
     # Due to the spline interpolants, the resampled output can go outside
     # the original min,max of the input data 
@@ -52,7 +52,7 @@ def _superResampleImage(source, factor, destSpace, src2dest):
         src2dest: affine transformation matrix (4x4) between source and reference
 
     Returns: 
-        an array of the dimensions given by destSpace.imgSize
+        an array of the dimensions given by destSpace.FoVsize
     """
 
     # Load input data and read in the space for it
