@@ -321,11 +321,14 @@ def estimate_structure(**kwargs):
     else: 
         surf = kwargs['surf']
 
+        
     # Load reference space, set supersampler
-    refSpace = ImageSpace(kwargs['ref'])
+    ref_space = ImageSpace(kwargs['ref'])
+    encl_space = ImageSpace.minimal_enclosing(surf, ref_space)
+
     supersampler = kwargs.get('super')
     if supersampler is None:
-        supersampler = np.ceil(refSpace.vox_size / 0.75).astype(np.int8)
+        supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
 
     # Apply registration and save copies if reqd 
     surf.applyTransform(kwargs['struct2ref'])
@@ -333,11 +336,17 @@ def estimate_structure(**kwargs):
     if kwargs.get('savesurfs'):
         transformed = copy.deepcopy(surf)
 
-    # Apply transformation to voxel space 
-    surf.applyTransform(refSpace.world2vox)
+    # Finally index the suface to the enclosing space 
+    surf.index_for(encl_space)
+    pvs_encl_space = estimators._structure(kwargs['cores'], supersampler, 
+        bool(kwargs.get('ones')), surf)
 
-    return (estimators._structure(refSpace, kwargs['cores'], supersampler, 
-        bool(kwargs.get('ones')), surf), transformed)
+    # Get a filter from the surface to extract PVs in the reference space 
+    ref_fltr = surf.reindexing_filter(ref_space)
+    outPVs = np.zeros(ref_space.FoVsize, dtype=np.float32)
+    outPVs = pvs_encl_space[ref_fltr.reshape(ref_space.FoVsize)]
+
+    return (outPVs, transformed)
 
 
 @enforce_and_load_common_arguments
