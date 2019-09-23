@@ -166,7 +166,7 @@ class ImageSpace(object):
         if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
         else: 
-            space = reference
+            space = copy.deepcopy(reference)
 
         if affine is not None: 
             overall = space.world2vox @ affine 
@@ -490,16 +490,18 @@ class Surface(object):
 
     def reindexing_filter(self, dest_space, as_bool=False):
         """
-        Logical filter of voxels in the current index space that lie within 
+        Filter of voxels in the current index space that lie within 
         dest_space. Use for extracting PV estimates from index space back to
         the space from which the index space derives. 
 
         Args: 
-            dest_space: ImageSpace object from which current index space derives
+            dest_space: ImageSpace from which current index_space derives
+            as_bool: output results as logical filters instead of indices
 
         Returns: 
-            flat np bool array, sized for the current index space FoV, true 
-            where the corresponding voxel index lies within dest space
+            (src_inds, dest_inds) arrays of equal length, flat indices into 
+            arrays of size index_space.size and dest_space.size respectively, 
+            mapping voxels from source to destination positions 
         """
 
         if not self.index_space.derives_from(dest_space):
@@ -507,21 +509,32 @@ class Surface(object):
                 " the current index space")
 
         # Get the offset and size of the current index space 
-        ref_space = self.index_space
-        FoVoffset = ref_space.offset 
+        src_space = self.index_space
+        offset = src_space.offset 
         size = self.index_space.size 
 
         # List voxel indices in the current index space 
         # List corresponding voxel coordinates in the destination space 
-        # ref2dest_fltr selects voxel indices from the current space that 
+        # curr2dest_fltr selects voxel indices from the current space that 
         # are also contained within the destination space 
-        ref_inds = np.arange(np.prod(size))
-        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
-        ref_voxs_in_dest -= FoVoffset
-        ref2dest_fltr = np.logical_and(np.all(ref_voxs_in_dest > - 1, 1), 
-            np.all(ref_voxs_in_dest < dest_space.size, 1))
+        inds_in_src = np.arange(np.prod(size))
+        voxs_in_src = np.array(np.unravel_index(inds_in_src, size)).T
+        voxs_in_dest = voxs_in_src - offset
+        fltr = np.logical_and(np.all(voxs_in_dest > - 1, 1), 
+            np.all(voxs_in_dest < dest_space.size, 1))
+        
+        src_inds = np.ravel_multi_index(voxs_in_src[fltr,:].T, size)
+        dest_inds = np.ravel_multi_index(voxs_in_dest[fltr,:].T, 
+            dest_space.size)
 
-        return ref2dest_fltr
+        if as_bool: 
+            src_fltr = np.zeros(np.prod(size), dtype=bool)
+            src_fltr[src_inds] = 1 
+            dest_fltr = np.zeros(np.prod(dest_space.size), dtype=bool)
+            dest_fltr[dest_inds] = 1
+            return (src_fltr, dest_fltr)
+
+        return src_inds, dest_inds
 
 
     def calculateXprods(self):

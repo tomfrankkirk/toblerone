@@ -335,18 +335,18 @@ def estimate_structure(**kwargs):
     pvs_encl_space = estimators._structure(kwargs['cores'], supersampler, 
         bool(kwargs.get('ones')), surf)
 
-    # Apply registration and save copies if reqd 
+    # Output transformed copies of surfaces if requested 
     transformed = None
     if kwargs.get('savesurfs'):
         transformed = copy.copy(surf)
         transformed.applyTransform(surf.index_space.vox2world)
 
-    # Get a filter from the surface to extract PVs in the reference space 
-    ref_fltr = surf.reindexing_filter(ref_space)
-    outPVs = np.zeros(ref_space.size, dtype=np.float32)
-    outPVs = pvs_encl_space[ref_fltr.reshape(ref_space.size)]
+    # Extract PVs in the reference space 
+    encl_inds, ref_inds = surf.reindexing_filter(ref_space)
+    outPVs = np.zeros(np.prod(ref_space.size), dtype=np.float32)
+    outPVs[ref_inds] = pvs_encl_space.flatten()[encl_inds]
 
-    return (outPVs, transformed)
+    return (outPVs.reshape(ref_space.size), transformed)
 
 
 @enforce_and_load_common_arguments
