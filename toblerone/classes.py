@@ -79,7 +79,7 @@ class ImageSpace(object):
 
     @property
     def FoVsize(self):
-        return np.dot(self.size, self.vox_size)
+        return self.size * self.vox_size
 
 
     def supersample(self, factor):
@@ -136,7 +136,7 @@ class ImageSpace(object):
         nibabel.save(nii, path)
 
     @classmethod
-    def minimal_enclosing(cls, surfs, reference):
+    def minimal_enclosing(cls, surfs, reference, affine):
         """
         Return the minimal space required to enclose a set of surfaces. 
         This space will be based upon the reference, sharing its voxel 
@@ -147,6 +147,10 @@ class ImageSpace(object):
         Args: 
             surfs: singular or list of surface objects 
             reference: ImageSpace object or path to image to use 
+            affine: 4x4 np.array, transformation INTO the reference space, 
+                in world-world mm terms (ie, not a FLIRT scaled-voxel 
+                matrix). See utils._FLIRT_to_world() for help. Pass None 
+                to represent identity 
 
         Returns: 
             ImageSpace object, with a shifted origin and potentially different
@@ -164,10 +168,15 @@ class ImageSpace(object):
         else: 
             space = reference
 
+        if affine is not None: 
+            overall = space.world2vox @ affine 
+        else: 
+            overall = space.world2vox
+
         # Extract min and max vox coords in the reference space 
         min_max = np.zeros((2*len(slist), 3))
         for sidx,s in enumerate(slist):
-            ps = utils._affineTransformPoints(s.points, space.world2vox)
+            ps = utils._affineTransformPoints(s.points, overall)
             min_max[sidx*2,:] = ps.min(0)
             min_max[sidx*2 + 1,:] = ps.max(0)
     
@@ -377,7 +386,7 @@ class Surface(object):
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
 
-    def index_for(self, space):
+    def index_for(self, space, affine):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
@@ -389,6 +398,9 @@ class Surface(object):
 
         Args: 
             space: ImageSpace object large enough to contain the surface
+            affine: 4x4 np.array representing transformation into the reference
+                space, in world-world mm terms (not FLIRT scaled-voxels). See
+                utils._FLIRT_to_world for help. Pass None to represent identity. 
 
         Updates: 
             self.points: converted into voxel coordinates for the space
@@ -397,7 +409,12 @@ class Surface(object):
             self.xProds: triangle cross products, voxel coordinates
         """
 
-        self.applyTransform(space.world2vox)
+        if affine is not None: 
+            overall = space.world2vox @ affine
+        else: 
+            overall = space.world2vox
+
+        self.applyTransform(overall)
         maxFoV = self.points.max(0).round()
         minFoV = self.points.min(0).round()
         if np.any(minFoV < -1) or np.any(maxFoV > space.size -1):
@@ -470,7 +487,7 @@ class Surface(object):
         self.offset = None
 
 
-    def reindexing_filter(self, dest_space):
+    def reindexing_filter(self, dest_space, as_bool=False):
         """
         Logical filter of voxels in the current index space that lie within 
         dest_space. Use for extracting PV estimates from index space back to
