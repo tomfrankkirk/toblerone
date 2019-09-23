@@ -331,6 +331,11 @@ def _affineTransformPoints(points, affine):
         transformed copy of points 
     """
 
+    if len(points.shape) != 2:
+        if points.size != 3: 
+            raise RuntimeError("Points must be n x 3 or 3-vector")
+        points = points[None,:]
+
     # Add 1s on the 4th column, transpose and multiply, 
     # then re-transpose and drop 4th column  
     transfd = np.ones((points.shape[0], 4))
