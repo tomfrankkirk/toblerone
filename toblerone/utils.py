@@ -341,7 +341,7 @@ def _affineTransformPoints(points, affine):
     transfd = np.ones((points.shape[0], 4))
     transfd[:,0:3] = points
     transfd = np.matmul(affine, transfd.T).astype(np.float32)
-    return (transfd[0:3,:]).T
+    return np.squeeze(transfd[0:3,:].T)
 
 
 def _coordinatesForGrid(ofSize):
