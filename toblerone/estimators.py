@@ -9,7 +9,7 @@ import tqdm
 
 import numpy as np
 
-from . import core 
+from . import core, utils 
 from .classes import Hemisphere, Surface, Patch
 
 
@@ -53,8 +53,10 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         # Voxelise the surfaces (ie, no PVs), then store the results 
         # as the 'voxelised' attr of the surfaces 
         if cores > 1:
+            voxeliser = functools.partial(utils._mp_call_attribute, 
+                method_name='voxelise', args=None)
             with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
-                p.map('call', surfs)
+                p.imap(voxeliser, surfs)
         else: 
             for surf in surfs:
                 surf.voxelise()
