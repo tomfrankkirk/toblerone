@@ -169,12 +169,16 @@ class ImageSpace(object):
         minFoV = min_max.min(0).round().astype(np.int16)
         maxFoV = min_max.max(0).round().astype(np.int16)
 
+
         # Fix the offset relative to reference and minimal size 
-        FoVoffset = -minFoV
         FoVsize = maxFoV - minFoV + 1
+        FoVoffset = -minFoV
 
         # Adjust the origin of the new coord system using the offset size 
-        offset_mm = space.vox2world[0:3,0:3] @ FoVoffset
+        # Recalculate the origin using the matrices directly: 
+        # take the minFoV coordinate in voxel space, convert to world mm 
+        # and set this as the new coord origin. 
+        offset_mm = utils._affineTransformPoints(minFoV, space.vox2world)
         space.FoVsize = FoVsize 
         space.vox2world[0:3,3] -= offset_mm
         space.world2vox = np.linalg.inv(space.vox2world)
