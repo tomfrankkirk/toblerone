@@ -17,6 +17,14 @@ STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta',
     'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
     'R_Thal', 'BrStem']
 
+
+def _mp_call_attribute(obj, method_name, args=None):
+    if args: 
+        return getattr(obj, method_name)(args)
+    else: 
+        return getattr(obj, method_name)
+
+
 def check_anat_dir(dir):
     """Check that dir contains output from FIRST, FAST and FreeSurfer"""
 
