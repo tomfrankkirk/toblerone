@@ -13,7 +13,7 @@ from . import core, utils
 from .classes import Hemisphere, Surface, Patch
 
 
-def _cortex(hemispheres, refSpace, supersampler, cores, ones):
+def _cortex(hemispheres, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
 
     Args: 
@@ -31,35 +31,20 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     """
 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    FoVoffset, size = core._determineFullFoV(surfs, refSpace)
-
-    for s in surfs:
-        s.shiftFoV(FoVoffset, size)
-        s.formAssociations(size, cores)
-        s.calculateXprods()
+    ref_space = surfs[0].index_space 
 
     if ones:
-        sz = np.concatenate((refSpace.size, [3]))
-        outPVs = np.zeros((np.prod(refSpace.size), 3), dtype=np.bool)
-        ctxMask = np.zeros(np.prod(refSpace.size), dtype=np.bool)
+        sz = np.concatenate((ref_space.size, [3]))
+        outPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.bool)
+        ctxMask = np.zeros(np.prod(ref_space.size), dtype=np.bool)
         for s in surfs:
             outPVs[s.LUT,0] = 1 
             ctxMask[s.LUT] = 1 
 
         outPVs = outPVs.reshape(sz)
-        ctxMask = ctxMask.reshape(refSpace.size)
+        ctxMask = ctxMask.reshape(ref_space.size)
 
     else: 
-        # Voxelise the surfaces (ie, no PVs), then store the results 
-        # as the 'voxelised' attr of the surfaces 
-        if cores > 1:
-            voxeliser = functools.partial(utils._mp_call_attribute, 
-                method_name='voxelise', args=None)
-            with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
-                p.imap(voxeliser, surfs)
-        else: 
-            for surf in surfs:
-                surf.voxelise()
 
         # Estimate PV fractions for each surface
         for h in hemispheres:
@@ -71,8 +56,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             
             for s, d in zip(h.surfs(), ['in', 'out']):
                 descriptor = "{} cortex {}".format(h.side, d)
-                f = core._estimateFractions(s, size, supersampler, 
-                    descriptor, cores)
+                f = core._estimateFractions(s, supersampler, descriptor, cores)
                 s.fractions = f 
 
         # Merge the voxelisation results with PVs
@@ -83,7 +67,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
             outFractions[h.outSurf.LUT] = h.outSurf.fractions
 
             # Combine estimates from each surface into whole hemi PV estimates
-            hemiPVs = np.zeros((np.prod(size), 3), dtype=np.float32)
+            hemiPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.float32)
             hemiPVs[:,1] = inFractions 
             hemiPVs[:,0] = np.maximum(0.0, outFractions - inFractions)
             hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
@@ -96,7 +80,7 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
 
         else:
             h1, h2 = hemispheres
-            outPVs = np.zeros((np.prod(size), 3), dtype=np.float32)
+            outPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.float32)
             outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
             outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
                 h1.PVs[:,1] + h2.PVs[:,1])
@@ -121,16 +105,16 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
         ctxMask[outPVs[:,0] > 0] = True 
 
         # Reshape images back into 4D or 3D images
-        outPVs = np.reshape(outPVs, (*size, 3))
-        ctxMask = np.reshape(ctxMask, tuple(size[0:3]))
+        outPVs = np.reshape(outPVs, (*ref_space.size, 3))
+        ctxMask = np.reshape(ctxMask, tuple(ref_space.size[0:3]))
 
-        # Extract the output within the FoV of the reference image
-        outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
-            FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
-            FoVoffset[2] : FoVoffset[2] + refSpace.size[2], : ]
-        ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
-            FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
-            FoVoffset[2] : FoVoffset[2] + refSpace.size[2] ]
+        # # Extract the output within the FoV of the reference image
+        # outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
+        #     FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
+        #     FoVoffset[2] : FoVoffset[2] + refSpace.size[2], : ]
+        # ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
+        #     FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
+        #     FoVoffset[2] : FoVoffset[2] + refSpace.size[2] ]
 
     return outPVs, ctxMask
 
@@ -155,10 +139,6 @@ def _structure(cores, supersampler, ones, surf):
         raise RuntimeError("Surface has not been indexed into a spaxce." + 
             "See Surface.index_for()")
 
-    if not surf.LUT.size:
-        warnings.warn("Surface {} does not lie within reference space"
-            .format(surf.name))
-
     size = surf.index_space.size 
 
     if ones: 
@@ -167,11 +147,8 @@ def _structure(cores, supersampler, ones, surf):
         outPVs = outPVs.reshape(size)
 
     else:
-        surf.voxelise()
         desc = '' 
-        fractions = core._estimateFractions(surf, size, 
-            supersampler, desc, cores)
-
+        fractions = core._estimateFractions(supersampler, desc, cores, surf)
         outPVs = surf.voxelised.astype(np.float32)
         outPVs[surf.LUT] = fractions 
         outPVs = outPVs.reshape(*size)

@@ -626,7 +626,7 @@ def _getAllSubVoxCorners(supersampler, voxCent, vox_size):
 
 
 
-def _estimateVoxelFraction(surf, voxIJK, voxIdx, size, supersampler):
+def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -800,8 +800,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, size, supersampler):
 
 
 
-def _estimateFractions(surf, size, supersampler, \
-    descriptor, cores):
+def _estimateFractions(supersampler, descriptor, cores, surf):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
@@ -814,21 +813,14 @@ def _estimateFractions(surf, size, supersampler, \
         vector of size prod(FoV)
     """
 
-    # The surface object must have been voxelised, associations/LUT formed, 
-    # and local normals (xProds) formed before calling this function. 
-    if ((surf.voxelised is None) or (surf.xProds is None) or 
-        (surf.assocs is None) or (surf.LUT is None)):
-        raise RuntimeError("One of surface.voxelised, .xProds, .assocs, .LUT is None")
-
-    if len(size) != 3: 
-        raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
+    size = surf.index_space.size 
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
     workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, voxIJKs, size, supersampler)
+        surf, voxIJKs, supersampler)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
@@ -861,7 +853,7 @@ def _estimateFractions(surf, size, supersampler, \
 
 
 
-def _estimateFractionsWorker(surf, voxIJK, size, supersampler, 
+def _estimateFractionsWorker(surf, voxIJK, supersampler, 
         workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
@@ -872,8 +864,8 @@ def _estimateFractionsWorker(surf, voxIJK, size, supersampler,
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
 
         for idx, v in enumerate(surf.LUT[workerVoxList]):
-            partialVolumes[idx] = _estimateVoxelFraction(surf,
-                voxIJK[v,:], v, size, supersampler)  
+            partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
+                v, supersampler)  
         
         return partialVolumes
 
