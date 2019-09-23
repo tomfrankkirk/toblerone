@@ -403,10 +403,11 @@ class Surface(object):
         if np.any(minFoV < -1) or np.any(maxFoV > space.size -1):
             raise RuntimeError("Space should be large enough to enclose surface")
 
+        self.index_space = space 
         self.formAssociations(space.size, 8)
         self.calculateXprods()
-        self.voxelised = core.voxelise(space.size, self)
-        self.index_space = space 
+        self.voxelise()
+
 
     def reindex_for(self, dest_space):
         """ 

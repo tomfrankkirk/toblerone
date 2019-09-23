@@ -52,14 +52,12 @@ def _cortex(hemispheres, refSpace, supersampler, cores, ones):
     else: 
         # Voxelise the surfaces (ie, no PVs), then store the results 
         # as the 'voxelised' attr of the surfaces 
-        voxelise = functools.partial(core.voxelise, size)
         if cores > 1:
             with multiprocessing.Pool(min([cores, len(surfs)])) as p: 
-                for idx, filled in enumerate(p.imap(voxelise, surfs)):
-                    surfs[idx].voxelised = filled
+                p.map('call', surfs)
         else: 
             for surf in surfs:
-                s.voxelised = voxelise(surf)
+                surf.voxelise()
 
         # Estimate PV fractions for each surface
         for h in hemispheres:
@@ -167,7 +165,7 @@ def _structure(cores, supersampler, ones, surf):
         outPVs = outPVs.reshape(size)
 
     else:
-        surf.voxelised = core.voxelise(size, surf)
+        surf.voxelise()
         desc = '' 
         fractions = core._estimateFractions(surf, size, 
             supersampler, desc, cores)
