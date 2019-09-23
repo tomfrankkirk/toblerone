@@ -343,8 +343,8 @@ def estimate_structure(**kwargs):
 
     # Get a filter from the surface to extract PVs in the reference space 
     ref_fltr = surf.reindexing_filter(ref_space)
-    outPVs = np.zeros(ref_space.FoVsize, dtype=np.float32)
-    outPVs = pvs_encl_space[ref_fltr.reshape(ref_space.FoVsize)]
+    outPVs = np.zeros(ref_space.size, dtype=np.float32)
+    outPVs = pvs_encl_space[ref_fltr.reshape(ref_space.size)]
 
     return (outPVs, transformed)
 

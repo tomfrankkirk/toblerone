@@ -35,28 +35,28 @@ BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Functions -------------------------------------------------------------------
 
-def voxelise(FoVsize, surface):
+def voxelise(size, surface):
     """Voxelise (create binary in/out mask) a surface within a voxel grid
-    of size FoVsize. Surface coordinates must be in 0-indexed voxel units, 
-    as will the voxel grid be interpreted (ie, 0 : FoVsize - 1 in xyz). 
+    of size size. Surface coordinates must be in 0-indexed voxel units, 
+    as will the voxel grid be interpreted (ie, 0 : size - 1 in xyz). 
     Method is defined as static on the class for compataibility with 
     multiprocessing.Pool().
 
     Args: 
-        FoVsize: 3-vector of voxel grid dimensions
+        size: 3-vector of voxel grid dimensions
         surface: surface object. 
 
     Returns: 
         a flat boolean mask indicating voxels contained within the
-            surface. Use reshape(FoVsize) as required. 
+            surface. Use reshape(size) as required. 
     """
 
     try: 
 
         # Project rays along the largest dimension to classify as many voxels
         # at once as we can 
-        dim = np.argmax(FoVsize)
-        mask = np.zeros(np.prod(FoVsize), dtype=bool)
+        dim = np.argmax(size)
+        mask = np.zeros(np.prod(size), dtype=bool)
         otherdims = [0,1,2]
         otherdims.remove(dim)
         d1, d2 = tuple(otherdims)
@@ -67,13 +67,13 @@ def voxelise(FoVsize, surface):
         # regardless of what dimension we are projecting rays along. Define
         # a single ray of voxels, convert to linear indices and calculate 
         # the stride from that. 
-        allIJKs = np.vstack(np.unravel_index(surface.LUT, FoVsize)).T
-        rayIJK = np.zeros((FoVsize[dim], 3), dtype=np.int16)
-        rayIJK[:,dim] = np.arange(0, FoVsize[dim])
+        allIJKs = np.vstack(np.unravel_index(surface.LUT, size)).T
+        rayIJK = np.zeros((size[dim], 3), dtype=np.int16)
+        rayIJK[:,dim] = np.arange(0, size[dim])
         rayIJK[:,d1] = allIJKs[0,d1]
         rayIJK[:,d2] = allIJKs[0,d2]
         linearInds = np.ravel_multi_index((rayIJK[:,0], rayIJK[:,1], 
-            rayIJK[:,2]), FoVsize)
+            rayIJK[:,2]), size)
         stride = linearInds[1] - linearInds[0]
 
         # We now cycle through each voxel in the LUT, check which ray it 
@@ -87,8 +87,8 @@ def voxelise(FoVsize, surface):
             # Where does the ray that passes through this voxel start?
             # Load all other voxels on this ray
             startPoint[[d1,d2]] = [allIJKs[0,d1], allIJKs[0,d2]]
-            startInd = np.ravel_multi_index(startPoint.astype(np.int32), FoVsize)
-            voxRange = np.arange(startInd, startInd + (FoVsize[dim])*stride, 
+            startInd = np.ravel_multi_index(startPoint.astype(np.int32), size)
+            voxRange = np.arange(startInd, startInd + (size[dim])*stride, 
                 stride)
 
             # Romeve those which are present in the LUT / allIJKs arrays
@@ -164,7 +164,7 @@ def _dotVectorAndMatrix(vec, mat):
     return np.sum(mat * vec, axis=1)
 
 
-def _checkSurfaceNormals(surf, FoVsize):
+def _checkSurfaceNormals(surf, size):
     """Check that a surface's normals are inward facing
     
     Args: 
@@ -182,7 +182,7 @@ def _checkSurfaceNormals(surf, FoVsize):
     inside = pnt + surf.xProds[0,:]
 
     return _fullRayIntersectionTest(inside, surf, 
-        inside.round(0).astype(np.int32), FoVsize)
+        inside.round(0).astype(np.int32), size)
 
 
 def _pointGroupsIntersect(grps, tris): 
@@ -257,7 +257,7 @@ def _separatePointClouds(tris):
     return groups 
 
 
-def _formAssociationsWorker(tris, points, FoVsize, triInds):
+def _formAssociationsWorker(tris, points, size, triInds):
     """Worker function for use with multiprocessing. See formAssociations"""
 
     workerResults = {}
@@ -281,7 +281,7 @@ def _formAssociationsWorker(tris, points, FoVsize, triInds):
             if _ctestTriangleVoxelIntersection(voxel, vox_size, tri):
 
                 ind = np.ravel_multi_index(voxel.astype(np.int16), 
-                    FoVsize)
+                    size)
                 if ind in workerResults:
                     workerResults[ind].append(t)
                 else: 
@@ -419,7 +419,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
 
 
 
-def _fullRayIntersectionTest(testPnt, surf, voxIJK, FoVsize):
+def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
     all the triangles of a surface (not the reduced form used elsewhere for 
@@ -430,18 +430,18 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, FoVsize):
         testPnt: 1 x 3 vector for point under test
         surf: complete surface object
         voxIJK: the IJK subscripts of the voxel in which the testPnt lies
-        FoVsize: the dimensions of the image in voxels
+        size: the dimensions of the image in voxels
 
     Returns: 
         bool flag if the point lies within the surface
     """
 
     # Get the voxel indices that lie along the ray (inc the current vox)
-    dim = np.argmin(FoVsize)
-    subs = np.tile(voxIJK, (FoVsize[dim], 1)).astype(np.int32)
-    subs[:,dim] = np.arange(0, FoVsize[dim])
+    dim = np.argmin(size)
+    subs = np.tile(voxIJK, (size[dim], 1)).astype(np.int32)
+    subs[:,dim] = np.arange(0, size[dim])
     inds = np.ravel_multi_index((subs[:,0], subs[:,1], subs[:,2]),
-        FoVsize)
+        size)
 
     # Form the ray and fetch all appropriate triangles from assocs data
     patches = surf.toPatchesForVoxels(inds)
@@ -727,7 +727,7 @@ def _getAllSubVoxCorners(supersampler, voxCent, vox_size):
 
 
 
-def _estimateVoxelFraction(surf, voxIJK, voxIdx, FoVsize, supersampler):
+def _estimateVoxelFraction(surf, voxIJK, voxIdx, size, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -901,13 +901,13 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, FoVsize, supersampler):
 
 
 
-def _estimateFractions(surf, FoVsize, supersampler, \
+def _estimateFractions(surf, size, supersampler, \
     descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
         surf: complete surface object. 
-        FoVsize: dimensions of voxel grid required to contain surfaces, 
+        size: dimensions of voxel grid required to contain surfaces, 
             to which the voxels in voxList are indexed. 
         supersampler: 1 x 3 vector of supersampling factor
 
@@ -921,15 +921,15 @@ def _estimateFractions(surf, FoVsize, supersampler, \
         (surf.assocs is None) or (surf.LUT is None)):
         raise RuntimeError("One of surface.voxelised, .xProds, .assocs, .LUT is None")
 
-    if len(FoVsize) != 3: 
+    if len(size) != 3: 
         raise RuntimeError("FoV size should be a 1 x 3 vector or tuple")
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    voxIJKs = utils._coordinatesForGrid(FoVsize).astype(np.float32)
+    voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
     workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, voxIJKs, FoVsize, supersampler)
+        surf, voxIJKs, size, supersampler)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
@@ -962,7 +962,7 @@ def _estimateFractions(surf, FoVsize, supersampler, \
 
 
 
-def _estimateFractionsWorker(surf, voxIJK, FoVsize, supersampler, 
+def _estimateFractionsWorker(surf, voxIJK, size, supersampler, 
         workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
@@ -974,7 +974,7 @@ def _estimateFractionsWorker(surf, voxIJK, FoVsize, supersampler,
 
         for idx, v in enumerate(surf.LUT[workerVoxList]):
             partialVolumes[idx] = _estimateVoxelFraction(surf,
-                voxIJK[v,:], v, FoVsize, supersampler)  
+                voxIJK[v,:], v, size, supersampler)  
         
         return partialVolumes
 
@@ -998,7 +998,7 @@ def _determineFullFoV(surfs, refSpace):
             already lies within the reference space, then this will be 0 0 0. If 
             the minimal coord is, for example, [-2,-3,1] then the offset will 
             be [2,3,0]. 
-        FoVsize: the size of the voxel grid, counting from the FoVoffset.
+        size: the size of the voxel grid, counting from the FoVoffset.
     """
 
     # Find the min/max coordinates of the surfaces
@@ -1010,7 +1010,7 @@ def _determineFullFoV(surfs, refSpace):
     # If the min/max range is larger than the reference FoV, then shift and 
     # expand the coordinate system to the minimal size required for surfs
     FoVoffset = np.maximum(-minFoV, 0).astype(np.int16)
-    FoVsize = (np.maximum(refSpace.FoVsize, maxFoV+1).astype(np.int16) +
+    size = (np.maximum(refSpace.size, maxFoV+1).astype(np.int16) +
         FoVoffset)
 
-    return (FoVoffset, FoVsize)
+    return (FoVoffset, size)
