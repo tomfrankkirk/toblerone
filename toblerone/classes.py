@@ -179,15 +179,16 @@ class ImageSpace(object):
             ps = utils._affineTransformPoints(s.points, overall)
             min_max[sidx*2,:] = ps.min(0)
             min_max[sidx*2 + 1,:] = ps.max(0)
-    
-        # Get a copy of the corresponding mm coords for checking later
-        min_max_mm = utils._affineTransformPoints(min_max, space.vox2world)
 
         # Fix the offset relative to reference and minimal size 
         minFoV = min_max.min(0).round().astype(np.int16)
         maxFoV = min_max.max(0).round().astype(np.int16)
         size = maxFoV - minFoV + 1
         FoVoffset = -minFoV
+    
+        # Get a copy of the corresponding mm coords for checking later
+        min_max_mm = utils._affineTransformPoints(np.array([minFoV, maxFoV]),
+            space.vox2world)
 
         # Calculate new origin for the coordinate system and modify the 
         # vox2world matrix accordingly 
@@ -198,8 +199,8 @@ class ImageSpace(object):
         space.offset = FoVoffset 
 
         check = utils._affineTransformPoints(min_max_mm, space.world2vox)
-        if (np.any(check.min(0).round() < 0) or 
-            np.any(check.max(0).round() > size - 1)): 
+        if (np.any(check[0,:].round() < 0) or 
+            np.any(check[1,:].round() > size - 1)): 
             raise RuntimeError("New space does not enclose surfaces (min)")
 
         return space 
@@ -421,7 +422,7 @@ class Surface(object):
             raise RuntimeError("Space should be large enough to enclose surface")
 
         self.index_space = space 
-        self.formAssociations(space.size, 8)
+        self.formAssociations(space.size)
         self.calculateXprods()
         self.voxelise()
 
@@ -547,7 +548,7 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def formAssociations(self, size, cores):
+    def formAssociations(self, size):
         """Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
         results will be stored on the surface object (ie, self)
@@ -571,6 +572,7 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
+        cores = multiprocessing.cpu_count()
         chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
