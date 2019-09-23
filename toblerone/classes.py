@@ -77,6 +77,11 @@ class ImageSpace(object):
         spc.saveImage(data, path)
 
 
+    @property
+    def FoVsize(self):
+        return np.dot(self.size, self.vox_size)
+
+
     def supersample(self, factor):
         """Produce a new image space which is a copy of the current space, 
         supersampled by a factor of (a,b,c) in each dimension 
