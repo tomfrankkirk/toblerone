@@ -93,7 +93,7 @@ class ImageSpace(object):
 
         newSpace = copy.deepcopy(self)
 
-        newSpace.FoVsize = (self.FoVsize * factor).round()
+        newSpace.size = (self.size * factor).round()
         newSpace.vox_size = self.vox_size / factor
         for r in range(3):
             newSpace.vox2world[0:3,r] /= factor[r]
@@ -108,10 +108,10 @@ class ImageSpace(object):
         newSpace.vox2world[0:3,3] = new 
 
         # Check the bounds of the new voxel grid we have created
-        svertices = np.array(list(itertools.product([-0.5, newSpace.FoVsize[0] - 0.5], 
-            [-0.5, newSpace.FoVsize[1] - 0.5], [-0.5, newSpace.FoVsize[2] - 0.5])))
-        rvertices = np.array(list(itertools.product([-0.5, self.FoVsize[0] - 0.5], 
-            [-0.5, self.FoVsize[1] - 0.5], [-0.5, self.FoVsize[2] - 0.5])))
+        svertices = np.array(list(itertools.product([-0.5, newSpace.size[0] - 0.5], 
+            [-0.5, newSpace.size[1] - 0.5], [-0.5, newSpace.size[2] - 0.5])))
+        rvertices = np.array(list(itertools.product([-0.5, self.size[0] - 0.5], 
+            [-0.5, self.size[1] - 0.5], [-0.5, self.size[2] - 0.5])))
         rvertices = utils._affineTransformPoints(rvertices, self.vox2world)
         svertices = utils._affineTransformPoints(svertices, newSpace.vox2world)
         assert np.all(np.abs(rvertices - svertices) < 1e-6)
@@ -121,7 +121,7 @@ class ImageSpace(object):
 
     def saveImage(self, data, path):
 
-        if not np.all(data.shape[0:3] == self.FoVsize):
+        if not np.all(data.shape[0:3] == self.size):
             raise RuntimeError("Data size does not match image size")
 
         if data.dtype is np.dtype('bool'):
@@ -152,7 +152,7 @@ class ImageSpace(object):
         if type(surfs) is not list: 
             slist = [surfs]
         else: 
-            slits = surfs 
+            slist = surfs 
 
         if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
@@ -166,23 +166,27 @@ class ImageSpace(object):
             min_max[sidx*2,:] = ps.min(0)
             min_max[sidx*2 + 1,:] = ps.max(0)
     
-        minFoV = min_max.min(0).round().astype(np.int16)
-        maxFoV = min_max.max(0).round().astype(np.int16)
-
+        # Get a copy of the corresponding mm coords for checking later
+        min_max_mm = utils._affineTransformPoints(min_max, space.vox2world)
 
         # Fix the offset relative to reference and minimal size 
-        FoVsize = maxFoV - minFoV + 1
+        minFoV = min_max.min(0).round().astype(np.int16)
+        maxFoV = min_max.max(0).round().astype(np.int16)
+        size = maxFoV - minFoV + 1
         FoVoffset = -minFoV
 
-        # Adjust the origin of the new coord system using the offset size 
-        # Recalculate the origin using the matrices directly: 
-        # take the minFoV coordinate in voxel space, convert to world mm 
-        # and set this as the new coord origin. 
+        # Calculate new origin for the coordinate system and modify the 
+        # vox2world matrix accordingly 
         offset_mm = utils._affineTransformPoints(minFoV, space.vox2world)
-        space.FoVsize = FoVsize 
-        space.vox2world[0:3,3] -= offset_mm
+        space.size = size 
+        space.vox2world[0:3,3] = offset_mm
         space.world2vox = np.linalg.inv(space.vox2world)
         space.offset = FoVoffset 
+
+        check = utils._affineTransformPoints(min_max_mm, space.world2vox)
+        if (np.any(check.min(0).round() < 0) or 
+            np.any(check.max(0).round() > size - 1)): 
+            raise RuntimeError("New space does not enclose surfaces (min)")
 
         return space 
 
@@ -284,7 +288,7 @@ class Surface(object):
             if np.linalg.det(structSpace.vox2world) > 0:
                 
                 # Flip X coords from [0, n-1] to [n-1, 0] by adding a shift vector
-                N = structSpace.FoVsize[0]
+                N = structSpace.size[0]
                 ps[:,0] = (N-1) - ps[:,0]
 
             # Convert from FSL scaled voxel mm to struct voxel coords
@@ -391,12 +395,12 @@ class Surface(object):
         self.applyTransform(space.world2vox)
         maxFoV = self.points.max(0).round()
         minFoV = self.points.min(0).round()
-        if np.any(minFoV < -1) or np.any(maxFoV > space.FoVsize -1):
+        if np.any(minFoV < -1) or np.any(maxFoV > space.size -1):
             raise RuntimeError("Space should be large enough to enclose surface")
 
-        self.formAssociations(space.FoVsize, 8)
+        self.formAssociations(space.size, 8)
         self.calculateXprods()
-        self.voxelised = core.voxelise(space.FoVsize, self)
+        self.voxelised = core.voxelise(space.size, self)
         self.index_space = space 
 
     def reindex_for(self, dest_space):
@@ -418,12 +422,12 @@ class Surface(object):
         # Get the offset and size of the current index space 
         ref_space = self.index_space
         FoVoffset = ref_space.offset 
-        FoVsize = self.index_space.FoVsize 
+        size = self.index_space.size 
 
         # Get a filter for voxel of the current index space that are still 
         # present in the dest_space 
-        ref_inds = np.arange(np.prod(FoVsize))
-        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, FoVsize)).T
+        ref_inds = np.arange(np.prod(size))
+        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
         ref_voxs_in_dest -= FoVoffset
         ref2dest_fltr = self.reindexing_filter(dest_space)
 
@@ -433,7 +437,7 @@ class Surface(object):
         LUTfltr = np.isin(ref_inds, self.LUT)
         LUTfltr = np.logical_and(LUTfltr, ref2dest_fltr)
         newLUT = np.ravel_multi_index(ref_voxs_in_dest[LUTfltr,:].T, 
-            dest_space.FoVsize)
+            dest_space.size)
 
         # Update associations table. Accept all those that correspond to 
         # accepted LUT entries 
@@ -444,8 +448,8 @@ class Surface(object):
         # the values in the new voxelisation mask that should be updated
         # using the extracted values from the existing voxelisation mask 
         ref_inds_subspace = np.ravel_multi_index(
-            ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.FoVsize)
-        newvoxelised = np.zeros(dest_space.FoVsize, dtype=bool).flatten()
+            ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.size)
+        newvoxelised = np.zeros(dest_space.size, dtype=bool).flatten()
         newvoxelised[ref_inds_subspace] = self.voxelised[ref2dest_fltr]
 
         # Lastly update the points: map them back to world mm coordinates 
@@ -481,17 +485,17 @@ class Surface(object):
         # Get the offset and size of the current index space 
         ref_space = self.index_space
         FoVoffset = ref_space.offset 
-        FoVsize = self.index_space.FoVsize 
+        size = self.index_space.size 
 
         # List voxel indices in the current index space 
         # List corresponding voxel coordinates in the destination space 
         # ref2dest_fltr selects voxel indices from the current space that 
         # are also contained within the destination space 
-        ref_inds = np.arange(np.prod(FoVsize))
-        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, FoVsize)).T
+        ref_inds = np.arange(np.prod(size))
+        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
         ref_voxs_in_dest -= FoVoffset
         ref2dest_fltr = np.logical_and(np.all(ref_voxs_in_dest > - 1, 1), 
-            np.all(ref_voxs_in_dest < dest_space.FoVsize, 1))
+            np.all(ref_voxs_in_dest < dest_space.size, 1))
 
         return ref2dest_fltr
 
@@ -520,7 +524,7 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def formAssociations(self, FoVsize, cores):
+    def formAssociations(self, size, cores):
         """Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
         results will be stored on the surface object (ie, self)
@@ -541,12 +545,12 @@ class Surface(object):
         if np.round(np.min(self.points)) < 0: 
             raise RuntimeError("formAssociations: negative coordinate found")
 
-        if np.any(np.round(np.max(self.points, axis=0)) >= FoVsize): 
+        if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
         chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
-            self.tris, self.points, FoVsize)
+            self.tris, self.points, size)
 
         if cores > 1:
             with multiprocessing.Pool(cores) as p:
@@ -644,15 +648,15 @@ class Surface(object):
             return None
 
 
-    def shiftFoV(self, offset, FoVsize):
+    def shiftFoV(self, offset, size):
         """Shift the points of this surface by an offset so that it lies 
-        within the FoV given by FoVsize (in voxel coordinates)
+        within the FoV given by size (in voxel coordinates)
         """
 
         self.points += offset
         if np.any(np.round(self.points.min(axis=0)) < 0):
             raise RuntimeError("FoV offset does not remove negative coordinates")
-        if np.any(np.round(self.points.max(axis=0)) >= FoVsize):
+        if np.any(np.round(self.points.max(axis=0)) >= size):
             raise RuntimeError("Full FoV does not contain all surface coordinates")
 
 
