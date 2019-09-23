@@ -126,17 +126,18 @@ def _structure(cores, supersampler, ones, surf):
     lies outside the structure
 
     Args: 
-        refSpace: an ImageSpace within which PVs are required
         cores: number of processor cores to use
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
+        surf: a surface that has been indexed; PVs will be estimated within 
+            this space. 
 
     Returns: 
         an array of size refSpace.size containing the PVs. 
     """
 
     if not surf.index_space:
-        raise RuntimeError("Surface has not been indexed into a spaxce." + 
+        raise RuntimeError("Surface has not been indexed into a space." + 
             "See Surface.index_for()")
 
     size = surf.index_space.size 
@@ -151,6 +152,6 @@ def _structure(cores, supersampler, ones, surf):
         fractions = core._estimateFractions(supersampler, desc, cores, surf)
         outPVs = surf.voxelised.astype(np.float32)
         outPVs[surf.LUT] = fractions 
-        outPVs = outPVs.reshape(*size)
+        outPVs = outPVs.reshape(size)
 
     return outPVs
