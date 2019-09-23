@@ -993,7 +993,7 @@ def _determineFullFoV(surfs, refSpace):
         refSpace: ImageSpace object, in which voxel system the surfaces are 
 
     Returns:
-        FoVoffset: an offset [a,b,c] between the origin and the minimal coordinate
+        offset: an offset [a,b,c] between the origin and the minimal coordinate
             of the surfaces. This will only ever be negative, ie, if minimal coord 
             already lies within the reference space, then this will be 0 0 0. If 
             the minimal coord is, for example, [-2,-3,1] then the offset will 
