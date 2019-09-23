@@ -195,7 +195,7 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
     one coordinate axis only (XYZ). As the triangle intersection test used within
     is 2D only, triangles are first projected down onto a 2D plane normal to the 
     test ray and then tested for intersection. This is intended to be used for
-    voxeliseSurfaces(), for ray testing in the general 3D case use
+    Surface.voxelise(), for ray testing in the general 3D case use
     findRayTriangleIntersections3D() instead. 
 
     Args: 
