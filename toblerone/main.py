@@ -324,22 +324,22 @@ def estimate_structure(**kwargs):
         
     # Load reference space, set supersampler
     ref_space = ImageSpace(kwargs['ref'])
-    encl_space = ImageSpace.minimal_enclosing(surf, ref_space)
+    encl_space = ImageSpace.minimal_enclosing(surf, ref_space, kwargs['struct2ref'])
 
     supersampler = kwargs.get('super')
     if supersampler is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
 
-    # Apply registration and save copies if reqd 
-    surf.applyTransform(kwargs['struct2ref'])
-    transformed = None
-    if kwargs.get('savesurfs'):
-        transformed = copy.deepcopy(surf)
-
-    # Finally index the suface to the enclosing space 
-    surf.index_for(encl_space)
+    # Index the suface to the enclosing space 
+    surf.index_for(encl_space, kwargs['struct2ref'])
     pvs_encl_space = estimators._structure(kwargs['cores'], supersampler, 
         bool(kwargs.get('ones')), surf)
+
+    # Apply registration and save copies if reqd 
+    transformed = None
+    if kwargs.get('savesurfs'):
+        transformed = copy.copy(surf)
+        transformed.applyTransform(surf.index_space.vox2world)
 
     # Get a filter from the surface to extract PVs in the reference space 
     ref_fltr = surf.reindexing_filter(ref_space)
@@ -441,7 +441,7 @@ def estimate_cortex(**kwargs):
     if supersampler is None:
         supersampler = np.ceil(refSpace.vox_size / 0.75).astype(np.int8)
 
-    outPVs, cortexMask = estimators._cortex(hemispheres, refSpace, 
+    outPVs, cortexMask = estimators._cortex(hemispheres, 
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
 
     return (outPVs, cortexMask, transformed)
