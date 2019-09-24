@@ -800,7 +800,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
 
 
-def _estimateFractions(supersampler, descriptor, cores, surf):
+def _estimateFractions(surf, supersampler, descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
 
     Args: 
