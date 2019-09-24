@@ -32,6 +32,7 @@ except ImportError:
 from vtk.util import numpy_support as vtknp
 
 from . import utils, core 
+from utils import cascade_attributes
 
 TISSUES = ['GM', 'WM', 'CSF']
 
@@ -455,12 +456,14 @@ class Surface(object):
         self.voxelise()
 
 
+    @ensure_derived_space
     def reindex_LUT(self, space):
         src_inds, dest_inds = self.reindexing_filter(space)
         fltr = np.isin(src_inds, self.LUT, assume_unique=True)
         return dest_inds[fltr]
 
 
+    @ensure_derived_space
     def reindex_for(self, dest_space):
         """ 
         Re-index a surface for a space that derives from the space for which

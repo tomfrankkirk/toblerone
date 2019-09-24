@@ -18,6 +18,22 @@ STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta',
     'R_Thal', 'BrStem']
 
 
+def cascade_attributes(decorator):
+    """
+    Overrride default decorator behaviour to preserve docstrings etc
+    of decorated functions - functools.wraps didn't seem to work. 
+    See https://stackoverflow.com/questions/6394511/python-functools-wraps-equivalent-for-classes
+    """
+
+    def new_decorator(original):
+        wrapped = decorator(original)
+        wrapped.__name__ = original.__name__
+        wrapped.__doc__ = original.__doc__
+        wrapped.__module__ = original.__module__
+        return wrapped
+    return new_decorator
+
+
 def _mp_call_attribute(obj, method_name, args=None):
     if args: 
         return getattr(obj, method_name)(args)

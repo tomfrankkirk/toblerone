@@ -14,28 +14,13 @@ import tqdm
 from toblerone import core, estimators, utils, resampling
 from toblerone.classes import ImageSpace, Hemisphere
 from toblerone.classes import Surface, CommonParser
+from utils import cascade_attributes
 
 
 # Simply apply a function to list of arguments.
 # Used for multiprocessing shell commands. 
 def apply_func(func, args):
     func(*args)
-
-
-def cascade_attributes(decorator):
-    """
-    Overrride default decorator behaviour to preserve docstrings etc
-    of decorated functions - functools.wraps didn't seem to work. 
-    See https://stackoverflow.com/questions/6394511/python-functools-wraps-equivalent-for-classes
-    """
-
-    def new_decorator(original):
-        wrapped = decorator(original)
-        wrapped.__name__ = original.__name__
-        wrapped.__doc__ = original.__doc__
-        wrapped.__module__ = original.__module__
-        return wrapped
-    return new_decorator
 
 
 @cascade_attributes
