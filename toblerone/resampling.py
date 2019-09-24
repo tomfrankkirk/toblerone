@@ -27,16 +27,31 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
     destvox2src = np.matmul(np.linalg.inv(src2dest), destSpace.vox2world)
     destvox2src = np.matmul(np.linalg.inv(srcSpace.vox2world), destvox2src)
 
+    # Scipy.affine_transform expects matrix to be of shape (ndim + 1) square, 
+    # so if working with 4D data then we need a 5x5 matrix.
+    # Assume the provided transformation applies to each 3D volume in turn. 
+    # Pad out to a 5D identity matrix and write in the 4D sub-matrix 
+    # representing the affine. 
+    if data.ndims == 4: 
+        outshape = (*destSpace.size, data.shape[-1])
+        overall = np.identity(5)
+        overall[0:5,0:5] = destvox2src
+    elif data.ndims == 3:  
+        outshape = (destSpace.size)
+        overall = destvox2src
+    else: 
+        raise RuntimeError("Data must be 3D or 4D")
+
     # Interpolate. 
-    out = scipy.ndimage.affine_transform(data, destvox2src, 
-        output_shape=destSpace.size, mode='constant', order=4)
+    out = scipy.ndimage.affine_transform(data, overall, mode='constant', 
+        output_shape=outshape, order=4)
 
     # Due to the spline interpolants, the resampled output can go outside
     # the original min,max of the input data 
     out = np.maximum(out, data.min())
     out = np.minimum(out, data.max())
 
-    return out 
+    return out
 
 
 def _superResampleImage(source, factor, destSpace, src2dest):
