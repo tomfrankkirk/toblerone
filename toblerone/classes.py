@@ -96,7 +96,7 @@ class ImageSpace(object):
         if not len(factor) == 3:
             raise RuntimeError("Factor must have length 3")
 
-        newSpace = copy.deepcopy(self)
+        newSpace = copy.copy(self)
 
         newSpace.size = (self.size * factor).round()
         newSpace.vox_size = self.vox_size / factor
@@ -169,7 +169,7 @@ class ImageSpace(object):
         if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
         else: 
-            space = copy.deepcopy(reference)
+            space = copy.copy(reference)
 
         if affine is not None: 
             overall = space.world2vox @ affine 
@@ -734,7 +734,7 @@ class Surface(object):
             # load the surface patches for all these voxels and find ray 
             # intersections to classify the voxel centres. Finally, we remove
             # the entire set of ray voxels from our copy of the LUT and repeat
-            LUT = copy.deepcopy(self.LUT)
+            LUT = copy.copy(self.LUT)
             while LUT.size: 
 
                 # Where does the ray that passes through this voxel start?

@@ -424,7 +424,7 @@ def estimate_cortex(**kwargs):
     transformed = {}
     if bool(kwargs.get('savesurfs')):
         for k,s in surfdict.items():
-            srf = copy.deepcopy(s)
+            srf = copy.copy(s)
             srf.applyTransform(srf.index_space.vox2world)
             transformed[k] = srf
     
