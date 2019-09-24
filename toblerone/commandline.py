@@ -94,20 +94,36 @@ def estimate_cortex_cmd(*args):
 
 
 def resample_cmd(*args):
+    """
+    Resample an image via upsampling to intermediate space and summing
+    across blocks. This emulates the behaviour of FSL's applywarp with the
+    -super flag. 
+
+    Args: 
+        -src: path to image to resample
+        -dest: image use as reference, into which src will be resampled
+        -src2ref: path to 4x4 affine transformation between src and ref, 
+            use 'I' to denote identity transform 
+        -flirt: flag to denote that struct2ref is a FLIRT transform 
+        -out: path to save output at 
+    """
 
     parser = CommonParser()
-
     parser.add_argument('-src', type=str, required=True)
-    parser.add_argument('-aff', type=str, required=False)
-
+    parser.add_argument('-src2ref', type=str, required=True)
     kwargs = parser.parse(args)
 
-    if kwargs['flirt'] and not kwargs.get('aff'):
-        raise RuntimeError("Flirt flag set but no affine transform supplied")
+    if 'out' not in kwargs:
+        raise RuntimeError("Please specify output path")
 
-    src2ref = kwargs.get('aff')
-    if not src2ref:
+    if kwargs['flirt'] and not kwargs.get('src2ref'):
+        raise RuntimeError("Flirt flag set but no src2ref transform supplied")
+
+    src2ref = kwargs.get('src2ref')
+    if src2ref == 'I':
         src2ref = np.identity(4)
+    else: 
+        src2ref = np.loadtxt(src2ref)
 
     main.resample(**kwargs)
 
