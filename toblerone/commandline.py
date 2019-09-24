@@ -252,8 +252,7 @@ def estimate_all_cmd(*args):
         namebase = utils._splitExts(kwargs['ref'])[0]
 
     if not outdir: 
-        outdir = op.join(op.dirname(kwargs['ref'],
-            namebase + '_surfpvs'))
+        outdir = op.join(op.dirname(kwargs['ref']), namebase + '_surfpvs')
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, 'intermediate')
