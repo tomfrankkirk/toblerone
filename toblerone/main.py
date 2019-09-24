@@ -471,7 +471,7 @@ def resample(src, ref, src2ref=None, flirt=False):
     ref_space = ImageSpace(ref)
     src_space = ImageSpace(src)
     factor = np.ceil(ref_space.vox_size).astype(np.int8)
-    data = nibabel.load(source).get_fdata().astype(np.float32)
+    data = nibabel.load(src).get_fdata().astype(np.float32)
 
     return resampling._superResampleImage(data, src_space, ref_space, src2ref, factor)
 
