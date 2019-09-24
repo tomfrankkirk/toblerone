@@ -60,7 +60,7 @@ def estimate_cortex_cmd(*args):
     kwargs = parser.parse(args)
 
     # Estimation
-    PVs, mask, transformed = main.estimate_cortex(**kwargs)
+    PVs, mask = main.estimate_cortex(**kwargs)
 
     # Output 
     if not kwargs.get('out'):
@@ -158,7 +158,7 @@ def estimate_structure_cmd(*args):
             kwargs['ref'], '_%s_pvs' % surfname)
 
     # Estimate
-    PVs, transformed = main.estimate_structure(**kwargs)
+    PVs = main.estimate_structure(**kwargs)
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
@@ -214,7 +214,7 @@ def estimate_all_cmd(*args):
     else: 
         raise RuntimeError("anat dir must be provided (run fsl_fs_anat()")
 
-    output, transformed = main.estimate_all(**kwargs)
+    output = main.estimate_all(**kwargs)
 
     # Output paths. If given an -out argument of the form path/name then we use
     # path as the output directory and name as the basic filename. Otherwise we
