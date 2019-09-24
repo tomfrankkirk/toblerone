@@ -253,16 +253,6 @@ def estimate_all(**kwargs):
         total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
         ascii=True) ] 
 
-    if kwargs.get('savesurfs'):
-        transformed = {} 
-    else: 
-        transformed = None 
-
-    for key, (pvs, trans) in zip(FIRSTsurfs.keys(), results):
-        output.update({key: pvs})
-        if kwargs.get('savesurfs'): 
-            transformed.update({key: trans})
-
     # Now do the cortex, then stack the whole lot 
     ctx, ctxmask, trans = estimate_cortex(**kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
@@ -336,11 +326,7 @@ def estimate_structure(**kwargs):
     pvs_encl_space = estimators._structure(kwargs['cores'], supersampler, 
         bool(kwargs.get('ones')), surf)
 
-    # Output transformed copies of surfaces if requested 
-    transformed = None
-    if kwargs.get('savesurfs'):
-        transformed = copy.copy(surf)
-        transformed.applyTransform(surf.index_space.vox2world)
+
 
     # Extract PVs in the reference space 
     encl_inds, ref_inds = surf.reindexing_filter(ref_space)
@@ -417,16 +403,7 @@ def estimate_cortex(**kwargs):
     encl_space = ImageSpace.minimal_enclosing(surfs, ref_space, kwargs['struct2ref'])
     for surf in surfs: 
         surf.index_for(encl_space, kwargs['struct2ref'])
-    
-    # Grab transformed copies of the surfaces before going to voxel space
-    surfdict = {}
-    ( surfdict.update(h.surf_dict) for h in hemispheres )
-    transformed = {}
-    if bool(kwargs.get('savesurfs')):
-        for k,s in surfdict.items():
-            srf = copy.copy(s)
-            srf.applyTransform(srf.index_space.vox2world)
-            transformed[k] = srf
+
     
     # Set supersampler and estimate. 
     supersampler = kwargs.get('super')
