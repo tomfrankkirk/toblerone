@@ -254,7 +254,7 @@ def ensure_derived_space(func):
             raise RuntimeError(
                 "Target space is not derived from surface's current index space."+
                 "Call surface.index_based_on with the target space first")
-        return func(*args)
+        return func(self, *args)
     return ensured 
 
 class Surface(object):
@@ -537,10 +537,6 @@ class Surface(object):
             arrays of size index_space.size and dest_space.size respectively, 
             mapping voxels from source to destination positions 
         """
-
-        if not self.index_space.derives_from(dest_space):
-            raise RuntimeError("The destination space does not derive from" +
-                " the current index space")
 
         # Get the offset and size of the current index space 
         src_space = self.index_space
