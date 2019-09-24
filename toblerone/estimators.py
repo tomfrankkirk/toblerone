@@ -36,7 +36,7 @@ def _cortex(hemispheres, supersampler, cores, ones):
         raise RuntimeError("Surface must share common index_space")
 
     if ones:
-        sz = np.concatenate((ref_space.size, [3]))
+        sz = (*ref_space.size, 3)        
         outPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.bool)
         ctxMask = np.zeros(np.prod(ref_space.size), dtype=np.bool)
         for s in surfs:
