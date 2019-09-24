@@ -43,8 +43,6 @@ def estimate_cortex_cmd(*args):
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
         -out: path to save output (default alongside ref, using same basename)
-        -savesurfs: save copies of each surface in reference space. 
-            HIGHLY recommended to check registration quality. 
         -ones: perform simple segmentation based on voxel centres (debug)
     """
     
@@ -82,15 +80,6 @@ def estimate_cortex_cmd(*args):
         for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
             refSpace.saveImage(PVs[:,:,:,i], 
             utils._addSuffixToFilename(t, outPath))
-
-    if kwargs.get('savesurfs'):
-        assert transformed is not None 
-        sbase = utils._default_output_path(kwargs['ref'], 
-            kwargs['ref'], ext=False)
-        print('Saving transformed surfaces to', op.dirname(sbase))
-        for k, s in transformed.items():
-            sname = utils._addSuffixToFilename('_'+k, sbase) + '.surf.gii'
-            s.save(sname)
 
 
 def resample_cmd(*args):
@@ -151,8 +140,6 @@ def estimate_structure_cmd(*args):
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
         -out: path to save output (default alongside ref)
-        -savesurfs: save copies of each surface in reference space. 
-            HIGHLY recommended to check quality of registration. 
         -ones: perform simple segmentation based on voxel centres (debug)
 
     """
@@ -176,14 +163,6 @@ def estimate_structure_cmd(*args):
     # Output
     refSpace = ImageSpace(kwargs['ref'])
     refSpace.saveImage(PVs, kwargs['out'])
-
-    if kwargs.get('savesurfs'):
-        print('Saving transformed surfaces to', op.dirname(kwargs['out']))
-        assert transformed is not None 
-        fname = op.join(op.dirname(kwargs['out']), 
-            utils._splitExts(kwargs['ref'])[0] + '_%s.surf.gii' % 
-            transformed.name)
-        transformed.save(fname)
 
 
 
@@ -211,8 +190,6 @@ def estimate_all_cmd(*args):
         -cores: number of cores to use
         -out: path to save output (default alongside ref)
         -stack: stack PVs into 4D NIFTI, arranged GM/WM/non-brain
-        -savesurfs: save copies of each surface in reference space. 
-            HIGHLY recommended to check quality of registration. 
         -ones: perform simple segmentation based on voxel centres (debug)
     """
     
@@ -278,13 +255,6 @@ def estimate_all_cmd(*args):
             refSpace.saveImage(o, 
                 utils._addSuffixToFilename('_' + k, path))
 
-    if kwargs.get('savesurfs'):
-        assert transformed is not None 
-        print('Saving transformed surfaces to', intermediatedir)
-        for k, s in transformed.items():
-            sname = op.join(intermediatedir, 
-                namebase + '_%s.surf.gii' % s.name)
-            s.save(sname)
 
 def fsl_fs_anat_cmd(*args):
     """
