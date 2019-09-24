@@ -124,9 +124,9 @@ def resample_cmd(*args):
 
     src2ref = kwargs.get('src2ref')
     if src2ref == 'I':
-        src2ref = np.identity(4)
+        kwargs['src2ref'] = np.identity(4)
     else: 
-        src2ref = np.loadtxt(src2ref)
+        kwargs['src2ref'] = np.loadtxt(src2ref)
 
     outpath = kwargs.pop('out')
     result = main.resample(**kwargs)
