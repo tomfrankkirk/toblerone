@@ -387,7 +387,6 @@ def estimate_cortex(**kwargs):
     # Load reference ImageSpace object
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ] 
-    surfs = [ s for h in hemispheres for s in h.surfs() ]
 
     ref_space = ImageSpace(kwargs['ref'])
 

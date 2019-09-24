@@ -48,8 +48,8 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
 
     # Merge the voxelisation results with PVs
     for h in hemispheres:
-        in_pvs = h.inSurf.output_pvs(space)
-        out_pvs = h.outSurf.output_pvs(space)
+        in_pvs = h.inSurf.output_pvs(space).flatten()
+        out_pvs = h.outSurf.output_pvs(space).flatten()
 
         # Combine estimates from each surface into whole hemi PV estimates
         hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
@@ -90,8 +90,8 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     ctxMask[outPVs[:,0] > 0] = True 
 
     # Reshape images back into 4D or 3D images
-    outPVs = np.reshape(outPVs, (*space.size, 3))
-    ctxMask = np.reshape(ctxMask, tuple(space.size[0:3]))
+    outPVs = outPVs.reshape((*space.size, 3))
+    ctxMask = ctxMask.reshape(space.size)
 
     return outPVs, ctxMask
 

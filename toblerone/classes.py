@@ -96,7 +96,7 @@ class ImageSpace(object):
         if not len(factor) == 3:
             raise RuntimeError("Factor must have length 3")
 
-        newSpace = copy.copy(self)
+        newSpace = copy.deepcopy(self)
 
         newSpace.size = (self.size * factor).round()
         newSpace.vox_size = self.vox_size / factor
@@ -169,7 +169,7 @@ class ImageSpace(object):
         if type(reference) is not ImageSpace: 
             space = ImageSpace(reference)
         else: 
-            space = copy.copy(reference)
+            space = copy.deepcopy(reference)
 
         if affine is not None: 
             overall = space.world2vox @ affine 
@@ -195,16 +195,15 @@ class ImageSpace(object):
 
         # Calculate new origin for the coordinate system and modify the 
         # vox2world matrix accordingly 
-        offset_mm = utils._affineTransformPoints(minFoV, space.vox2world)
         space.size = size 
-        space.vox2world[0:3,3] = offset_mm
+        space.vox2world[0:3,3] = min_max_mm[0,:]
         space.world2vox = np.linalg.inv(space.vox2world)
         space.offset = FoVoffset 
 
         check = utils._affineTransformPoints(min_max_mm, space.world2vox)
         if (np.any(check[0,:].round() < 0) or 
             np.any(check[1,:].round() > size - 1)): 
-            raise RuntimeError("New space does not enclose surfaces (min)")
+            raise RuntimeError("New space does not enclose surfaces")
 
         return space 
 
