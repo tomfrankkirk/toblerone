@@ -108,14 +108,6 @@ def _cortex(hemispheres, supersampler, cores, ones):
         outPVs = np.reshape(outPVs, (*ref_space.size, 3))
         ctxMask = np.reshape(ctxMask, tuple(ref_space.size[0:3]))
 
-        # # Extract the output within the FoV of the reference image
-        # outPVs = outPVs[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
-        #     FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
-        #     FoVoffset[2] : FoVoffset[2] + refSpace.size[2], : ]
-        # ctxMask = ctxMask[ FoVoffset[0] : FoVoffset[0] + refSpace.size[0],
-        #     FoVoffset[1] : FoVoffset[1] + refSpace.size[1],
-        #     FoVoffset[2] : FoVoffset[2] + refSpace.size[2] ]
-
     return outPVs, ctxMask
 
 
