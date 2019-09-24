@@ -132,6 +132,9 @@ class ImageSpace(object):
         if data.dtype is np.dtype('bool'):
             data = data.astype(np.int8)
 
+        if not (path.endswith('.nii') or path.endswith('.nii.gz')):
+            path += '.nii.gz'
+
         nii = nibabel.nifti2.Nifti2Image(data, self.vox2world)
         nibabel.save(nii, path)
 
