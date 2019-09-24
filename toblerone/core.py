@@ -713,6 +713,8 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
             # Separate points within the voxel into distinct clouds, to check
             # for multiple surface intersection
+            # TODO: bring this into form associations, and store separate groups
+            # within the associations array to check for bridges 
             groups = _separatePointClouds(smallPatch.tris)
 
             # If neither surface is folded within the subvox and there 

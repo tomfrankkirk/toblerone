@@ -390,7 +390,24 @@ class Surface(object):
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
 
-    def index_for(self, space, affine):
+    def output_pvs(self, in_space):
+        pvs_curr = self.voxelised.astype(np.float32)
+        pvs_curr[self.LUT] = self.fractions
+        out = np.zeros(in_space.size, dtype=np.float32)
+        curr_inds, dest_inds = self.reindexing_filter(in_space)
+        out[dest_inds] = pvs_curr[curr_inds]
+        return out.reshape(in_space.size)
+
+    def _estimate_fractions(self, supersampler, cores, ones, desc=''):
+        if ones: 
+            fracs = np.zeros(np.prod(self.index_space.size), dtype=bool)
+            fracs[self.LUT] = 1 
+            self.fractions = fracs 
+        else: 
+            self.fractions = core._estimateFractions(self, 
+                supersampler, desc, cores)
+
+    def index_based_on(self, space, affine):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
@@ -413,6 +430,8 @@ class Surface(object):
             self.xProds: triangle cross products, voxel coordinates
         """
 
+        encl_space = ImageSpace.minimal_enclosing(self, space, affine)
+
         if affine is not None: 
             overall = space.world2vox @ affine
         else: 
@@ -424,10 +443,16 @@ class Surface(object):
         if np.any(minFoV < -1) or np.any(maxFoV > space.size -1):
             raise RuntimeError("Space should be large enough to enclose surface")
 
-        self.index_space = space 
-        self.formAssociations(space.size)
+        self.index_space = encl_space 
+        self.formAssociations(encl_space.size)
         self.calculateXprods()
         self.voxelise()
+
+
+    # TODO: hide the minimal enclosing from the user? Or let all surfaces operate within their 
+    # own minimal space.... 
+    # whenever an indexing related method is called on them, they can check to see if they need 
+    # re-indexing and do so accordingly? How will bridge voxel function work?
 
 
     def reindex_for(self, dest_space):
@@ -830,7 +855,6 @@ class CommonParser(argparse.ArgumentParser):
         self.add_argument('-struct', type=str, required=False)
         self.add_argument('-cores', type=int, required=False)
         self.add_argument('-out', type=str, required=False)
-        self.add_argument('-savesurfs', action='store_true')
         self.add_argument('-super', nargs='+', required=False)
 
 

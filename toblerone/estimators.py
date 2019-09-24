@@ -10,7 +10,7 @@ import tqdm
 import numpy as np
 
 from . import core, utils 
-from .classes import Hemisphere, Surface, Patch
+from .classes import Hemisphere, Surface, Patch, ImageSpace
 
 
 def _cortex(hemispheres, supersampler, cores, ones):
@@ -113,8 +113,9 @@ def _cortex(hemispheres, supersampler, cores, ones):
     return outPVs, ctxMask
 
 
-def _structure(cores, supersampler, ones, surf):
-    """Estimate the PVs of a structure denoted by a single surface. Note
+def _structure(surf, space, struct2ref, supersampler, ones, cores):
+    """
+    Estimate the PVs of a structure denoted by a single surface. Note
     that the results should be interpreted simply as "fraction of each 
     voxel lying within the structure", and it is ambiguous as to what tissue
     lies outside the structure
@@ -123,29 +124,13 @@ def _structure(cores, supersampler, ones, surf):
         cores: number of processor cores to use
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
-        surf: a surface that has been indexed; PVs will be estimated within 
-            this space. 
+        surf: a surface 
 
     Returns: 
         an array of size refSpace.size containing the PVs. 
     """
 
-    if not surf.index_space:
-        raise RuntimeError("Surface has not been indexed into a space." + 
-            "See Surface.index_for()")
-
-    size = surf.index_space.size 
-
-    if ones: 
-        outPVs = np.zeros(np.prod(size), dtype=np.bool)
-        outPVs[surf.LUT] = 1 
-        outPVs = outPVs.reshape(size)
-
-    else:
-        desc = '' 
-        fractions = core._estimateFractions(surf, supersampler, desc, cores)
-        outPVs = surf.voxelised.astype(np.float32)
-        outPVs[surf.LUT] = fractions 
-        outPVs = outPVs.reshape(size)
-
-    return outPVs
+    surf.index_based_on(space, struct2ref)
+    surf._estimate_fractions(supersampler, cores, ones)
+    
+    return surf.output_pvs(space)

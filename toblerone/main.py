@@ -253,12 +253,12 @@ def estimate_all(**kwargs):
         total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
         ascii=True) ] 
 
+    output = dict(zip([s.name for s in structures], results))
+
     # Now do the cortex, then stack the whole lot 
-    ctx, ctxmask, trans = estimate_cortex(**kwargs)
+    ctx, ctxmask = estimate_cortex(**kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-        output['cortex' + t] = (ctx[:,:,:,i])
-    if trans: 
-        transformed.update(trans)
+       output['cortex' + t] = (ctx[:,:,:,i])
 
     output['cortexmask'] = ctxmask
     stacked = stack_images(output)
@@ -267,7 +267,7 @@ def estimate_all(**kwargs):
     output['all_nonbrain'] = stacked[:,:,:,2]
     output['all_stacked'] = stacked
 
-    return output, transformed
+    return output
 
 
 def estimate_structure_wrapper(surf, **kwargs):
@@ -295,7 +295,7 @@ def estimate_structure(**kwargs):
         cores: number of cores to use 
  
     Returns: 
-        (pvs, transformed) PV image and transformed surface object. 
+        pvs: PV image
     """
 
     # Check we either have a surface object or path to one 
@@ -311,29 +311,18 @@ def estimate_structure(**kwargs):
 
     else: 
         surf = kwargs['surf']
-
         
     # Load reference space, set supersampler
     ref_space = ImageSpace(kwargs['ref'])
-    encl_space = ImageSpace.minimal_enclosing(surf, ref_space, kwargs['struct2ref'])
 
     supersampler = kwargs.get('super')
     if supersampler is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
+ 
+    pvs = estimators._structure(surf, ref_space, kwargs['struct2ref'], 
+        supersampler, bool(kwargs.get('ones')), kwargs['cores'])
 
-    # Index the suface to the enclosing space 
-    surf.index_for(encl_space, kwargs['struct2ref'])
-    pvs_encl_space = estimators._structure(kwargs['cores'], supersampler, 
-        bool(kwargs.get('ones')), surf)
-
-
-
-    # Extract PVs in the reference space 
-    encl_inds, ref_inds = surf.reindexing_filter(ref_space)
-    pvs = np.zeros(np.prod(ref_space.size), dtype=np.float32)
-    pvs[ref_inds] = pvs_encl_space.flatten()[encl_inds]
-
-    return (pvs.reshape(ref_space.size), transformed)
+    return pvs
 
 
 @enforce_and_load_common_arguments
@@ -422,7 +411,7 @@ def estimate_cortex(**kwargs):
     pvs[ref_inds,:] = pvs_encl.reshape(-1, 3)[encl_inds,:]
     ctx_mask[ref_inds] = ctx_mask_encl.flatten()[encl_inds]
 
-    return (pvs.reshape(shape_4D), ctx_mask.reshape(shape_3D), transformed)
+    return (pvs.reshape(shape_4D), ctx_mask.reshape(shape_3D))
 
 
 def resample(src, ref, src2ref=None, flirt=False):
