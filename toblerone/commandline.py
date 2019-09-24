@@ -114,7 +114,7 @@ def resample_cmd(*args):
     parser.add_argument('-src2ref', type=str, required=True)
     parser.add_argument('-out', type=str, required=False)
     parser.add_argument('-ref', type=str, required=True)
-    kwargs = vars(parser.parse(args))
+    kwargs = vars(parser.parse_args(args))
 
     if 'out' not in kwargs:
         raise RuntimeError("Please specify output path")
