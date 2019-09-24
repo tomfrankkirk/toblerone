@@ -32,11 +32,11 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
     # Assume the provided transformation applies to each 3D volume in turn. 
     # Pad out to a 5D identity matrix and write in the 4D sub-matrix 
     # representing the affine. 
-    if data.ndims == 4: 
+    if data.ndim == 4: 
         outshape = (*destSpace.size, data.shape[-1])
         overall = np.identity(5)
         overall[0:5,0:5] = destvox2src
-    elif data.ndims == 3:  
+    elif data.ndim == 3:  
         outshape = (destSpace.size)
         overall = destvox2src
     else: 
