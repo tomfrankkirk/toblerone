@@ -344,10 +344,10 @@ def estimate_structure(**kwargs):
 
     # Extract PVs in the reference space 
     encl_inds, ref_inds = surf.reindexing_filter(ref_space)
-    outPVs = np.zeros(np.prod(ref_space.size), dtype=np.float32)
-    outPVs[ref_inds] = pvs_encl_space.flatten()[encl_inds]
+    pvs = np.zeros(np.prod(ref_space.size), dtype=np.float32)
+    pvs[ref_inds] = pvs_encl_space.flatten()[encl_inds]
 
-    return (outPVs.reshape(ref_space.size), transformed)
+    return (pvs.reshape(ref_space.size), transformed)
 
 
 @enforce_and_load_common_arguments
@@ -392,9 +392,6 @@ def estimate_cortex(**kwargs):
         raise RuntimeError("Either a fsdir or paths to LWS/LPS etc"
             "must be given.")
 
-    if not kwargs.get('cores'):
-        kwargs['cores'] = max([multiprocessing.cpu_count() - 1, 1])
-
     # If subdir given, then get all the surfaces out of the surf dir
     # If individual surface paths were given they will already be in scope
     if kwargs.get('fsdir'):
@@ -413,39 +410,42 @@ def estimate_cortex(**kwargs):
         raise RuntimeError("At least one hemisphere (eg LWS/LPS required")
 
     # Load reference ImageSpace object
-    # Form the final transformation matrix to bring the surfaces to 
-    # the same world (mm, not voxel) space as the reference image
-    refSpace = ImageSpace(kwargs['ref'])
-    if kwargs.get('verbose'): 
-        np.set_printoptions(precision=3, suppress=True)
-        print("Final surface-to-reference (world) transformation:\n", 
-            kwargs['struct2ref'])
-
-    # Transforms: surface -> reference -> reference voxels
-    # then calculate cross prods for each surface element 
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ] 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    for s in surfs: 
-        s.applyTransform(kwargs['struct2ref'])
+    ref_space = ImageSpace(kwargs['ref'])
+    encl_space = ImageSpace.minimal_enclosing(surfs, ref_space, kwargs['struct2ref'])
+    for surf in surfs: 
+        surf.index_for(encl_space)
     
     # Grab transformed copies of the surfaces before going to voxel space
     surfdict = {}
     ( surfdict.update(h.surf_dict) for h in hemispheres )
-    transformed = { (k,copy.deepcopy(s)) for (k,s) in surfdict.items() }
+    transformed = {}
+    if kwargs.get('savesurfs'):
+        for k,s in surfdict.items():
+            srf = copy.deepcopy(s)
+            srf.applyTransform(srf.index_space.vox2world)
+            transformed[k] = srf
     
-    for s in surfs:
-        s.applyTransform(refSpace.world2vox)
-
     # Set supersampler and estimate. 
     supersampler = kwargs.get('super')
     if supersampler is None:
-        supersampler = np.ceil(refSpace.vox_size / 0.75).astype(np.int8)
+        supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
 
-    outPVs, cortexMask = estimators._cortex(hemispheres, 
+    pvs_encl, ctx_mask_encl = estimators._cortex(hemispheres, 
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
 
-    return (outPVs, cortexMask, transformed)
+    col_shape = np.prod(ref_space.size)
+    shape_4D = (*ref_space.size, 3)
+    shape_3D = ref_space.size 
+    encl_inds, ref_inds = surfs[0].reindexing_filter(ref_space)
+    pvs = np.zeros((col_shape, 3), dtype=np.float32)
+    ctx_mask = np.zeros(col_shape, dtype=bool)
+    pvs[ref_inds,:] = pvs_encl.reshape(col_shape, 3)[encl_inds,:]
+    ctx_mask[ref_inds] = ctx_mask_encl.flatten()[encl_inds]
+
+    return (pvs.reshape(shape_4D), ctx_mask.reshape(shape_3D), transformed)
 
 
 def resample(src, ref, src2ref=None, flirt=False):

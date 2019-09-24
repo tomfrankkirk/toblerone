@@ -201,8 +201,9 @@ def estimate_all_cmd(*args):
     Alternatvies to anat argument (-struct must also be supplied): 
         -fsdir: FreeSurfer subject directory, OR: 
             -LWS/-LPS/-RWS/-RPS paths to individual surfaces (L/R white/pial)
-        -firstdir: FIRST directory
-        -fastdir: FAST directory 
+        -firstdir: FIRST directory in which .vtk surfaces are located
+        -fastdir: FAST directory in which _pve_0/1/2 are located 
+        -struct: path to structural image from which surfaces were dervied
 
     Optional args: 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
@@ -290,9 +291,9 @@ def fsl_fs_anat_cmd(*args):
     Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
 
     Args: 
-        anat: (optional) path to existing fsl_anat dir to augment
-        struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
-        out: output path (default alongside input, named input.anat)
+        -anat: (optional) path to existing fsl_anat dir to augment
+        -struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
+        -out: output path (default alongside input, named input.anat)
     """
 
     parser = argparse.ArgumentParser()
