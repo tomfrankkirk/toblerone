@@ -416,7 +416,7 @@ def estimate_cortex(**kwargs):
     ref_space = ImageSpace(kwargs['ref'])
     encl_space = ImageSpace.minimal_enclosing(surfs, ref_space, kwargs['struct2ref'])
     for surf in surfs: 
-        surf.index_for(encl_space)
+        surf.index_for(encl_space, kwargs['struct2ref'])
     
     # Grab transformed copies of the surfaces before going to voxel space
     surfdict = {}
@@ -442,7 +442,7 @@ def estimate_cortex(**kwargs):
     encl_inds, ref_inds = surfs[0].reindexing_filter(ref_space)
     pvs = np.zeros((col_shape, 3), dtype=np.float32)
     ctx_mask = np.zeros(col_shape, dtype=bool)
-    pvs[ref_inds,:] = pvs_encl.reshape(col_shape, 3)[encl_inds,:]
+    pvs[ref_inds,:] = pvs_encl.reshape(-1, 3)[encl_inds,:]
     ctx_mask[ref_inds] = ctx_mask_encl.flatten()[encl_inds]
 
     return (pvs.reshape(shape_4D), ctx_mask.reshape(shape_3D), transformed)
