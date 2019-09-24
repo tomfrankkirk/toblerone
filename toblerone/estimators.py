@@ -32,6 +32,8 @@ def _cortex(hemispheres, supersampler, cores, ones):
 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
     ref_space = surfs[0].index_space 
+    if not all([ref_space is s.index_space for s in surfs]):
+        raise RuntimeError("Surface must share common index_space")
 
     if ones:
         sz = np.concatenate((ref_space.size, [3]))
@@ -141,7 +143,7 @@ def _structure(cores, supersampler, ones, surf):
 
     else:
         desc = '' 
-        fractions = core._estimateFractions(supersampler, desc, cores, surf)
+        fractions = core._estimateFractions(surf, supersampler, desc, cores)
         outPVs = surf.voxelised.astype(np.float32)
         outPVs[surf.LUT] = fractions 
         outPVs = outPVs.reshape(size)
