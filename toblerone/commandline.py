@@ -101,17 +101,20 @@ def resample_cmd(*args):
 
     Args: 
         -src: path to image to resample
-        -dest: image use as reference, into which src will be resampled
+        -ref: image use as reference, into which src will be resampled
         -src2ref: path to 4x4 affine transformation between src and ref, 
             use 'I' to denote identity transform 
         -flirt: flag to denote that struct2ref is a FLIRT transform 
         -out: path to save output at 
     """
 
-    parser = CommonParser()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-flirt', action='store_true', required=False)
     parser.add_argument('-src', type=str, required=True)
     parser.add_argument('-src2ref', type=str, required=True)
-    kwargs = parser.parse(args)
+    parser.add_argument('-out', type=str, required=False)
+    parser.add_argument('-ref', type=str, required=True)
+    kwargs = vars(parser.parse(args))
 
     if 'out' not in kwargs:
         raise RuntimeError("Please specify output path")
