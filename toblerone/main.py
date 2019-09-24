@@ -447,7 +447,7 @@ def estimate_cortex(**kwargs):
     return (outPVs, cortexMask, transformed)
 
 
-def resample(src, ref, src2ref=np.identity(4), flirt=False):
+def resample(src, ref, src2ref=None, flirt=False):
     """
     Resample an image via upsampling to an intermediate space followed
     by summation back down to reference space. Wrapper for superResampleImage()
@@ -455,16 +455,21 @@ def resample(src, ref, src2ref=np.identity(4), flirt=False):
     Args:
         src: path to source image 
         ref: path to reference image, onto which src will be resampled 
-        out: path to save output 
-        src2ref: 4x4 affine transformation between src and ref 
+        src2ref: 4x4 affine transformation between src and ref, default
+            is None, to represent identity transform 
+        flirt: bool, if affine is a FLIRT matrix 
     """
    
     if flirt:
+        assert src2ref is not None, 'Default src2ref cannot be FLIRT'
         src2ref = utils._FLIRT_to_world(src, ref, src2ref)
 
-    refSpace = ImageSpace(ref)
-    factor = np.ceil(refSpace.vox_size).astype(np.int8)
-    return resampling._superResampleImage(src, factor, refSpace, src2ref)
+    if src2ref is None: 
+        src2ref = np.identity(4)
+
+    ref_space = ImageSpace(ref)
+    factor = np.ceil(ref_space.vox_size).astype(np.int8)
+    return resampling._superResampleImage(src, factor, ref_space, src2ref)
 
 
 def stack_images(images):

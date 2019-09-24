@@ -18,15 +18,17 @@ Usage:
 
 -estimate_structure     estimate PVs for a structure defined by a single surface 
 
--fsl_fs_anat          run fsl_anat and augment output with FreeSurfer (pre-processing
+-fsl_fs_anat            run fsl_anat and augment output with FreeSurfer (pre-processing
                             step for other Toblerone functions)
+
+-resample               resampling via super-resolution method (as in FSL's applywarp)           
 """)
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, fsl_fs_anat_cmd]
+        estimate_structure_cmd, fsl_fs_anat_cmd, resample_cmd]
     names = ['-estimate_all', '-estimate_cortex', '-estimate_structure', 
-        '-fsl_fs_anat']
+        '-fsl_fs_anat', '-resample']
 
     args = sys.argv
 
