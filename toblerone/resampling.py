@@ -64,7 +64,7 @@ def _superResampleImage(data, src_space, ref_space, src2ref, factor):
         data: data to resample
         src_space: ImageSpace for source data space 
         destSpace: an ImageSpace representing the destination space
-        src2dest: affine transformation matrix (4x4) between source and reference
+        src2ref: affine transformation matrix (4x4) between source and reference
         factor: iterable length 3, extent to upsample in each spatial dimension 
             
     Returns: 
@@ -82,7 +82,7 @@ def _superResampleImage(data, src_space, ref_space, src2ref, factor):
     # Resample onto this new grid, applying transform at the same time. 
     # Then sum the array blocks and divide by the size of each block to 
     # get the mean value within each block. This is the final output. 
-    resamp = _resampleImage(data, src_space, super_ref, src2dest)
+    resamp = _resampleImage(data, src_space, super_ref, src2ref)
     resamp = _sumArrayBlocks(resamp, factor) / np.prod(factor)
 
     return resamp
