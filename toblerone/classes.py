@@ -248,6 +248,15 @@ class Hemisphere(object):
             self.side+'PS': self.outSurf}
 
 
+def ensure_derived_space(func):
+    def ensured(self, *args):
+        if not self.index_space.derives_from(args[0]):
+            raise RuntimeError(
+                "Target space is not derived from surface's current index space."+
+                "Call surface.index_based_on with the target space first")
+        return func(*args)
+    return ensured 
+
 class Surface(object):
     """Encapsulates a surface's points, triangles and associations data.
     Create either by passing a file path (as below) or use the static class 
@@ -446,10 +455,6 @@ class Surface(object):
         self.voxelise()
 
 
-    # TODO: hide the minimal enclosing from the user? Or let all surfaces operate within their 
-    # own minimal space.... 
-    # whenever an indexing related method is called on them, they can check to see if they need 
-    # re-indexing and do so accordingly? How will bridge voxel function work?
     def reindex_LUT(self, space):
         src_inds, dest_inds = self.reindexing_filter(space)
         fltr = np.isin(src_inds, self.LUT, assume_unique=True)
@@ -516,7 +521,7 @@ class Surface(object):
         self.index_space = dest_space
         self.offset = None
 
-
+    @ensure_derived_space
     def reindexing_filter(self, dest_space, as_bool=False):
         """
         Filter of voxels in the current index space that lie within 
