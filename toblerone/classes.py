@@ -393,16 +393,14 @@ class Surface(object):
     def output_pvs(self, in_space):
         pvs_curr = self.voxelised.astype(np.float32)
         pvs_curr[self.LUT] = self.fractions
-        out = np.zeros(in_space.size, dtype=np.float32)
+        out = np.zeros(np.prod(in_space.size), dtype=np.float32)
         curr_inds, dest_inds = self.reindexing_filter(in_space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(in_space.size)
 
     def _estimate_fractions(self, supersampler, cores, ones, desc=''):
         if ones: 
-            fracs = np.zeros(np.prod(self.index_space.size), dtype=bool)
-            fracs[self.LUT] = 1 
-            self.fractions = fracs 
+            self.fractions = np.ones(self.LUT.size, dtype=bool) 
         else: 
             self.fractions = core._estimateFractions(self, 
                 supersampler, desc, cores)
@@ -433,14 +431,14 @@ class Surface(object):
         encl_space = ImageSpace.minimal_enclosing(self, space, affine)
 
         if affine is not None: 
-            overall = space.world2vox @ affine
+            overall = encl_space.world2vox @ affine
         else: 
-            overall = space.world2vox
+            overall = encl_space.world2vox
 
         self.applyTransform(overall)
         maxFoV = self.points.max(0).round()
         minFoV = self.points.min(0).round()
-        if np.any(minFoV < -1) or np.any(maxFoV > space.size -1):
+        if np.any(minFoV < -1) or np.any(maxFoV > encl_space.size -1):
             raise RuntimeError("Space should be large enough to enclose surface")
 
         self.index_space = encl_space 
@@ -453,6 +451,10 @@ class Surface(object):
     # own minimal space.... 
     # whenever an indexing related method is called on them, they can check to see if they need 
     # re-indexing and do so accordingly? How will bridge voxel function work?
+    def reindex_LUT(self, space):
+        src_inds, dest_inds = self.reindexing_filter(space)
+        fltr = np.isin(src_inds, self.LUT, assume_unique=True)
+        return dest_inds[fltr]
 
 
     def reindex_for(self, dest_space):
