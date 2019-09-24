@@ -396,19 +396,10 @@ def estimate_cortex(**kwargs):
     if supersampler is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
 
-    pvs_encl, ctx_mask_encl = estimators._cortex(hemispheres, 
+    pvs, ctx_mask = estimators._cortex(hemispheres, ref_space, kwargs['struct2ref'],
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
 
-    col_shape = np.prod(ref_space.size)
-    shape_4D = (*ref_space.size, 3)
-    shape_3D = ref_space.size 
-    encl_inds, ref_inds = surfs[0].reindexing_filter(ref_space)
-    pvs = np.zeros((col_shape, 3), dtype=np.float32)
-    ctx_mask = np.zeros(col_shape, dtype=bool)
-    pvs[ref_inds,:] = pvs_encl.reshape(-1, 3)[encl_inds,:]
-    ctx_mask[ref_inds] = ctx_mask_encl.flatten()[encl_inds]
-
-    return (pvs.reshape(shape_4D), ctx_mask.reshape(shape_3D))
+    return (pvs, ctx_mask)
 
 
 def resample(src, ref, src2ref=None, flirt=False):
