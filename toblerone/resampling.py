@@ -54,33 +54,35 @@ def _resampleImage(data, srcSpace, destSpace, src2dest):
     return out
 
 
-def _superResampleImage(source, factor, destSpace, src2dest):
+def _superResampleImage(data, src_space, ref_space, src2ref, factor):
     """Resample an image onto a new space, applying an affine transformation
     at the same time. The source image transformed onto an upsampled copy of 
     the destination space first and then block-summed back down to the required
     resolution. 
 
     Args:
-        source: path to image to resample
-        factor: iterable length 3, extent to upsample in each dim 
+        data: data to resample
+        src_space: ImageSpace for source data space 
         destSpace: an ImageSpace representing the destination space
         src2dest: affine transformation matrix (4x4) between source and reference
-
+        factor: iterable length 3, extent to upsample in each spatial dimension 
+            
     Returns: 
         an array of the dimensions given by destSpace.size
     """
 
-    # Load input data and read in the space for it
-    srcSpace = ImageSpace(source)
-    data = nibabel.load(source).get_fdata().astype(np.float32)
+    if data.ndim == 4: 
+        factor = (*factor, 1)
+    elif data.ndim != 3: 
+        raise RuntimeError("Data must be 3D or 4D")
 
     # Create a supersampled version of the space 
-    superSpace = destSpace.supersample(factor)
+    super_ref = ref_space.supersample(factor[0:3])
 
     # Resample onto this new grid, applying transform at the same time. 
     # Then sum the array blocks and divide by the size of each block to 
     # get the mean value within each block. This is the final output. 
-    resamp = _resampleImage(data, srcSpace, superSpace, src2dest)
+    resamp = _resampleImage(data, src_space, super_ref, src2dest)
     resamp = _sumArrayBlocks(resamp, factor) / np.prod(factor)
 
     return resamp

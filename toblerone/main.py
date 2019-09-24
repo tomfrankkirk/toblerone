@@ -468,8 +468,11 @@ def resample(src, ref, src2ref=None, flirt=False):
         src2ref = np.identity(4)
 
     ref_space = ImageSpace(ref)
+    src_space = ImageSpace(src)
     factor = np.ceil(ref_space.vox_size).astype(np.int8)
-    return resampling._superResampleImage(src, factor, ref_space, src2ref)
+    data = nibabel.load(source).get_fdata().astype(np.float32)
+
+    return resampling._superResampleImage(data, src_space, ref_space, src2ref, factor)
 
 
 def stack_images(images):
