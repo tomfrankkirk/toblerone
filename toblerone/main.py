@@ -388,12 +388,9 @@ def estimate_cortex(**kwargs):
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ] 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    ref_space = ImageSpace(kwargs['ref'])
-    encl_space = ImageSpace.minimal_enclosing(surfs, ref_space, kwargs['struct2ref'])
-    for surf in surfs: 
-        surf.index_for(encl_space, kwargs['struct2ref'])
 
-    
+    ref_space = ImageSpace(kwargs['ref'])
+
     # Set supersampler and estimate. 
     supersampler = kwargs.get('super')
     if supersampler is None:

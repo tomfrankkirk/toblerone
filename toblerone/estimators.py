@@ -12,8 +12,7 @@ import numpy as np
 from . import core, utils 
 from .classes import Hemisphere, Surface, Patch, ImageSpace
 
-
-def _cortex(hemispheres, supersampler, cores, ones):
+def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
 
     Args: 
@@ -31,84 +30,68 @@ def _cortex(hemispheres, supersampler, cores, ones):
     """
 
     surfs = [ s for h in hemispheres for s in h.surfs() ]
-    ref_space = surfs[0].index_space 
-    if not all([ref_space is s.index_space for s in surfs]):
-        raise RuntimeError("Surface must share common index_space")
 
-    if ones:
-        sz = (*ref_space.size, 3)        
-        outPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.bool)
-        ctxMask = np.zeros(np.prod(ref_space.size), dtype=np.bool)
-        for s in surfs:
-            outPVs[s.LUT,0] = 1 
-            ctxMask[s.LUT] = 1 
+    for s in surfs: 
+        s.index_based_on(space, struct2ref)
 
-        outPVs = outPVs.reshape(sz)
-        ctxMask = ctxMask.reshape(ref_space.size)
+    # Estimate PV fractions for each surface
+    for h in hemispheres:
+        if np.any(np.max(np.abs(h.inSurf.points)) > 
+            np.max(np.abs(h.outSurf.points))):
+            raise RuntimeWarning("Inner surface vertices appear to be further",\
+                "from the origin than the outer vertices. Are the surfaces in",\
+                "the correct order?")
+        
+        for s, d in zip(h.surfs(), ['in', 'out']):
+            descriptor = "{} cortex {}".format(h.side, d)
+            s._estimate_fractions(supersampler, cores, ones, descriptor)
 
-    else: 
+    # Merge the voxelisation results with PVs
+    for h in hemispheres:
+        in_pvs = h.inSurf.output_pvs(space)
+        out_pvs = h.outSurf.output_pvs(space)
 
-        # Estimate PV fractions for each surface
-        for h in hemispheres:
-            if np.any(np.max(np.abs(h.inSurf.points)) > 
-                np.max(np.abs(h.outSurf.points))):
-                raise RuntimeWarning("Inner surface vertices appear to be further",\
-                    "from the origin than the outer vertices. Are the surfaces in",\
-                    "the correct order?")
-            
-            for s, d in zip(h.surfs(), ['in', 'out']):
-                descriptor = "{} cortex {}".format(h.side, d)
-                f = core._estimateFractions(s, supersampler, descriptor, cores)
-                s.fractions = f 
+        # Combine estimates from each surface into whole hemi PV estimates
+        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        hemiPVs[:,1] = in_pvs 
+        hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
+        hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
+        h.PVs = hemiPVs
 
-        # Merge the voxelisation results with PVs
-        for h in hemispheres:
-            inFractions = (h.inSurf.voxelised).astype(np.float32)
-            outFractions = (h.outSurf.voxelised).astype(np.float32)
-            inFractions[h.inSurf.LUT] = h.inSurf.fractions
-            outFractions[h.outSurf.LUT] = h.outSurf.fractions
+    # Merge the hemispheres, giving priority to GM, then WM, then CSF.
+    # Do nothing if just one hemi
+    if len(hemispheres) == 1:
+        outPVs = hemispheres[0].PVs
 
-            # Combine estimates from each surface into whole hemi PV estimates
-            hemiPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.float32)
-            hemiPVs[:,1] = inFractions 
-            hemiPVs[:,0] = np.maximum(0.0, outFractions - inFractions)
-            hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
-            h.PVs = hemiPVs
+    else:
+        h1, h2 = hemispheres
+        outPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
+        outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
+            h1.PVs[:,1] + h2.PVs[:,1])
+        outPVs[:,2] = 1.0 - np.sum(outPVs[:,0:2], axis=1)
 
-        # Merge the hemispheres, giving priority to GM, then WM, then CSF.
-        # Do nothing if just one hemi
-        if len(hemispheres) == 1:
-            outPVs = hemispheres[0].PVs
+    # Sanity checks
+    if np.any(outPVs > 1.0): 
+        raise RuntimeError("PV exceeds 1")
 
-        else:
-            h1, h2 = hemispheres
-            outPVs = np.zeros((np.prod(ref_space.size), 3), dtype=np.float32)
-            outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
-            outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
-                h1.PVs[:,1] + h2.PVs[:,1])
-            outPVs[:,2] = 1.0 - np.sum(outPVs[:,0:2], axis=1)
+    if np.any(outPVs < 0.0):
+        raise RuntimeError("Negative PV returned")
 
-        # Sanity checks
-        if np.any(outPVs > 1.0): 
-            raise RuntimeError("PV exceeds 1")
+    if not np.all(np.sum(outPVs, axis=1) == 1.0):
+        raise RuntimeError("PVs do not sum to 1")
 
-        if np.any(outPVs < 0.0):
-            raise RuntimeError("Negative PV returned")
+    # Form the surface mask (3D logical) as any voxel containing GM or 
+    # intersecting the cortex (these definitions should always be equivalent)
+    ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
+    for h in hemispheres:
+        for s in h.surfs(): 
+            ctxMask[s.reindex_LUT(space)] = True
+    ctxMask[outPVs[:,0] > 0] = True 
 
-        if not np.all(np.sum(outPVs, axis=1) == 1.0):
-            raise RuntimeError("PVs do not sum to 1")
-
-        # Form the surface mask (3D logical) as any voxel containing GM or 
-        # intersecting the cortex (these definitions should always be equivalent)
-        ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
-        for h in hemispheres:
-            for s in h.surfs(): 
-                ctxMask[s.LUT] = True
-        ctxMask[outPVs[:,0] > 0] = True 
-
-        # Reshape images back into 4D or 3D images
-        outPVs = np.reshape(outPVs, (*ref_space.size, 3))
-        ctxMask = np.reshape(ctxMask, tuple(ref_space.size[0:3]))
+    # Reshape images back into 4D or 3D images
+    outPVs = np.reshape(outPVs, (*space.size, 3))
+    ctxMask = np.reshape(ctxMask, tuple(space.size[0:3]))
 
     return outPVs, ctxMask
 
