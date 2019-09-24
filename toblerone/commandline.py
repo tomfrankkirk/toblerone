@@ -128,7 +128,9 @@ def resample_cmd(*args):
     else: 
         src2ref = np.loadtxt(src2ref)
 
-    main.resample(**kwargs)
+    outpath = kwargs.pop('out')
+    result = main.resample(**kwargs)
+    ImageSpace.save_like(kwargs['ref'], result, outpath)
 
 
 def estimate_structure_cmd(*args):
