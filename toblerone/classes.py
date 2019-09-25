@@ -691,8 +691,8 @@ class Surface(object):
 
     @ensure_derived_space
     def find_bridges(self, space): 
-        group_counts = [ len(core._separatePointClouds(self.tris[a,:])) 
-            for a in self.assocs ]
+        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:])) 
+            for a in self.assocs])
         if space is self.index_space:
             return self.LUT[group_counts > 1]
         else: 
