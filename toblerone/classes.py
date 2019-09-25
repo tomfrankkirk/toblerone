@@ -693,11 +693,13 @@ class Surface(object):
     def find_bridges(self, space): 
         group_counts = np.array([len(core._separatePointClouds(self.tris[a,:])) 
             for a in self.assocs])
+        bridges = self.LUT[group_counts > 1]
         if space is self.index_space:
-            return self.LUT[group_counts > 1]
+            return bridges 
         else: 
-            newLUT = self.reindex_LUT(space)
-            return newLUT[group_counts > 1]
+            src_inds, dest_inds = self.reindexing_filter(space)
+            fltr = np.isin(src_inds, bridges, assume_unique=True)
+            return dest_inds[fltr]
 
 
     def toPatch(self, voxIdx):
