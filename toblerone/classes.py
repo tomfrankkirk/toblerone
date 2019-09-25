@@ -65,6 +65,7 @@ class ImageSpace(object):
         self.world2vox = np.linalg.inv(self.vox2world)
         self._offset = None   
 
+
     @classmethod
     def save_like(cls, ref, data, path): 
         """Save data into the space of an existing image
@@ -144,7 +145,14 @@ class ImageSpace(object):
         """Save 3D or 4D data array at path using this image's voxel grid"""
 
         if not np.all(data.shape[0:3] == self.size):
-            raise RuntimeError("Data size does not match image size")
+            if data.size == np.prod(self.size):
+                warnings.warn("Reshaping data to 3D volume")
+                data = data.reshape(self.size)
+            elif not(data.size % np.prod(self.size)):
+                warnings.warn("Reshaping data to 4D volume")
+                data = data.reshape((*self.size, -1))
+            else:
+                raise RuntimeError("Data size does not match image size")
 
         if data.dtype is np.dtype('bool'):
             data = data.astype(np.int8)
@@ -279,10 +287,10 @@ def ensure_derived_space(func):
     def ensured(self, *args):
         if not args: 
             raise RuntimeError("Function must be called with ImageSpace argument")
-        if not self.index_space: 
+        if not self._index_space: 
             raise RuntimeError("Surface must be indexed prior to using this function" + 
             "Call surface.index_on()")
-        if not self.index_space.derives_from(args[0]):
+        if not self._index_space.derives_from(args[0]):
             raise RuntimeError(
                 "Target space is not derived from surface's current index space."+
                 "Call surface.index_on with the target space first")
@@ -364,7 +372,7 @@ class Surface(object):
         self.name = name
         self.assocs = None 
         self.LUT = None  
-        self.index_space = None 
+        self._index_space = None 
 
 
     @classmethod
@@ -380,7 +388,7 @@ class Surface(object):
         s.xProds = None 
         s.voxelised = None 
         s.name = name
-        s.index_space = None 
+        s._index_space = None 
         return s
 
 
@@ -461,7 +469,7 @@ class Surface(object):
             desc: for use with progress bar 
         """
 
-        if self.index_space is None: 
+        if self._index_space is None: 
             raise RuntimeError("Surface must be indexed first")
 
         if ones: 
@@ -509,7 +517,7 @@ class Surface(object):
             raise RuntimeError("Space should be large enough to enclose surface")
 
         # Update surface attributes
-        self.index_space = encl_space 
+        self._index_space = encl_space 
         self.form_associations()
         self.calculateXprods()
         self.voxelise()
@@ -533,9 +541,9 @@ class Surface(object):
     #     """
 
     #     # Get the offset and size of the current index space 
-    #     ref_space = self.index_space
+    #     ref_space = self._index_space
     #     FoVoffset = ref_space.offset 
-    #     size = self.index_space.size 
+    #     size = self._index_space.size 
 
     #     # Get a filter for voxel of the current index space that are still 
     #     # present in the dest_space 
@@ -573,7 +581,7 @@ class Surface(object):
     #     self.LUT = newLUT
     #     self.assocs = newassocs
     #     self.voxelised = newvoxelised
-    #     self.index_space = dest_space
+    #     self._index_space = dest_space
     #     self.offset = None
 
 
@@ -597,9 +605,9 @@ class Surface(object):
         """
 
         # Get the offset and size of the current index space 
-        src_space = self.index_space
+        src_space = self._index_space
         offset = src_space.offset 
-        size = self.index_space.size 
+        size = self._index_space.size 
 
         # List voxel indices in the current index space 
         # List corresponding voxel coordinates in the destination space 
@@ -640,11 +648,11 @@ class Surface(object):
         Find voxels within space that are intersected by this surface 
         multiple times
         """
-        
+
         group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
             for a in self.assocs])
         bridges = self.LUT[group_counts > 1]
-        if space is self.index_space:
+        if space is self._index_space:
             return bridges 
         else: 
             src_inds, dest_inds = self.reindexing_filter(space)
@@ -680,7 +688,7 @@ class Surface(object):
                 calling object. 
         """
 
-        size = self.index_space.size 
+        size = self._index_space.size 
 
         # Check for negative coordinates: these should have been sripped. 
         if np.round(np.min(self.points)) < 0: 
@@ -810,7 +818,7 @@ class Surface(object):
 
             # Project rays along the largest dimension to classify as many voxels
             # at once as we can 
-            size = self.index_space.size 
+            size = self._index_space.size 
             dim = np.argmax(size)
             mask = np.zeros(np.prod(size), dtype=bool)
             otherdims = [0,1,2]
