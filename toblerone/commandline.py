@@ -72,13 +72,13 @@ def estimate_cortex_cmd(*args):
 
     refSpace = ImageSpace(kwargs['ref'])
     print("Saving output to", kwargs['outdir'])
-    refSpace.saveImage(mask, maskPath)
+    refSpace.save_image(mask, maskPath)
 
     if kwargs.get('stack'):
-        refSpace.saveImage(PVs, outPath)    
+        refSpace.save_image(PVs, outPath)    
     else:
         for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-            refSpace.saveImage(PVs[:,:,:,i], 
+            refSpace.save_image(PVs[:,:,:,i], 
             utils._addSuffixToFilename(t, outPath))
 
 
@@ -162,7 +162,7 @@ def estimate_structure_cmd(*args):
 
     # Output
     refSpace = ImageSpace(kwargs['ref'])
-    refSpace.saveImage(PVs, kwargs['out'])
+    refSpace.save_image(PVs, kwargs['out'])
 
 
 
@@ -244,15 +244,15 @@ def estimate_all_cmd(*args):
         if k == 'stacked':
             path = op.join(outdir, namebase + ext)
             if kwargs.get('stack'): 
-                refSpace.saveImage(o, 
+                refSpace.save_image(o, 
                     utils._addSuffixToFilename('_'+k, path))
             else:
                 for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-                    refSpace.saveImage(o[:,:,:,i], 
+                    refSpace.save_image(o[:,:,:,i], 
                         utils._addSuffixToFilename(t, path))
         else: 
             path = op.join(intermediatedir, namebase + ext)
-            refSpace.saveImage(o, 
+            refSpace.save_image(o, 
                 utils._addSuffixToFilename('_' + k, path))
 
 
