@@ -815,7 +815,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         vector of size prod(FoV)
     """
 
-    size = surf.index_space.size 
+    size = surf._index_space.size 
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
