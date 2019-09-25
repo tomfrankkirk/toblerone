@@ -1,18 +1,20 @@
-# Class definitions for the pvtools module, as follows: 
-# 
-# ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and 
-#     inverse, of an image. Used for resampling operations between different 
-#     spaces and also for saving images into said space (eg, save PV estimates 
-#     into the space of an image)
-# Surface: the points and triangles of a surface, and various calculated
-#     properties that are evaluated ahead of time to speed up later operations
-# Hemisphere: a pair of surfaces, used specifically to represent one half 
-#     of the cerebral cortex (referred to as inner and outer surfaces)
-# Patch: a subcalss of Surface, representing a smaller portion of a surface,
-#     used to reduce computational complexity of operations 
-# CommonParser: a subclass of the library ArgumentParser object pre-configured
-#     to parse arguments that are common to many pvtools functions 
-    
+"""
+Class definitions for the pvtools module, as follows: 
+
+ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and 
+    inverse, of an image. Used for resampling operations between different 
+    spaces and also for saving images into said space (eg, save PV estimates 
+    into the space of an image)
+Surface: the points and triangles of a surface, and various calculated
+    properties that are evaluated ahead of time to speed up later operations
+Hemisphere: a pair of surfaces, used specifically to represent one half 
+    of the cerebral cortex (referred to as inner and outer surfaces)
+Patch: a subcalss of Surface, representing a smaller portion of a surface,
+    used to reduce computational complexity of operations 
+CommonParser: a subclass of the library ArgumentParser object pre-configured
+    to parse arguments that are common to many pvtools functions 
+"""
+
 import argparse
 import itertools
 import copy 
@@ -37,17 +39,18 @@ TISSUES = ['GM', 'WM', 'CSF']
 
 
 class ImageSpace(object):
-    """The voxel grid of an image. Attributes:  
-    -size (dimensions)
-    -vox_size (voxel size)
-    -vox2world (voxel to world transformation)
-    -world2voxel (inverse)
+    """
+    Voxel grid of an image, ignoring actual image data. 
 
-    Initialise by specifying a path to the image. 
-
-    Two methods are provided: supersample (produce a super-resolution
-    copy of the current space) and saveImage (save an image array into 
-    the space represented by the calling object)
+    Args: 
+        path: path to image file
+    
+    Attributes: 
+        size: array of voxel counts in each dimension 
+        vox_size: array of voxel size in each dimension 
+        vox2world: 4x4 affine to transform voxel coords -> world
+        world2vox: inverse of above 
+        self.offset: private variable used for derived spaces 
     """
 
     def __init__(self, path):
@@ -60,8 +63,7 @@ class ImageSpace(object):
         self.vox_size = img.header['pixdim'][1:4]
         self.vox2world = img.affine
         self.world2vox = np.linalg.inv(self.vox2world)
-        self.offset = None 
-
+        self._offset = None   
 
     @classmethod
     def save_like(cls, ref, data, path): 
@@ -74,16 +76,30 @@ class ImageSpace(object):
         """
         
         spc = ImageSpace(ref)
-        spc.saveImage(data, path)
+        spc.save_image(data, path)
 
 
     @property
-    def FoVsize(self):
+    def FoV_size(self):
+        """FoV associated with image, in mm"""
+
         return self.size * self.vox_size
 
 
+    @property
+    def origin(self): 
+        """
+        Origin of the image's bounding box, referenced to first voxel's 
+        corner, not center
+        """
+
+        orig = 3 * [-0.5]
+        return utils._affineTransformPoints(orig, self.vox2world)
+
+
     def supersample(self, factor):
-        """Produce a new image space which is a copy of the current space, 
+        """
+        Produce a new image space which is a copy of the current space, 
         supersampled by a factor of (a,b,c) in each dimension 
 
         Args:
@@ -124,7 +140,8 @@ class ImageSpace(object):
         return newSpace
 
 
-    def saveImage(self, data, path):
+    def save_image(self, data, path):
+        """Save 3D or 4D data array at path using this image's voxel grid"""
 
         if not np.all(data.shape[0:3] == self.size):
             raise RuntimeError("Data size does not match image size")
@@ -207,63 +224,75 @@ class ImageSpace(object):
 
         return space 
 
+
     def derives_from(self, parent):
+        """
+        Logical test whether this ImageSpace was derived from another. 
+        "Derived" means sharing i,j,k unit vectors and having their origins
+        shifted by an integer multiple of voxels relative to each other. 
+        """
+
         det1 = np.linalg.det(parent.vox2world[0:3,0:3])
         det2 = np.linalg.det(self.vox2world[0:3,0:3])
-        v1 = parent.vox_size
-        v2 = self.vox_size 
-        offset = (self.offset is not None) 
-        return all([ 
-            np.abs(det1 - det2) < 1e-9, 
-            np.all(np.abs(v1 - v2) < 1e-6), 
-            offset ])
+        offset_mm = parent.vox2world[0:3,3] - self.vox2world[0:3,3] 
+        offset_mm2 = parent.vox2world[0:3,3] @ self.offset 
+        return ((np.abs(det1 - det2) < 1e-9) 
+            and np.all(np.abs(offset_mm - offset_mm2) < 1e9))
 
-class Hemisphere(object): 
-    """The white and pial surfaces of a hemisphere, and a repository to 
-    store data when calculating tissue PVs from the fractions of each
-    surface
 
-    Args: 
-        inpath: path to white surface
-        outpath: path to pial surface 
-        side: 'L' or 'R' 
+
+
+class CommonParser(argparse.ArgumentParser):
+    """
+    Preconfigured subclass of ArgumentParser to parse arguments that
+    are common across pvtools functions. To use, instantiate an object, 
+    then call add_argument to add in the arguments unique to the particular
+    function in which it is being used, then finally call parse_args as 
+    normal. 
     """
 
-    def __init__(self, inpath, outpath, side):
+    def __init__(self):
+        super().__init__()
+        self.add_argument('-ref', type=str, required=True)
+        self.add_argument('-struct2ref', type=str, required=True) 
+        self.add_argument('-flirt', action='store_true', required=False)
+        self.add_argument('-struct', type=str, required=False)
+        self.add_argument('-cores', type=int, required=False)
+        self.add_argument('-out', type=str, required=False)
+        self.add_argument('-super', nargs='+', required=False)
 
-        self.side = side 
-        self.inSurf = Surface(inpath, name=side+'WS') 
-        self.outSurf = Surface(outpath, name=side+'PS')
-        self.PVs = None 
-        return
 
+    def parse(self, args):
+        return vars(super().parse_args(args))
 
-    def surfs(self):
-        """Iterator over the inner/outer surfaces"""
-        return [self.inSurf, self.outSurf]
-
-    def surf_dict(self):
-        """Return surfs as dict with appropriate keys (eg LPS)"""
-        return {self.side + 'WS': self.inSurf, 
-            self.side+'PS': self.outSurf}
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
+    """
+    Decorator for Surface functions that require ImageSpace arguments. 
+    Internally, Surface objecs store information indexed to a minimal 
+    enclosing voxel grid (referred to as the self.index_grid) based on 
+    some arbitrary ImageSpace. When interacting with other ImageSpaces, 
+    this function ensures that two grids are compatible with each other.
+    """
+
     def ensured(self, *args):
         if not args: 
             raise RuntimeError("Function must be called with ImageSpace argument")
         if not self.index_space: 
             raise RuntimeError("Surface must be indexed prior to using this function" + 
-            "Call surface.index_based_on()")
+            "Call surface.index_on()")
         if not self.index_space.derives_from(args[0]):
             raise RuntimeError(
                 "Target space is not derived from surface's current index space."+
-                "Call surface.index_based_on with the target space first")
+                "Call surface.index_on with the target space first")
         return func(self, *args)
     return ensured 
 
+
 class Surface(object):
-    """Encapsulates a surface's points, triangles and associations data.
+    """
+    Encapsulates a surface's points, triangles and associations data.
     Create either by passing a file path (as below) or use the static class 
     method Surface.manual() to directly pass points and triangles.
     
@@ -271,6 +300,7 @@ class Surface(object):
         path:   path to file (.gii/.vtk/.white/.pial)
         space:  'world' (default) or 'first'; coordinate system of surface
         struct: if in 'first' space, then path to structural image used by FIRST
+        name: optional, can be useful for progress bars 
     """
 
     def __init__(self, path, space='world', struct=None, name=None):
@@ -355,6 +385,7 @@ class Surface(object):
 
 
     def save(self, path):
+        """Save surface as GIFTI file at path"""
         
         if self.name is None: 
             warnings.warn("Surface has no name: will save as type 'Other'")
@@ -403,23 +434,44 @@ class Surface(object):
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
 
+
     @ensure_derived_space
-    def output_pvs(self, in_space):
+    def output_pvs(self, space):
+        """
+        Express PVs in the voxel grid of space. Space must derive from the 
+        surface's current index_space. 
+        """
+
         pvs_curr = self.voxelised.astype(np.float32)
         pvs_curr[self.LUT] = self.fractions
-        out = np.zeros(np.prod(in_space.size), dtype=np.float32)
-        curr_inds, dest_inds = self.reindexing_filter(in_space)
+        out = np.zeros(np.prod(space.size), dtype=np.float32)
+        curr_inds, dest_inds = self.reindexing_filter(space)
         out[dest_inds] = pvs_curr[curr_inds]
-        return out.reshape(in_space.size)
+        return out.reshape(space.size)
+
 
     def _estimate_fractions(self, supersampler, cores, ones, desc=''):
+        """
+        Estimate interior/exterior fractions within current index_space. 
+
+        Args: 
+            supersampler: list/tuple of 3 ints, subdivision factor in each dim
+            cores: number of multiprocessing cores to use 
+            ones: debug tool, write ones in all voxels within LUT 
+            desc: for use with progress bar 
+        """
+
+        if self.index_space is None: 
+            raise RuntimeError("Surface must be indexed first")
+
         if ones: 
             self.fractions = np.ones(self.LUT.size, dtype=bool) 
         else: 
             self.fractions = core._estimateFractions(self, 
                 supersampler, desc, cores)
 
-    def index_based_on(self, space, affine):
+
+    def index_on(self, space, struct2ref):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
@@ -442,108 +494,106 @@ class Surface(object):
             self.xProds: triangle cross products, voxel coordinates
         """
 
-        encl_space = ImageSpace.minimal_enclosing(self, space, affine)
-
-        if affine is not None: 
-            overall = encl_space.world2vox @ affine
+        # Smallest possible ImageSpace, based on space, that fully encloses surf 
+        encl_space = ImageSpace.minimal_enclosing(self, space, struct2ref)
+        if struct2ref is not None: 
+            overall = encl_space.world2vox @ struct2ref
         else: 
             overall = encl_space.world2vox
 
+        # Map surface points into this space via struct2ref
         self.applyTransform(overall)
         maxFoV = self.points.max(0).round()
         minFoV = self.points.min(0).round()
         if np.any(minFoV < -1) or np.any(maxFoV > encl_space.size -1):
             raise RuntimeError("Space should be large enough to enclose surface")
 
+        # Update surface attributes
         self.index_space = encl_space 
-        self.formAssociations(encl_space.size)
+        self.form_associations()
         self.calculateXprods()
         self.voxelise()
 
 
-    @ensure_derived_space
-    def reindex_LUT(self, space):
-        src_inds, dest_inds = self.reindexing_filter(space)
-        fltr = np.isin(src_inds, self.LUT, assume_unique=True)
-        return dest_inds[fltr]
+    # @ensure_derived_space
+    # def reindex_for(self, dest_space):
+    #     """ 
+    #     Re-index a surface for a space that derives from the space for which
+    #     the space is currently indexed. For example, if the current index 
+    #     space was produced using ImageSpace.minimal_enclosing(), then it cannot
+    #     be assumed to cover the same FoV as the space of the reference image
+    #     that was used to generate it. This function can be used to update the 
+    #     properties of that surface to match this original reference space. 
 
+    #     Args: 
+    #         dest_space: ImageSpace from which the current index_space derives
 
-    @ensure_derived_space
-    def reindex_for(self, dest_space):
-        """ 
-        Re-index a surface for a space that derives from the space for which
-        the space is currently indexed. For example, if the current index 
-        space was produced using ImageSpace.minimal_enclosing(), then it cannot
-        be assumed to cover the same FoV as the space of the reference image
-        that was used to generate it. This function can be used to update the 
-        properties of that surface to match this original reference space. 
+    #     Updates: 
+    #         points, LUT, assocs, xProds
+    #     """
 
-        Args: 
-            dest_space: ImageSpace from which the current index_space derives
+    #     # Get the offset and size of the current index space 
+    #     ref_space = self.index_space
+    #     FoVoffset = ref_space.offset 
+    #     size = self.index_space.size 
 
-        Updates: 
-            points, LUT, assocs, xProds
-        """
+    #     # Get a filter for voxel of the current index space that are still 
+    #     # present in the dest_space 
+    #     ref_inds = np.arange(np.prod(size))
+    #     ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
+    #     ref_voxs_in_dest -= FoVoffset
+    #     ref2dest_fltr = self.reindexing_filter(dest_space)
 
-        # Get the offset and size of the current index space 
-        ref_space = self.index_space
-        FoVoffset = ref_space.offset 
-        size = self.index_space.size 
+    #     # Update LUT: produce filter of ref voxel inds within the current LUT
+    #     # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
+    #     # coords corresponding to accepted voxels in the LUT into dest_space 
+    #     LUTfltr = np.isin(ref_inds, self.LUT)
+    #     LUTfltr = np.logical_and(LUTfltr, ref2dest_fltr)
+    #     newLUT = np.ravel_multi_index(ref_voxs_in_dest[LUTfltr,:].T, 
+    #         dest_space.size)
 
-        # Get a filter for voxel of the current index space that are still 
-        # present in the dest_space 
-        ref_inds = np.arange(np.prod(size))
-        ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
-        ref_voxs_in_dest -= FoVoffset
-        ref2dest_fltr = self.reindexing_filter(dest_space)
+    #     # Update associations table. Accept all those that correspond to 
+    #     # accepted LUT entries 
+    #     newassocs = self.assocs[np.isin(self.LUT, ref_inds[LUTfltr])]
 
-        # Update LUT: produce filter of ref voxel inds within the current LUT
-        # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
-        # coords corresponding to accepted voxels in the LUT into dest_space 
-        LUTfltr = np.isin(ref_inds, self.LUT)
-        LUTfltr = np.logical_and(LUTfltr, ref2dest_fltr)
-        newLUT = np.ravel_multi_index(ref_voxs_in_dest[LUTfltr,:].T, 
-            dest_space.size)
+    #     # Update the voxelisation mask. Convert accepted voxel coordinates 
+    #     # into voxel indices within destination space. These correspond to
+    #     # the values in the new voxelisation mask that should be updated
+    #     # using the extracted values from the existing voxelisation mask 
+    #     ref_inds_subspace = np.ravel_multi_index(
+    #         ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.size)
+    #     newvoxelised = np.zeros(dest_space.size, dtype=bool).flatten()
+    #     newvoxelised[ref_inds_subspace] = self.voxelised[ref2dest_fltr]
 
-        # Update associations table. Accept all those that correspond to 
-        # accepted LUT entries 
-        newassocs = self.assocs[np.isin(self.LUT, ref_inds[LUTfltr])]
+    #     # Lastly update the points: map them back to world mm coordinates 
+    #     # and use the world2vox of the dest space 
+    #     self.applyTransform(ref_space.vox2world)
+    #     self.applyTransform(dest_space.world2vox)
 
-        # Update the voxelisation mask. Convert accepted voxel coordinates 
-        # into voxel indices within destination space. These correspond to
-        # the values in the new voxelisation mask that should be updated
-        # using the extracted values from the existing voxelisation mask 
-        ref_inds_subspace = np.ravel_multi_index(
-            ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.size)
-        newvoxelised = np.zeros(dest_space.size, dtype=bool).flatten()
-        newvoxelised[ref_inds_subspace] = self.voxelised[ref2dest_fltr]
+    #     self.LUT = newLUT
+    #     self.assocs = newassocs
+    #     self.voxelised = newvoxelised
+    #     self.index_space = dest_space
+    #     self.offset = None
 
-        # Lastly update the points: map them back to world mm coordinates 
-        # and use the world2vox of the dest space 
-        self.applyTransform(ref_space.vox2world)
-        self.applyTransform(dest_space.world2vox)
-
-        self.LUT = newLUT
-        self.assocs = newassocs
-        self.voxelised = newvoxelised
-        self.index_space = dest_space
-        self.offset = None
 
     @ensure_derived_space
     def reindexing_filter(self, dest_space, as_bool=False):
         """
         Filter of voxels in the current index space that lie within 
         dest_space. Use for extracting PV estimates from index space back to
-        the space from which the index space derives. 
+        the space from which the index space derives. NB dest_space must 
+        derive from the surface's current index_space 
 
         Args: 
             dest_space: ImageSpace from which current index_space derives
             as_bool: output results as logical filters instead of indices
+                (note they will be of different size in this case)
 
         Returns: 
             (src_inds, dest_inds) arrays of equal length, flat indices into 
             arrays of size index_space.size and dest_space.size respectively, 
-            mapping voxels from source to destination positions 
+            mapping voxels from source to corresponding destination positions 
         """
 
         # Get the offset and size of the current index space 
@@ -575,21 +625,40 @@ class Surface(object):
         return src_inds, dest_inds
 
 
-    def calculateXprods(self):
-        """Calculate and store surface element normals. Must be called prior to 
-        estimateFractions()
+    @ensure_derived_space
+    def reindex_LUT(self, space):
+        """Re-express LUT in another space"""
+
+        src_inds, dest_inds = self.reindexing_filter(space)
+        fltr = np.isin(src_inds, self.LUT, assume_unique=True)
+        return dest_inds[fltr]
+
+
+    @ensure_derived_space
+    def find_bridges(self, space): 
         """
+        Find voxels within space that are intersected by this surface 
+        multiple times
+        """
+        
+        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
+            for a in self.assocs])
+        bridges = self.LUT[group_counts > 1]
+        if space is self.index_space:
+            return bridges 
+        else: 
+            src_inds, dest_inds = self.reindexing_filter(space)
+            fltr = np.isin(src_inds, bridges, assume_unique=True)
+            return dest_inds[fltr]
+
+
+    def calculateXprods(self):
+        """Calculate and store surface element normals"""
 
         self.xProds = np.cross(
             self.points[self.tris[:,2],:] - self.points[self.tris[:,0],:], 
             self.points[self.tris[:,1],:] - self.points[self.tris[:,0],:], 
             axis=1)
-
-    
-    def flipXprods(self):
-        """Flip surface element normals"""
-
-        self.xProds = -1 * self.xProds 
 
 
     def applyTransform(self, transform):
@@ -599,22 +668,19 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def formAssociations(self, size):
-        """Identify which triangles of a surface intersect each voxel. This 
+    def form_associations(self):
+        """
+        Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
         results will be stored on the surface object (ie, self)
-
-        Args: 
-            points: p x 3 matrix of surface nodes
-            tris: t x 3 matrix of triangle node indices
-            FoV: 1 x 3 vector of image dimensions (units of voxels) reqiured to
-                fully enclose the surface
 
         Returns: 
             None, but associations (a list of lists) and LUT (used to index 
                 between the associations list and vox index) are set on the 
                 calling object. 
         """
+
+        size = self.index_space.size 
 
         # Check for negative coordinates: these should have been sripped. 
         if np.round(np.min(self.points)) < 0: 
@@ -650,28 +716,30 @@ class Surface(object):
         assert len(self.LUT) == len(self.assocs)
 
 
-    def rebaseTriangles(self, triNums):
-        """Re-express a patch of a larger surface as a new points and triangle matrix pair, indexed from 0. Useful for reducing computational complexity when working with a small
-        patch of a surface where only a few nodes in the points 
-        array are required by the triangles matrix. 
+    def rebaseTriangles(self, tri_inds):
+        """
+        Re-express a patch of a larger surface as a new points and triangle
+        matrix pair, indexed from 0. Useful for reducing computational 
+        complexity when working with a small patch of a surface where only 
+        a few nodes in the points array are required by the triangles matrix. 
 
         Args: 
-            triNums: t x 1 list of triangle numbers to rebase. 
+            tri_inds: t x 1 list of triangle numbers to rebase. 
         
         Returns: 
-            (localPoints, localTris) tuple of re-indexed points/tris. 
+            (points, tris) tuple of re-indexed points/tris. 
         """
 
-        localPoints = np.empty((0, 3), dtype=np.float32)
-        localTris = np.zeros((len(triNums), 3), dtype=np.int32)
+        points = np.empty((0, 3), dtype=np.float32)
+        tris = np.zeros((len(tri_inds), 3), dtype=np.int32)
         pointsLUT = []
 
-        for t in range(len(triNums)):
+        for t in range(len(tri_inds)):
             for v in range(3):
 
                 # For each vertex of each tri, check if we
                 # have already processed it in the LUT
-                vtx = self.tris[triNums[t],v]
+                vtx = self.tris[tri_inds[t],v]
                 idx = np.argwhere(pointsLUT == vtx)
 
                 # If not in the LUT, then add it and record that
@@ -680,75 +748,61 @@ class Surface(object):
                 if not idx.size:
                     pointsLUT.append(vtx)
                     idx = len(pointsLUT) - 1
-                    localPoints = np.vstack([localPoints, 
-                        self.points[vtx,:]])
+                    points = np.vstack([points, self.points[vtx,:]])
 
                 # Update the local triangle
-                localTris[t,v] = idx
+                tris[t,v] = idx
 
-        return (localPoints, localTris)
-
-
-    @ensure_derived_space
-    def find_bridges(self, space): 
-        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:])) 
-            for a in self.assocs])
-        bridges = self.LUT[group_counts > 1]
-        if space is self.index_space:
-            return bridges 
-        else: 
-            src_inds, dest_inds = self.reindexing_filter(space)
-            fltr = np.isin(src_inds, bridges, assume_unique=True)
-            return dest_inds[fltr]
+        return (points, tris)
 
 
-    def toPatch(self, voxIdx):
-        """Return a patch object specific to a voxel given by linear index.
+    def to_patch(self, vox_idx):
+        """
+        Return a patch object specific to a voxel given by linear index.
         Look up the triangles intersecting the voxel, and then load and rebase
-        the points / xprods as required. 
+        the points / surface normals as required. 
         """
 
-        triNums = self.assocs[self.LUT == voxIdx][0]
-        (ps, ts) = self.rebaseTriangles(triNums)
+        tri_nums = self.assocs[self.LUT == vox_idx][0]
+        (ps, ts) = self.rebaseTriangles(tri_nums)
 
-        return Patch(ps, ts, self.xProds[triNums,:])
+        return Patch(ps, ts, self.xProds[tri_nums,:])
 
     
-    def toPatchesForVoxels(self, voxIndices):
-        """Return the patches for the voxels in voxel indices, flattened into 
+    def to_patches(self, vox_inds):
+        """
+        Return the patches for the voxels in voxel indices, flattened into 
         a single set of ps, ts and xprods. 
 
         If no patches exist for this list of voxels return None.
         """
 
         # Load lists of tri numbers for each voxel index 
-        vlists = self.assocs[np.isin(self.LUT, voxIndices, assume_unique=True)]
+        vlists = self.assocs[np.isin(self.LUT, vox_inds, assume_unique=True)]
 
         if vlists.size:
 
             # Flatten the triangle numbers for all these voxels into single list
-            triNums = functools.reduce(operator.iconcat, vlists, [])
-            triNums = np.unique(triNums)
+            tri_nums = functools.reduce(operator.iconcat, vlists, [])
+            tri_nums = np.unique(tri_nums)
 
-            return Patch(self.points, self.tris[triNums,:], 
-                self.xProds[triNums,:])
+            return Patch(self.points, self.tris[tri_nums,:], 
+                self.xProds[tri_nums,:])
 
         else: 
             return None
 
     
     def voxelise(self):
-        """Voxelise (create binary in/out mask) a surface within a voxel grid
+        """
+        Voxelise (create binary in/out mask) a surface within a voxel grid
         of size size. Surface coordinates must be in 0-indexed voxel units, 
         as will the voxel grid be interpreted (ie, 0 : size - 1 in xyz). 
         Method is defined as static on the class for compataibility with 
-        multiprocessing.Pool().
-
-        Args: 
-            None, but surface must have been indexed for a space first 
+        multiprocessing.Pool(). NB surface must have been indexed first 
 
         Updates: 
-            Surface.voxelised: flat boolean mask of voxels contained
+            self.voxelised: flat boolean mask of voxels contained
                  within the surface. Use reshape(size) as required. 
         """
 
@@ -799,7 +853,7 @@ class Surface(object):
                 
                 # Load patches along this ray, we can assert that at least 
                 # one patch must be returned. Find intersections 
-                patches = self.toPatchesForVoxels(voxRange)
+                patches = self.to_patches(voxRange)
                 assert patches is not None, 'No patches returned for voxel in LUT'
                 intersectionMus = core._findRayTriangleIntersections2D(
                     startPoint, patches, dim)
@@ -839,9 +893,9 @@ class Surface(object):
 
 
 
-
 class Patch(Surface):
-    """Subclass of Surface that represents a small patch of surface. 
+    """
+    Subclass of Surface that represents a small patch of surface. 
     Points, triangles and xProds are all inherited from the parent surface. 
     This class should not be directly created but instead instantiated via
     the Surface.toPatch() / toPatchesForVoxels() methods. 
@@ -854,32 +908,40 @@ class Patch(Surface):
         
 
     def shrink(self, fltr):
-        """Return a shrunk copy of the patch by applying the logical 
+        """
+        Return a shrunk copy of the patch by applying the logical 
         filter fltr to the calling objects tris and xprods matrices
         """
 
         return Patch(self.points, self.tris[fltr,:], self.xProds[fltr,:])
 
 
+class Hemisphere(object): 
+    """
+    The white and pial surfaces of a hemisphere, and a repository to 
+    store data when calculating tissue PVs from the fractions of each
+    surface
 
-class CommonParser(argparse.ArgumentParser):
-    """Preconfigured subclass of ArgumentParser to parse arguments that
-    are common across pvtools functions. To use, instantiate an object, 
-    then call add_argument to add in the arguments unique to the particular
-    function in which it is being used, then finally call parse_args as 
-    normal. 
+    Args: 
+        inpath: path to white surface
+        outpath: path to pial surface 
+        side: 'L' or 'R' 
     """
 
-    def __init__(self):
-        super().__init__()
-        self.add_argument('-ref', type=str, required=True)
-        self.add_argument('-struct2ref', type=str, required=True) 
-        self.add_argument('-flirt', action='store_true', required=False)
-        self.add_argument('-struct', type=str, required=False)
-        self.add_argument('-cores', type=int, required=False)
-        self.add_argument('-out', type=str, required=False)
-        self.add_argument('-super', nargs='+', required=False)
+    def __init__(self, inpath, outpath, side):
+
+        self.side = side 
+        self.inSurf = Surface(inpath, name=side+'WS') 
+        self.outSurf = Surface(outpath, name=side+'PS')
+        self.PVs = None 
+        return
 
 
-    def parse(self, args):
-        return vars(super().parse_args(args))
+    def surfs(self):
+        """Iterator over the inner/outer surfaces"""
+        return [self.inSurf, self.outSurf]
+
+    def surf_dict(self):
+        """Return surfs as dict with appropriate keys (eg LPS)"""
+        return {self.side + 'WS': self.inSurf, 
+            self.side+'PS': self.outSurf}
