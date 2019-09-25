@@ -250,6 +250,9 @@ class Hemisphere(object):
 @utils.cascade_attributes
 def ensure_derived_space(func):
     def ensured(self, *args):
+        if not self.index_space: 
+            raise RuntimeError("Surface must be indexed prior to using this function" + 
+            "Call surface.index_based_on()")
         if not self.index_space.derives_from(args[0]):
             raise RuntimeError(
                 "Target space is not derived from surface's current index space."+
@@ -685,15 +688,14 @@ class Surface(object):
 
 
     @ensure_derived_space
-    def find_bridges(self, space=None):
-        if space is None: 
-            space = self.index_space 
-        counts = np.array([ len(x) for x in self.assocs ])
+    def find_bridges(self, space): 
+        group_counts = [ len(core._separatePointClouds(self.tris[a,:])) 
+            for a in self.assocs ]
         if space is self.index_space:
-            return self.LUT[counts > 1]
+            return self.LUT[group_counts > 1]
         else: 
             newLUT = self.reindex_LUT(space)
-            return newLUT[counts > 1]
+            return newLUT[group_counts > 1]
 
 
     def toPatch(self, voxIdx):
