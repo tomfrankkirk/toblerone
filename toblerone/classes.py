@@ -684,6 +684,18 @@ class Surface(object):
         return (localPoints, localTris)
 
 
+    @ensure_derived_space
+    def find_bridges(self, space=None):
+        if space is None: 
+            space = self.index_space 
+        counts = np.array([ len(x) for x in self.assocs ])
+        if space is self.index_space:
+            return self.LUT[counts > 1]
+        else: 
+            newLUT = self.reindex_LUT(space)
+            return newLUT[counts > 1]
+
+
     def toPatch(self, voxIdx):
         """Return a patch object specific to a voxel given by linear index.
         Look up the triangles intersecting the voxel, and then load and rebase

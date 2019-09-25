@@ -874,36 +874,3 @@ def _estimateFractionsWorker(surf, voxIJK, supersampler,
     except Exception as e:
         return e
 
-
-
-def _determineFullFoV(surfs, refSpace):
-    """Determine the minimal voxel grid required to contain a set of surfaces. 
-    This is expressed in terms of (offset, size), both 3-element vectors, where
-    offset is referenced to the origin of the reference space passed in. 
-
-    Args: 
-        surfs: array of surface objects, expressed in voxel coordinates 
-        refSpace: ImageSpace object, in which voxel system the surfaces are 
-
-    Returns:
-        offset: an offset [a,b,c] between the origin and the minimal coordinate
-            of the surfaces. This will only ever be negative, ie, if minimal coord 
-            already lies within the reference space, then this will be 0 0 0. If 
-            the minimal coord is, for example, [-2,-3,1] then the offset will 
-            be [2,3,0]. 
-        size: the size of the voxel grid, counting from the FoVoffset.
-    """
-
-    # Find the min/max coordinates of the surfaces
-    minFoV = np.round(np.array(
-        [np.min(s.points, axis=0) for s in surfs]).min(axis=0))
-    maxFoV = np.round(np.array(
-        [np.max(s.points, axis=0) for s in surfs]).max(axis=0))
-
-    # If the min/max range is larger than the reference FoV, then shift and 
-    # expand the coordinate system to the minimal size required for surfs
-    FoVoffset = np.maximum(-minFoV, 0).astype(np.int16)
-    size = (np.maximum(refSpace.size, maxFoV+1).astype(np.int16) +
-        FoVoffset)
-
-    return (FoVoffset, size)
