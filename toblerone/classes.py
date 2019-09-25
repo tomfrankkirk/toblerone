@@ -32,7 +32,6 @@ except ImportError:
 from vtk.util import numpy_support as vtknp
 
 from . import utils, core 
-from utils import cascade_attributes
 
 TISSUES = ['GM', 'WM', 'CSF']
 
@@ -248,7 +247,7 @@ class Hemisphere(object):
         return {self.side + 'WS': self.inSurf, 
             self.side+'PS': self.outSurf}
 
-
+@utils.cascade_attributes
 def ensure_derived_space(func):
     def ensured(self, *args):
         if not self.index_space.derives_from(args[0]):
@@ -399,6 +398,7 @@ class Surface(object):
         img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
         nibabel.save(img, path)
 
+    @ensure_derived_space
     def output_pvs(self, in_space):
         pvs_curr = self.voxelised.astype(np.float32)
         pvs_curr[self.LUT] = self.fractions

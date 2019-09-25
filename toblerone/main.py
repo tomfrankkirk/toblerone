@@ -14,8 +14,6 @@ import tqdm
 from toblerone import core, estimators, utils, resampling
 from toblerone.classes import ImageSpace, Hemisphere
 from toblerone.classes import Surface, CommonParser
-from utils import cascade_attributes
-
 
 # Simply apply a function to list of arguments.
 # Used for multiprocessing shell commands. 
@@ -23,7 +21,7 @@ def apply_func(func, args):
     func(*args)
 
 
-@cascade_attributes
+@utils.cascade_attributes
 def timer(func):
     """Timing decorator, prints duration in minutes"""
 
@@ -37,7 +35,7 @@ def timer(func):
     return timed_function
 
 
-@cascade_attributes
+@utils.cascade_attributes
 def enforce_and_load_common_arguments(func):
     """
     Decorator to enforce and pre-processes common arguments in a 
