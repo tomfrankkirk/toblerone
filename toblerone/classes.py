@@ -250,6 +250,8 @@ class Hemisphere(object):
 @utils.cascade_attributes
 def ensure_derived_space(func):
     def ensured(self, *args):
+        if not args: 
+            raise RuntimeError("Function must be called with ImageSpace argument")
         if not self.index_space: 
             raise RuntimeError("Surface must be indexed prior to using this function" + 
             "Call surface.index_based_on()")
