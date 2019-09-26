@@ -343,7 +343,7 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
         size)
 
     # Form the ray and fetch all appropriate triangles from assocs data
-    patches = surf.toPatchesForVoxels(inds)
+    patches = surf.to_patches(inds)
 
     if patches: 
         intXs = _findRayTriangleIntersections2D(testPnt, patches, dim)
@@ -652,7 +652,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     subVoxVol = np.prod(subvox_size).astype(np.float32)
 
     # Rebase triangles and points for this voxel
-    patch = surf.toPatch(voxIdx)
+    patch = surf.to_patch(voxIdx)
     assert np.all(_cyfilterTriangles(patch.tris, patch.points,
         voxIJK, vox_size.astype(np.float32)))
 

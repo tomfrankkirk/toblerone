@@ -906,7 +906,7 @@ class Patch(Surface):
     Subclass of Surface that represents a small patch of surface. 
     Points, triangles and xProds are all inherited from the parent surface. 
     This class should not be directly created but instead instantiated via
-    the Surface.toPatch() / toPatchesForVoxels() methods. 
+    the Surface.to_patch() / to_patches() methods. 
     """
 
     def __init__(self, points, tris, xProds):
