@@ -233,7 +233,7 @@ def estimate_all_cmd(*args):
         outdir = op.join(op.dirname(kwargs['ref']), namebase + '_surfpvs')
 
     # Make output dirs if they do not exist. 
-    intermediatedir = op.join(outdir, 'intermediate')
+    intermediatedir = op.join(outdir, 'intermediate_pvs')
     utils._weak_mkdir(outdir)
     utils._weak_mkdir(intermediatedir)
 
@@ -241,19 +241,12 @@ def estimate_all_cmd(*args):
     # 'stacked' goes in the outdir, all others go in outdir/intermediate 
     refSpace = ImageSpace(kwargs['ref'])
     for k, o in output.items():
-        if k == 'stacked':
+        if k in ['stacked', 'GM', 'WM', 'nonbrain']:
             path = op.join(outdir, namebase + ext)
-            if kwargs.get('stack'): 
-                refSpace.save_image(o, 
-                    utils._addSuffixToFilename('_'+k, path))
-            else:
-                for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-                    refSpace.save_image(o[:,:,:,i], 
-                        utils._addSuffixToFilename(t, path))
         else: 
             path = op.join(intermediatedir, namebase + ext)
-            refSpace.save_image(o, 
-                utils._addSuffixToFilename('_' + k, path))
+        refSpace.save_image(o, 
+            utils._addSuffixToFilename('_' + k, path))
 
 
 def fsl_fs_anat_cmd(*args):
