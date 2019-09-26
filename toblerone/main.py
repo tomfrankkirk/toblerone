@@ -236,7 +236,7 @@ def estimate_all(**kwargs):
         total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
         ascii=True) ] 
 
-    output = dict(zip([s.name for s in structures], results))
+    output.update(dict(zip([s.name for s in structures], results)))
 
     # Now do the cortex, then stack the whole lot 
     ctx, ctxmask = estimate_cortex(**kwargs)
@@ -431,7 +431,7 @@ def stack_images(images):
 
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
-    images = copy.copy(images)
+    images = copy.deepcopy(images)
     if 'cortexmask' in images: 
         images.pop('cortexmask')
         images.pop('BrStem')

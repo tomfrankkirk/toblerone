@@ -844,7 +844,7 @@ class Surface(object):
             # load the surface patches for all these voxels and find ray 
             # intersections to classify the voxel centres. Finally, we remove
             # the entire set of ray voxels from our copy of the LUT and repeat
-            LUT = copy.copy(self.LUT)
+            LUT = copy.deepcopy(self.LUT)
             while LUT.size: 
 
                 # Where does the ray that passes through this voxel start?
