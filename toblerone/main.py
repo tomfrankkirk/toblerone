@@ -245,10 +245,10 @@ def estimate_all(**kwargs):
 
     output['cortexmask'] = ctxmask
     stacked = stack_images(output)
-    output['all_GM'] = stacked[:,:,:,0]
-    output['all_WM'] = stacked[:,:,:,1]
-    output['all_nonbrain'] = stacked[:,:,:,2]
-    output['all_stacked'] = stacked
+    output['GM'] = stacked[:,:,:,0]
+    output['WM'] = stacked[:,:,:,1]
+    output['nonbrain'] = stacked[:,:,:,2]
+    output['stacked'] = stacked
 
     return output
 
