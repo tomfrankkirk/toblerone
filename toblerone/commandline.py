@@ -175,9 +175,9 @@ def estimate_all_cmd(*args):
         -ref: path to reference image for which PVs are required
         -struct2ref: path to np or text file denoting registration between 
             structural (surface) and reference space. Use 'I' for identity. 
-        -anat: path to anat directory (see fsl_fs_anat)
+        -anat: path to augmented anat directory (see fsl_fs_anat)
 
-    Alternatvies to anat argument (-struct must also be supplied): 
+    Alternatvies to anat argument (all required): 
         -fsdir: FreeSurfer subject directory, OR: 
             -LWS/-LPS/-RWS/-RPS paths to individual surfaces (L/R white/pial)
         -firstdir: FIRST directory in which .vtk surfaces are located
@@ -186,10 +186,8 @@ def estimate_all_cmd(*args):
 
     Optional args: 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
-        -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use
         -out: path to save output (default alongside ref)
-        -stack: stack PVs into 4D NIFTI, arranged GM/WM/non-brain
         -ones: perform simple segmentation based on voxel centres (debug)
     """
     
