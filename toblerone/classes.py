@@ -788,13 +788,13 @@ class Surface(object):
         """
 
         # Load lists of tri numbers for each voxel index 
-        vlists = self.assocs[np.isin(self.assocs_keys, vox_inds, 
-            assume_unique=True)]
+        voxs = np.intersect1d(self.assocs_keys, vox_inds, assume_unique=True)
 
-        if vlists.size:
+        if voxs.size:
 
             # Flatten the triangle numbers for all these voxels into single list
-            tri_nums = functools.reduce(operator.iconcat, vlists, [])
+            tri_nums = functools.reduce(operator.iconcat, 
+                [self.assocs[v] for v in voxs], []) 
             tri_nums = np.unique(tri_nums)
 
             return Patch(self.points, self.tris[tri_nums,:], 
