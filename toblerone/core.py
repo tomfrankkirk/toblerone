@@ -63,27 +63,6 @@ def _dotVectorAndMatrix(vec, mat):
     return np.sum(mat * vec, axis=1)
 
 
-def _checkSurfaceNormals(surf, size):
-    """Check that a surface's normals are inward facing
-    
-    Args: 
-        surf: surface to test
-        space: an ImageSpace, in which the surface vertices are expressed
-            in voxel coordinates and associations have been formed
-    """
-
-    if (surf.xProds is None) or (surf.LUT is None): 
-        raise RuntimeError("surf.calculateXprods and surf.formAssociations" +
-            " must have been called on the surface prior to this function")
-
-    # Produce a point that we expect to be inside 
-    pnt = surf.points[surf.tris[0,:],:].mean(0)
-    inside = pnt + surf.xProds[0,:]
-
-    return _fullRayIntersectionTest(inside, surf, 
-        inside.round(0).astype(np.int32), size)
-
-
 def _pointGroupsIntersect(grps, tris): 
     """For _separatePointClouds. Break as soon as overlap is found"""
     for g in range(len(grps)):
@@ -820,7 +799,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
-    workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
+    workerChunks = utils._distributeObjects(range(surf.LUT.size), 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, supersampler)
 
@@ -865,7 +844,8 @@ def _estimateFractionsWorker(surf, voxIJK, supersampler,
     try:
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
 
-        for idx, v in enumerate(surf.LUT[workerVoxList]):
+        vox_inds = np.array(surf.assocs.keys())
+        for idx, v in enumerate(vox_inds[workerVoxList]):
             partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
                 v, supersampler)  
         
