@@ -799,7 +799,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
-    workerChunks = utils._distributeObjects(range(surf.LUT.size), 40)
+    workerChunks = utils._distributeObjects(range(len(surf.assocs)), 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, supersampler)
 
