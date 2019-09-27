@@ -457,7 +457,7 @@ class Surface(object):
         pvs_curr = self.voxelised.astype(np.float32)
         pvs_curr[self.assocs_keys] = self.fractions
         out = np.zeros(np.prod(space.size), dtype=np.float32)
-        curr_inds, dest_inds = self.reindexing_filter(space)
+        curr_inds, dest_inds = self.convert_indices(space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
 
@@ -553,7 +553,7 @@ class Surface(object):
     #     ref_inds = np.arange(np.prod(size))
     #     ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
     #     ref_voxs_in_dest -= FoVoffset
-    #     ref2dest_fltr = self.reindexing_filter(dest_space)
+    #     ref2dest_fltr = self.convert_indices(dest_space)
 
     #     # Update LUT: produce filter of ref voxel inds within the current LUT
     #     # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
@@ -589,7 +589,7 @@ class Surface(object):
 
 
     @ensure_derived_space
-    def reindexing_filter(self, dest_space, as_bool=False):
+    def convert_indices(self, dest_space, as_bool=False):
         """
         Filter of voxels in the current index space that lie within 
         dest_space. Use for extracting PV estimates from index space back to
@@ -640,7 +640,7 @@ class Surface(object):
     def reindex_assocs_keys(self, space):
         """Re-express assocs in another space"""
 
-        src_inds, dest_inds = self.reindexing_filter(space)
+        src_inds, dest_inds = self.convert_indices(space)
         fltr = np.isin(src_inds, self.assocs_keys, assume_unique=True)
         return dest_inds[fltr]
 
@@ -653,13 +653,13 @@ class Surface(object):
         """
 
         vox_inds = np.array(self.assocs_keys)
-        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
-            for a in self.assocs])
+        group_counts = np.array([ len(core._separatePointClouds(self.tris[a,:]))
+            for a in self.assocs.values() ])
         bridges = vox_inds[group_counts > 1]
         if space is self._index_space:
             return bridges 
         else: 
-            src_inds, dest_inds = self.reindexing_filter(space)
+            src_inds, dest_inds = self.convert_indices(space)
             fltr = np.isin(src_inds, bridges, assume_unique=True)
             return dest_inds[fltr]
 
