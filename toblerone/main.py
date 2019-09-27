@@ -466,10 +466,11 @@ def stack_images(images):
     ctxmask = (ctx[:,0] > 0)
     to_update = np.logical_and(csf > out[:,2], ~ctxmask)
     tmpwm = out[to_update,1]
-    tmpgm = out[to_update,0]
+    # tmpgm = out[to_update,0]
     out[to_update,2] = csf[to_update]
-    out[to_update,0] = np.minimum(tmpgm, 1 - out[to_update,2]) # this is redundant - there will never be any GM to update here due to ctxmask
-    out[to_update,1] = np.minimum(tmpwm, 1 - (out[to_update,0] + out[to_update,2]))
+    assert np.all(out[to_update,0] == 0)
+    # out[to_update,0] = np.minimum(tmpgm, 1 - out[to_update,2]) # this is redundant - there will never be any GM to update here due to ctxmask
+    out[to_update,1] = np.minimum(tmpwm, 1 - out[to_update,2])
 
     # Sanity check: total tissue PV in each vox should sum to 1
     assert np.all(np.abs(out.sum(1) - 1) < 1e-6), 'Voxel PVs do not sum to 1'
@@ -491,8 +492,9 @@ def stack_images(images):
 
         # And then for the remainders, ie, 1-GM, distribute it amongst
         # WM and CSF in the proportion of these tissue that FAST assigned. 
-        out[smask,1] = np.maximum(0, wmweights[smask] * (1-out[smask,0]))
-        out[smask,2] = np.maximum(0, 1-np.sum(out[smask,0:2], axis=1))
+        # out[smask,1] = np.maximum(0, wmweights[smask] * (1-out[smask,0]))
+        out[smask,2] = np.minimum(out[smask,2], 1 - out[smask,0])
+        out[smask,1] = 1 - (out[smask,0] + out[smask,2])
 
         # What we should do: take the CSF values that are already calculated from 
         # above, add in GM from subcortex, and then update WM in light of that 
