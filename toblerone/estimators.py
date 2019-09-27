@@ -86,7 +86,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
     for h in hemispheres:
         for s in h.surfs(): 
-            ctxMask[s.reindex_LUT(space)] = True
+            ctxMask[s.reindex_assocs_keys(space)] = True
     ctxMask[outPVs[:,0] > 0] = True 
 
     # Reshape images back into 4D or 3D images

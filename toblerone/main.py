@@ -440,7 +440,7 @@ def stack_images(images):
     csf = images.pop('FAST_CSF').flatten()
     wm = images.pop('FAST_WM').flatten()
     gm = images.pop('FAST_GM')
-    shape = list(gm.shape[0:3]) + [3]
+    shape = (*gm.shape[0:3], 3)
 
     # Pop the cortex estimates and initialise output as all CSF
     ctxgm = images.pop('cortex_GM').flatten()
@@ -450,26 +450,29 @@ def stack_images(images):
     out = np.zeros_like(ctx)
     out[:,2] = 1
 
-    # Then write in Toblerone's filled cortex estimates from the 
-    # cortex inwards 
+    # Then write in Toblerone's cortex estimates from all voxels
+    # that contain either WM or GM (on the ctx image)
     mask = np.logical_or(ctx[:,0], ctx[:,1])
     out[mask,:] = ctx[mask,:]
 
-    # Overwrite using FAST's CSF estimate. Where FAST has suggested a higher
-    # CSF estimate than currently exists, and the voxel is not within the pure
-    # cortex, accept FAST's estimate. Then update the other tissues estimates
-    # in these voxels in the order GM, then WM. This is because we always have 
-    # higher confidence in a GM estimate than WM. 
+    # Layer in FAST's CSF estimates (to get mid-brain and ventricular CSF). 
+    # Where FAST has suggested a higher CSF estimate than currently exists, 
+    # and the voxel does not intersect the cortical ribbon, accept FAST's 
+    # estimate. Then update the GM/WM estimates using the existing GM/WM values
+    # for these voxels, clipping to make sure they are not excessively high in 
+    # light of the new FAST CSF estimate. Update GM first, and then WM, as we 
+    # always have more confidence in GM estimates (derived directly from surfs)
+    # over WM estimates (which derive from the absence of surfaces). 
     ctxmask = (ctx[:,0] > 0)
-    updates = np.logical_and(csf > out[:,2], ~ctxmask)
-    tmpwm = out[updates,1]
-    tmpgm = out[updates,0]
-    out[updates,2] = csf[updates]
-    out[updates,0] = np.minimum(tmpgm, 1 - out[updates,2])
-    out[updates,1] = np.minimum(tmpwm, 1 - (out[updates,0] + out[updates,2]))
+    to_update = np.logical_and(csf > out[:,2], ~ctxmask)
+    tmpwm = out[to_update,1]
+    tmpgm = out[to_update,0]
+    out[to_update,2] = csf[to_update]
+    out[to_update,0] = np.minimum(tmpgm, 1 - out[to_update,2]) # this is redundant - there will never be any GM to update here due to ctxmask
+    out[to_update,1] = np.minimum(tmpwm, 1 - (out[to_update,0] + out[to_update,2]))
 
     # Sanity check: total tissue PV in each vox should sum to 1
-    assert np.all(np.abs(out.sum(1) - 1) < 1e-6)
+    assert np.all(np.abs(out.sum(1) - 1) < 1e-6), 'Voxel PVs do not sum to 1'
 
     # Prepare the WM weights to be used when writing in PVs from subcortical 
     # structures. Lots of tricks are needed to avoid zero- or small-divisions. 
@@ -486,10 +489,13 @@ def stack_images(images):
         smask = (s.flatten() > 0)
         out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
 
-        # And then for the remainders, ie, 1-PV, distribute it amongst
+        # And then for the remainders, ie, 1-GM, distribute it amongst
         # WM and CSF in the proportion of these tissue that FAST assigned. 
         out[smask,1] = np.maximum(0, wmweights[smask] * (1-out[smask,0]))
         out[smask,2] = np.maximum(0, 1-np.sum(out[smask,0:2], axis=1))
+
+        # What we should do: take the CSF values that are already calculated from 
+        # above, add in GM from subcortex, and then update WM in light of that 
         
     # Final sanity check, then rescaling so all voxels sum to unity. 
     sums = out.sum(1)
