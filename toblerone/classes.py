@@ -723,7 +723,7 @@ class Surface(object):
         dct = dict(associations)
         assert all(map(len, dct.values()))
 
-        self.assocs = dct 
+        self.assocs = { k: np.array(v) for k,v in dct.items() }
 
 
     def rebaseTriangles(self, tri_inds):
