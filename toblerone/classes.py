@@ -391,6 +391,11 @@ class Surface(object):
         return s
 
 
+    @property
+    def assocs_keys(self):
+        return np.array(list(self.assocs.keys()), dtype=np.int32)
+
+
     def save(self, path):
         """Save surface as GIFTI file at path"""
         
@@ -450,7 +455,7 @@ class Surface(object):
         """
 
         pvs_curr = self.voxelised.astype(np.float32)
-        pvs_curr[self.assocs.keys()] = self.fractions
+        pvs_curr[self.assocs_keys] = self.fractions
         out = np.zeros(np.prod(space.size), dtype=np.float32)
         curr_inds, dest_inds = self.reindexing_filter(space)
         out[dest_inds] = pvs_curr[curr_inds]
@@ -636,7 +641,7 @@ class Surface(object):
         """Re-express assocs in another space"""
 
         src_inds, dest_inds = self.reindexing_filter(space)
-        fltr = np.isin(src_inds, self.assocs.keys(), assume_unique=True)
+        fltr = np.isin(src_inds, self.assocs_keys, assume_unique=True)
         return dest_inds[fltr]
 
 
@@ -647,7 +652,7 @@ class Surface(object):
         multiple times
         """
 
-        vox_inds = np.array(self.assocs.keys())
+        vox_inds = np.array(self.assocs_keys)
         group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
             for a in self.assocs])
         bridges = vox_inds[group_counts > 1]
@@ -783,7 +788,7 @@ class Surface(object):
         """
 
         # Load lists of tri numbers for each voxel index 
-        vlists = self.assocs[np.isin(self.assocs.keys(), vox_inds, 
+        vlists = self.assocs[np.isin(self.assocs_keys, vox_inds, 
             assume_unique=True)]
 
         if vlists.size:
@@ -828,7 +833,7 @@ class Surface(object):
             # regardless of what dimension we are projecting rays along. Define
             # a single ray of voxels, convert to linear indices and calculate 
             # the stride from that. 
-            allIJKs = np.vstack(np.unravel_index(self.assocs.keys(), size)).T
+            allIJKs = np.vstack(np.unravel_index(self.assocs_keys, size)).T
             rayIJK = np.zeros((size[dim], 3), dtype=np.int16)
             rayIJK[:,dim] = np.arange(0, size[dim])
             rayIJK[:,d1] = allIJKs[0,d1]
@@ -842,7 +847,7 @@ class Surface(object):
             # load the surface patches for all these voxels and find ray 
             # intersections to classify the voxel centres. Finally, we remove
             # the entire set of ray voxels from our copy of the LUT and repeat
-            LUT = copy.deepcopy(self.assocs.keys())
+            LUT = copy.deepcopy(self.assocs_keys)
             while LUT.size: 
 
                 # Where does the ray that passes through this voxel start?
