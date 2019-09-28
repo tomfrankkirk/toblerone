@@ -274,7 +274,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
     lmbda = (patch.points * ray).sum(1)
-    onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
+    onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
