@@ -829,7 +829,7 @@ def _estimateFractionsWorker(surf, supersampler,
         vox_ijks = (np.array(np.unravel_index(vox_inds, surf._index_space.size))
             .astype(np.float32).T)
 
-        for idx in len(workerVoxList):
+        for idx in range(len(workerVoxList)):
             partialVolumes[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
                 vox_inds[idx], supersampler)  
         
