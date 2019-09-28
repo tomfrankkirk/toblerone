@@ -831,7 +831,7 @@ def _estimateFractionsWorker(surf, supersampler,
 
         for idx in workerVoxList:
             partialVolumes[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
-                vox_inds[v], supersampler)  
+                vox_inds[idx], supersampler)  
         
         return partialVolumes
 
