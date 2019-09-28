@@ -278,7 +278,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
-    onPlane2d = np.array([(onPlane, d1).sum(1), (onPlane, d2).sum(1),
+    onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
         np.zeros(onPlane.shape[0])], dtype=np.float32)
 
     # Now perform the test 
