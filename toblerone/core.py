@@ -91,7 +91,7 @@ def _separatePointClouds(tris):
         # until proven otherwise
         newGroupNeeded = True 
         for g in range(len(groups)):
-            if np.any(np.isin(tris[t,:], tris[groups[g],:])):
+            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
                 newGroupNeeded = False
                 break 
         
@@ -268,9 +268,9 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
-    # the d2 and d3 in-plane orthonormal unit vectors
+    # the d2 and d3 in-plane orthonormal vectors
     onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(onPlane.shape[0])], dtype=np.float32)
+        np.zeros(lmbda.size)], dtype=np.float32)
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
@@ -420,7 +420,7 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
 
     nonrepeats = np.empty((0,2), dtype=np.int16)
     for k in range(edges.shape[0]):
-        if not np.any(np.all(np.isin(edges[k+1:,:], edges[k,:]), axis=1)):
+        if not np.any(np.all(np.in1d(edges[k+1:,:], edges[k,:]), axis=1)):
             nonrepeats = np.vstack((nonrepeats, edges[k,:]))
     
     intXs = np.empty((0,3), dtype=np.float32)
@@ -631,12 +631,12 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
         voxIJK, ~voxCentFlag)
 
     # Test all subvox centres now and store the results for later
-    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
-    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
-    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
+    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32)
+    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32)
+    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32)
     [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
     allCents = (np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
-        + voxIJK)
+        + voxIJK - 0.5) 
     allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK,
         ~voxCentFlag)
 
@@ -685,7 +685,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
             # If neither surface is folded within the subvox and there 
             # are no multiple intersections, we can form hulls. 
-            if (not fold) & (len(groups) < 2):
+            if (not fold) and (len(groups) < 2):
 
                 # Filter down surface nodes that are in the subvox
                 localPs = patch.points[np.unique(smallPatch.tris),:]
@@ -760,9 +760,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
       
     if inFraction > 1.000001:
         raise RuntimeError('Fraction exceeds 1 in', voxIdx)
-
-    if inFraction < 0:
-        raise RuntimeError('Negative fraction in', voxIdx)
 
     return inFraction
 
