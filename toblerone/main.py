@@ -280,8 +280,9 @@ def estimate_structure(**kwargs):
 
     Optional args: 
         space: space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set 'first' (FSL convention). 
-        struct: path to structural image from which surfaces were derived
+            for FIRST surfaces set as 'first' and provide 'struct'. 
+        struct: path to structural image from which surfaces were derived, reqd
+            for FIRST surfaces. 
         cores: number of cores to use 
  
     Returns: 
@@ -292,7 +293,15 @@ def estimate_structure(**kwargs):
     if not bool(kwargs.get('surf')):
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
+    if not kwargs.get('space'): 
+        kwargs['space'] = 'world'
+
     if type(kwargs['surf']) is str: 
+        if (kwargs['surf'].count('first')) and (kwargs['space'] == 'world'):
+            print("Warning: surface seems to be from FIRST but space was set" +
+                " as 'world'. See the docstring")
+
+
         surf = Surface(kwargs['surf'], kwargs['space'], kwargs['struct'], 
             op.split(kwargs['surf'])[1])
     
