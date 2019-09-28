@@ -825,13 +825,13 @@ def _estimateFractionsWorker(surf, supersampler,
     # pool the exception will not be raised)
     try:
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
-        vox_inds = surf.assocs_keys
+        vox_inds = surf.assocs_keys[workerVoxList]
         vox_ijks = (np.array(np.unravel_index(vox_inds, surf._index_space.size))
             .astype(np.float32).T)
 
-        for idx, v in enumerate(vox_inds[workerVoxList]):
+        for idx, v in range(len(workerVoxList)):
             partialVolumes[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
-                v, supersampler)  
+                vox_inds[v], supersampler)  
         
         return partialVolumes
 
