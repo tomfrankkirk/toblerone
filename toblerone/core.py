@@ -100,7 +100,7 @@ def _separatePointClouds(tris):
         # until proven otherwise
         newGroupNeeded = True 
         for g in range(len(groups)):
-            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
+            if np.any(np.isin(tris[t,:], tris[groups[g],:])):
                 newGroupNeeded = False
                 break 
         
@@ -377,19 +377,19 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
             intMus = _findRayTriangleIntersections3D(testPnts[p,:], rays[p,:], 
                 patch)
 
-            if intMus.shape[0]:
+            if intMus.size:
 
                 # Filter down to intersections in the range (0,1)
                 intMus = intMus[(intMus < 1) & (intMus > 0)]
 
                 # if no ints in this reduced range then point is inside
                 # because an intersection would otherwise be guaranteed
-                if not intMus.shape[0]:
+                if not intMus.size:
                     shouldAppend = True 
 
                 # If even number, then point inside
                 else: 
-                    shouldAppend = not(intMus.shape[0] % 2)
+                    shouldAppend = not(intMus.size % 2)
                 
             # Finally, if there were no intersections at all then the point is
             # also inside (given the root point is also inside, if the test pnt
@@ -496,13 +496,13 @@ def _findVoxelSurfaceIntersections(patch, vertices):
         intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
         if intMus.shape[0]:
-            intPnts = pnt + np.outer(intMus, edge)
             accept = np.logical_and(intMus <= 1, intMus >= 0)
             
             if np.sum(accept) > 1:
                 fold = True
                 return (intersects, fold)
 
+            intPnts = pnt + (intMus[:,None] * edge[None,:])
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)
