@@ -832,7 +832,7 @@ class Surface(object):
             # regardless of what dimension we are projecting rays along. Define
             # a single ray of voxels, convert to linear indices and calculate 
             # the stride from that. 
-            allIJKs = np.vstack(np.unravel_index(self.assocs_keys, size)).T
+            allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
             rayIJK = np.zeros((size[dim], 3), dtype=np.int16)
             rayIJK[:,dim] = np.arange(0, size[dim])
             rayIJK[:,d1] = allIJKs[0,d1]
