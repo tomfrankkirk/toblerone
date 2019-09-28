@@ -299,8 +299,7 @@ def estimate_structure(**kwargs):
     if type(kwargs['surf']) is str: 
         if (kwargs['surf'].count('first')) and (kwargs['space'] == 'world'):
             print("Warning: surface seems to be from FIRST but space was set" +
-                " as 'world'. See the docstring")
-
+                " as 'world'. Check the docstring for help.")
 
         surf = Surface(kwargs['surf'], kwargs['space'], kwargs['struct'], 
             op.split(kwargs['surf'])[1])
