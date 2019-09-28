@@ -27,8 +27,8 @@ def estimate_cortex_cmd(*args):
     Required args: 
         -ref: path to reference image for which PVs are required
         -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
+            registration between structural image used to produce surfaces 
+            and reference. Use 'I' for identity, if using FLIRT also set -flirt 
 
         One of: 
         -fsdir: path to a FreeSurfer subject directory, from which L/R 
@@ -39,7 +39,7 @@ def estimate_cortex_cmd(*args):
             for that side. 
 
     Optional args: 
-        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
         -out: path to save output (default alongside ref, using same basename)
@@ -93,7 +93,7 @@ def resample_cmd(*args):
         -ref: image use as reference, into which src will be resampled
         -src2ref: path to 4x4 affine transformation between src and ref, 
             use 'I' to denote identity transform 
-        -flirt: flag to denote that struct2ref is a FLIRT transform 
+        -flirt: flag to denote that src2ref is a FLIRT transform 
         -out: path to save output at 
     """
 
@@ -129,14 +129,14 @@ def estimate_structure_cmd(*args):
     Required args: 
         -ref: path to reference image for which PVs are required
         -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
+            registration between structural image used to produce surfaces 
+            and reference. Use 'I' for identity, if using FLIRT also set -flirt 
         -surf: path to surface (see space argument below)
 
     Optional args: 
         space: space in which surface is defined: default is 'world' (mm coords),
             for FIRST surfaces set 'first' (FSL convention). 
-        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
         -out: path to save output (default alongside ref)
@@ -173,9 +173,10 @@ def estimate_all_cmd(*args):
     
     Required args: 
         -ref: path to reference image for which PVs are required
-        -struct2ref: path to np or text file denoting registration between 
-            structural (surface) and reference space. Use 'I' for identity. 
-        -anat: path to augmented anat directory (see fsl_fs_anat)
+        -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
+            registration between structural image used to produce surfaces 
+            and reference. Use 'I' for identity, if using FLIRT also set -flirt 
+        -anat: path to augmented fsl_anat directory (see fsl_fs_anat)
 
     Alternatvies to anat argument (all required): 
         -fsdir: FreeSurfer subject directory, OR: 
@@ -185,7 +186,7 @@ def estimate_all_cmd(*args):
         -struct: path to structural image from which surfaces were dervied
 
     Optional args: 
-        -flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+        -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -cores: number of cores to use
         -out: path to save output (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
