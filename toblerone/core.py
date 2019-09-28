@@ -420,7 +420,7 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
 
     nonrepeats = np.empty((0,2), dtype=np.int16)
     for k in range(edges.shape[0]):
-        if not np.any(np.all(np.in1d(edges[k+1:,:], edges[k,:]), axis=1)):
+        if not np.any(np.all(np.isin(edges[k+1:,:], edges[k,:]), axis=1)):
             nonrepeats = np.vstack((nonrepeats, edges[k,:]))
     
     intXs = np.empty((0,3), dtype=np.float32)
