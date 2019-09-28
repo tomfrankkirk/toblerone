@@ -778,14 +778,11 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         vector of size prod(FoV)
     """
 
-    size = surf._index_space.size 
-
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    voxIJKs = np.array(np.unravel_index(np.arange(size.prod()), size)).T
     workerChunks = utils._distributeObjects(range(len(surf.assocs)), 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, voxIJKs, supersampler)
+        surf, supersampler)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
@@ -819,7 +816,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
 
 
-def _estimateFractionsWorker(surf, voxIJK, supersampler, 
+def _estimateFractionsWorker(surf, supersampler, 
         workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
@@ -828,10 +825,11 @@ def _estimateFractionsWorker(surf, voxIJK, supersampler,
     # pool the exception will not be raised)
     try:
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
-
         vox_inds = surf.assocs_keys
+        vox_ijks = np.array(np.unravel_index(vox_inds, surf.index_space.size)).T
+        
         for idx, v in enumerate(vox_inds[workerVoxList]):
-            partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
+            partialVolumes[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
                 v, supersampler)  
         
         return partialVolumes
