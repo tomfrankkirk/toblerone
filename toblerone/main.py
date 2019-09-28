@@ -139,7 +139,7 @@ def enforce_and_load_common_arguments(func):
                 matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
                 nonroi2roi = np.loadtxt(matpath)
                 if np.any(np.abs(nonroi2roi[0:3,3])):
-                    print("Warning: T1 has been cropped relative to T1_orig within fsl_fs_anat dir.\n", 
+                    print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
                         "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
             kwargs['struct2ref'] = utils._FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
