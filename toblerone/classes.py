@@ -483,7 +483,7 @@ class Surface(object):
                 supersampler, desc, cores)
 
 
-    def index_on(self, space, struct2ref):
+    def index_on(self, space, struct2ref, cores=multiprocessing.cpu_count()):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
@@ -521,7 +521,7 @@ class Surface(object):
 
         # Update surface attributes
         self._index_space = encl_space 
-        self.form_associations()
+        self.form_associations(cores)
         self.calculateXprods()
         self.voxelise()
 
@@ -680,7 +680,7 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def form_associations(self):
+    def form_associations(self, cores=multiprocessing.cpu_count()):
         """
         Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
@@ -701,7 +701,6 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
-        cores = multiprocessing.cpu_count()
         chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
