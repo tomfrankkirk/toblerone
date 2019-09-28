@@ -91,7 +91,7 @@ def _separatePointClouds(tris):
         # until proven otherwise
         newGroupNeeded = True 
         for g in range(len(groups)):
-            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
+            if np.any(np.isin(tris[t,:], tris[groups[g],:])):
                 newGroupNeeded = False
                 break 
         
