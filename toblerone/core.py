@@ -234,7 +234,7 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = _dotVectorAndMatrix(ray, normals)
+    dotRN = (normals * ray).sum(1)
     mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
 
     return mu 
@@ -273,15 +273,13 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = _dotVectorAndMatrix(ray, patch.points)
+    lmbda = (patch.points * ray).sum(1)
     onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
-    onPlane2d = np.array(
-        [_dotVectorAndMatrix(d1, onPlane), 
-         _dotVectorAndMatrix(d2, onPlane),
-         np.zeros(onPlane.shape[0])], dtype=np.float32)
+    onPlane2d = np.array([(onPlane, d1).sum(1), (onPlane, d2).sum(1),
+        np.zeros(onPlane.shape[0])], dtype=np.float32)
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
