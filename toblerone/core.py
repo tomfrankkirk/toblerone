@@ -427,29 +427,23 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
     intXs = np.empty((0,3), dtype=np.float32)
     edgeVecs = (patch.points[nonrpt[:,1],:]
         - patch.points[nonrpt[:,0],:])
+    face_points = voxCent + (VOX_HALF_VECS * vox_size)
 
-    # Iterate over each dimension, moving +0.5 and -0.5 of the voxel size
-    # from the vox centre to define a point on the planar face of the vox
-    for dim in range(3):
-        pNormal = np.zeros(3, dtype=np.int8)
-        pNormal[dim] = 1
+    for face_point,dim in zip(face_points, DIMS):
 
-        for k in [-0.5, 0.5]: 
-            pPlane = voxCent + (k * pNormal * vox_size[dim])
+        # Filter to edge vectors that are non-zero in this dimension 
+        fltr = np.flatnonzero(edgeVecs[:,dim])	
+        pStart = patch.points[nonrpt[fltr,0],:]
 
-            # Filter to edge vectors that are non-zero in this dimension 
-            fltr = np.flatnonzero(edgeVecs[:,dim])
-            pStart = patch.points[nonrpt[fltr,0],:]
-
-            # Sneaky trick here: because planar normals are aligned with the 
-            # coord axes we don't need to do a full dot product, just extract
-            # the appropriate component of the difference vectors
-            mus = (pPlane - pStart)[:,dim] / edgeVecs[fltr,dim]
-            pInts = pStart + (edgeVecs[fltr,:].T * mus).T 
-            pInts2D = pInts - pPlane 
-            keep = np.all(np.abs(pInts2D) <= (vox_size/2), 1)    
-            keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
-            intXs = np.vstack((intXs, pInts[keep,:]))
+        # Sneaky trick here: because planar normals are aligned with the 
+        # coord axes we don't need to do a full dot product, just extract
+        # the appropriate component of the difference vectors
+        mus = (face_point - pStart)[:,dim] / edgeVecs[fltr,dim]
+        pInts = pStart + (edgeVecs[fltr,:].T * mus).T 
+        pInts2D = pInts - face_point 
+        keep = np.all(np.abs(pInts2D) <= (vox_size/2), 1)    
+        keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
+        intXs = np.vstack((intXs, pInts[keep,:]))
 
     return intXs 
 
