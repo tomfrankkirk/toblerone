@@ -201,11 +201,9 @@ def _normalToVector(vec):
     """Return a normal to the given vector"""
 
     if np.abs(vec[2]) < np.abs(vec[0]):
-        normal = np.array([vec[1], -vec[0], 0])
+        return np.array([vec[1], -vec[0], 0])
     else:
-        normal = np.array([0, -vec[2], vec[1]])
-
-    return normal 
+        return np.array([0, -vec[2], vec[1]])
 
 
 
@@ -228,9 +226,7 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
     dotRN = (normals * ray).sum(1)
-    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
-
-    return mu 
+    return ((planePoints - testPnt) * normals).sum(1) / dotRN 
 
 
 
@@ -279,7 +275,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
         0, 1)
 
-    # For those trianglest that passed, calculate multiplier to point of 
+    # For those triangles that passed, calculate multiplier to point of 
     # intersection
     mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:], 
         patch.xProds[fltr,:], testPnt, ray)
@@ -425,8 +421,7 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
             nonrpt = np.vstack((nonrpt, edges[k,:]))
     
     intXs = np.empty((0,3), dtype=np.float32)
-    edgeVecs = (patch.points[nonrpt[:,1],:]
-        - patch.points[nonrpt[:,0],:])
+    edgeVecs = (patch.points[nonrpt[:,1],:] - patch.points[nonrpt[:,0],:])
     face_points = voxCent + (VOX_HALF_VECS * vox_size)
 
     for face_point,dim in zip(face_points, DIMS):
@@ -830,4 +825,3 @@ def _estimateFractionsWorker(surf, supersampler,
 
     except Exception as e:
         return e
-
