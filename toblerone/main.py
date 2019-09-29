@@ -85,11 +85,13 @@ def enforce_and_load_common_arguments(func):
             kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
             kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-            s = op.join(kwargs['anat'], 'T1.nii.gz')
-            if not op.isfile(s):
-                raise RuntimeError("Could not find T1.nii.gz in the anat dir")
+            # Don't override the struct if given, but if not then try with anat dir 
+            if not kwargs.get('struct'):
+                s = op.join(kwargs['anat'], 'T1.nii.gz')
+                kwargs['struct'] = s
+                if not op.isfile(s):
+                    raise RuntimeError("Could not find T1.nii.gz in the anat dir")
 
-            kwargs['struct'] = s
  
         # Structural to reference transformation. Either as array or path
         # to file containing matrix
