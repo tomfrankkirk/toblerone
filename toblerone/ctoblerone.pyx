@@ -64,8 +64,7 @@ def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start,
     # cdef np.ndarray[float, ndim=1] ps = points.flatten()
     cdef np.ndarray[float, ndim=1] st = start.flatten()
 
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = \
-        np.zeros(tris.shape[0], dtype=np.bool)
+    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
 
     cdef Py_ssize_t t, a, b, c
     cdef float tri[3][3]

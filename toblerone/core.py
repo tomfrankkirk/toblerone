@@ -821,7 +821,7 @@ def _estimateFractionsWorker(surf, supersampler,
     # exception to the caller instead of raising it here (within a parallel
     # pool the exception will not be raised)
     try:
-        partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
+        partialVolumes = np.empty(len(workerVoxList), dtype=np.float32)
         vox_inds = surf.assocs_keys[workerVoxList]
         vox_ijks = (np.array(np.unravel_index(vox_inds, surf._index_space.size))
             .astype(np.float32).T)
