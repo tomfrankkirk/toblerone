@@ -414,8 +414,9 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
         return np.zeros((0,3), dtype=np.float32)
 
     # Form all the edge vectors of the patch, then strip out repeats
-    edges = np.concatenate((patch.tris[:,0],patch.tris[:,0],patch.tris[:,2],
-        patch.tris[:,1],patch.tris[:,2],patch.tris[:,1])).reshape(2,-1).T
+    edges = np.hstack((np.vstack((patch.tris[:,2], patch.tris[:,1])),
+        np.vstack((patch.tris[:,1], patch.tris[:,0])),
+        np.vstack((patch.tris[:,0], patch.tris[:,2])))).T 
 
     nonrepeats = np.empty((0,2), dtype=np.int16)
     for k in range(edges.shape[0]):
