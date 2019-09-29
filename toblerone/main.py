@@ -149,7 +149,7 @@ def enforce_and_load_common_arguments(func):
 
         # Processor cores
         if not kwargs.get('cores'):
-            kwargs['cores'] = max([multiprocessing.cpu_count()-1, 1])
+            kwargs['cores'] = multiprocessing.cpu_count()
 
         # Supersampling factor
         sup = kwargs.get('super')
