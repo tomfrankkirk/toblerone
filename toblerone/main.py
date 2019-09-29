@@ -140,14 +140,14 @@ def enforce_and_load_common_arguments(func):
                 nonroi2roi = np.loadtxt(matpath)
                 if np.any(np.abs(nonroi2roi[0:3,3])):
                     print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
-                        "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
+                        "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig.")
             kwargs['struct2ref'] = utils._FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
 
         # Processor cores
         if not kwargs.get('cores'):
-            kwargs['cores'] = multiprocessing.cpu_count()
+            kwargs['cores'] = max([multiprocessing.cpu_count()-1, 1])
 
         # Supersampling factor
         sup = kwargs.get('super')
