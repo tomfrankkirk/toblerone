@@ -85,7 +85,6 @@ def enforce_and_load_common_arguments(func):
             kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
             kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-<<<<<<< HEAD
             if not kwargs.get('struct'):
                 if kwargs.get('flirt'): 
                     matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
@@ -94,10 +93,6 @@ def enforce_and_load_common_arguments(func):
                         print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
                             "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
 
-=======
-            # Don't override the struct if given, but if not then try with anat dir 
-            if not kwargs.get('struct'):
->>>>>>> fac824c47135cd763e5e46b5d2d27e7574984dc2
                 s = op.join(kwargs['anat'], 'T1.nii.gz')
                 kwargs['struct'] = s
                 if not op.isfile(s):
@@ -148,16 +143,6 @@ def enforce_and_load_common_arguments(func):
             if not kwargs.get('struct'):
                 raise RuntimeError("If using a FLIRT transform, the path to the \
                     structural image must also be given")
-<<<<<<< HEAD
-
-=======
-            if kwargs.get('anat'): 
-                matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
-                nonroi2roi = np.loadtxt(matpath)
-                if np.any(np.abs(nonroi2roi[0:3,3])):
-                    print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
-                        "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig.")
->>>>>>> fac824c47135cd763e5e46b5d2d27e7574984dc2
             kwargs['struct2ref'] = utils._FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
@@ -486,11 +471,7 @@ def stack_images(images):
     # to play with the caller's copy. Pop unwanted images
     all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
         'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
-<<<<<<< HEAD
     if not all([k in all_keys for k in images.keys()]):
-=======
-    if not all([k in images.keys() for k in all_keys]):
->>>>>>> fac824c47135cd763e5e46b5d2d27e7574984dc2
         raise RuntimeError("Did not find expected keys in images dict")
 
     images = copy.deepcopy(images)
