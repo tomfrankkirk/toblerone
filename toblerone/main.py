@@ -6,9 +6,9 @@ import copy
 import shutil
 import time 
 import subprocess
-import nibabel
 import glob 
 
+import nibabel
 import numpy as np
 import tqdm
 
@@ -159,7 +159,7 @@ def enforce_and_load_common_arguments(func):
                     sup = np.array([int(s) for s in sup])
                 else: 
                     sup = int(sup[0])
-                    sup = np.array([sup for _ in range(3)])
+                    sup = np.array(3 * [sup])
 
                 if type(sup) is not np.ndarray: 
                     raise RuntimeError() 
