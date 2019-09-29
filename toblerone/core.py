@@ -31,8 +31,10 @@ ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
 ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
     6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int8) - 1
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
-
-
+DIMS = np.concatenate((range(3), range(3)))
+__VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
+VOX_HALF_VECS = np.array((__VOX_HALF_CYCLE, -1 * __VOX_HALF_CYCLE)).reshape(6,3)
+    
 # Functions -------------------------------------------------------------------
 
 
@@ -199,11 +201,9 @@ def _normalToVector(vec):
     """Return a normal to the given vector"""
 
     if np.abs(vec[2]) < np.abs(vec[0]):
-        normal = np.array([vec[1], -vec[0], 0])
+        return np.array([vec[1], -vec[0], 0])
     else:
-        normal = np.array([0, -vec[2], vec[1]])
-
-    return normal 
+        return np.array([0, -vec[2], vec[1]])
 
 
 
@@ -277,7 +277,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
         0, 1)
 
-    # For those trianglest that passed, calculate multiplier to point of 
+    # For those triangles that passed, calculate multiplier to point of 
     # intersection
     mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:], 
         patch.xProds[fltr,:], testPnt, ray)
@@ -414,41 +414,33 @@ def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
         return np.zeros((0,3), dtype=np.float32)
 
     # Form all the edge vectors of the patch, then strip out repeats
-    edges = np.hstack((np.vstack((patch.tris[:,2], patch.tris[:,1])),
-        np.vstack((patch.tris[:,1], patch.tris[:,0])),
-        np.vstack((patch.tris[:,0], patch.tris[:,2])))).T 
+    edges = np.concatenate((patch.tris[:,0],patch.tris[:,0],patch.tris[:,2],
+        patch.tris[:,1],patch.tris[:,2],patch.tris[:,1])).reshape(2,-1).T
 
-    nonrepeats = np.empty((0,2), dtype=np.int16)
+    nonrpt = np.empty((0,2), dtype=np.int16)
     for k in range(edges.shape[0]):
         if not np.any(np.all(np.isin(edges[k+1:,:], edges[k,:]), axis=1)):
-            nonrepeats = np.vstack((nonrepeats, edges[k,:]))
+            nonrpt = np.vstack((nonrpt, edges[k,:]))
     
     intXs = np.empty((0,3), dtype=np.float32)
-    edgeVecs = (patch.points[nonrepeats[:,1],:]
-        - patch.points[nonrepeats[:,0],:])
+    edgeVecs = (patch.points[nonrpt[:,1],:] - patch.points[nonrpt[:,0],:])
+    face_points = voxCent + (VOX_HALF_VECS * vox_size)
 
-    # Iterate over each dimension, moving +0.5 and -0.5 of the voxel size
-    # from the vox centre to define a point on the planar face of the vox
-    for dim in range(3):
-        pNormal = np.zeros(3, dtype=np.int8)
-        pNormal[dim] = 1
+    for face_point,dim in zip(face_points, DIMS):
 
-        for k in [-0.5, 0.5]: 
-            pPlane = voxCent + (k * pNormal * vox_size[dim])
+        # Filter to edge vectors that are non-zero in this dimension 
+        fltr = np.flatnonzero(edgeVecs[:,dim])	
+        pStart = patch.points[nonrpt[fltr,0],:]
 
-            # Filter to edge vectors that are non-zero in this dimension 
-            fltr = np.flatnonzero(edgeVecs[:,dim])
-            pStart = patch.points[nonrepeats[fltr,0],:]
-
-            # Sneaky trick here: because planar normals are aligned with the 
-            # coord axes we don't need to do a full dot product, just extract
-            # the appropriate component of the difference vectors
-            mus = (pPlane - pStart)[:,dim] / edgeVecs[fltr,dim]
-            pInts = pStart + (edgeVecs[fltr,:].T * mus).T 
-            pInts2D = pInts - pPlane 
-            keep = np.all(np.abs(pInts2D) <= (vox_size/2), 1)    
-            keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
-            intXs = np.vstack((intXs, pInts[keep,:]))
+        # Sneaky trick here: because planar normals are aligned with the 
+        # coord axes we don't need to do a full dot product, just extract
+        # the appropriate component of the difference vectors
+        mus = (face_point - pStart)[:,dim] / edgeVecs[fltr,dim]
+        pInts = pStart + (edgeVecs[fltr,:].T * mus).T 
+        pInts2D = pInts - face_point 
+        keep = np.all(np.abs(pInts2D) <= (vox_size/2), 1)    
+        keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
+        intXs = np.vstack((intXs, pInts[keep,:]))
 
     return intXs 
 
@@ -808,7 +800,8 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         raise workerFractions[0]
 
     # Clip results to 1 (reqd due to geometric approximations)
-    fractions = np.concatenate(workerFractions)
+    fractions = np.zeros(len(surf.assocs), dtype=np.float32)
+    fractions = np.concatenate(workerFractions, out=fractions)
     return np.minimum(fractions, 1.0)
 
 
@@ -834,4 +827,3 @@ def _estimateFractionsWorker(surf, supersampler,
 
     except Exception as e:
         return e
-
