@@ -621,8 +621,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
-    assert np.all(_cyfilterTriangles(patch.tris, patch.points,
-        voxIJK, vox_size.astype(np.float32)))
 
     # Test all subvox corners now and store the results for later
     allCorners = _getAllSubVoxCorners(supersampler, voxIJK, vox_size)
