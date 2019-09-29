@@ -1,6 +1,7 @@
 """Surface-based partial volume estimation tools"""
 
 from .main import estimate_all, estimate_cortex, estimate_structure
+from .classes import ImageSpace, Surface
 
 __all__ = ['core', 'classes']
 __author__ = 'Tom Kirk'
