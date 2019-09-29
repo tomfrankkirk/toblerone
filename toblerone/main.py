@@ -85,11 +85,19 @@ def enforce_and_load_common_arguments(func):
             kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
             kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-            s = op.join(kwargs['anat'], 'T1.nii.gz')
-            if not op.isfile(s):
-                raise RuntimeError("Could not find T1.nii.gz in the anat dir")
+            if not kwargs.get('struct'):
+                if kwargs.get('flirt'): 
+                    matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
+                    nonroi2roi = np.loadtxt(matpath)
+                    if np.any(np.abs(nonroi2roi[0:3,3])):
+                        print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
+                            "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
 
-            kwargs['struct'] = s
+                s = op.join(kwargs['anat'], 'T1.nii.gz')
+                kwargs['struct'] = s
+                if not op.isfile(s):
+                    raise RuntimeError("Could not find T1.nii.gz in the anat dir")
+
  
         # Structural to reference transformation. Either as array or path
         # to file containing matrix
@@ -135,12 +143,7 @@ def enforce_and_load_common_arguments(func):
             if not kwargs.get('struct'):
                 raise RuntimeError("If using a FLIRT transform, the path to the \
                     structural image must also be given")
-            if kwargs.get('anat'): 
-                matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
-                nonroi2roi = np.loadtxt(matpath)
-                if np.any(np.abs(nonroi2roi[0:3,3])):
-                    print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
-                        "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
+
             kwargs['struct2ref'] = utils._FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
                 kwargs['struct2ref'])
             kwargs['flirt'] = False 
@@ -468,6 +471,11 @@ def stack_images(images):
 
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
+    all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
+        'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
+    if not all([k in all_keys for k in images.keys()]):
+        raise RuntimeError("Did not find expected keys in images dict")
+
     images = copy.deepcopy(images)
     if 'cortexmask' in images: 
         images.pop('cortexmask')
