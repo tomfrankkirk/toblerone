@@ -470,10 +470,10 @@ def stack_images(images):
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
     all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
-        'cortex_GM', 'cortex_WM', 'cortex_CSF' ]
+        'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
     if not all([k in images.keys() for k in all_keys]):
         raise RuntimeError("Did not find expected keys in images dict")
-    
+
     images = copy.deepcopy(images)
     if 'cortexmask' in images: 
         images.pop('cortexmask')
