@@ -807,7 +807,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         raise workerFractions[0]
 
     # Clip results to 1 (reqd due to geometric approximations)
-    fractions = np.concatenate(workerFractions, dtype=np.float32)
+    fractions = np.concatenate(workerFractions)
     return np.minimum(fractions, 1.0)
 
 
