@@ -202,7 +202,7 @@ class ImageSpace(object):
             overall = space.world2vox
 
         # Extract min and max vox coords in the reference space 
-        min_max = np.zeros((2*len(slist), 3))
+        min_max = np.empty((2*len(slist), 3))
         for sidx,s in enumerate(slist):
             ps = utils._affineTransformPoints(s.points, overall)
             min_max[sidx*2,:] = ps.min(0)
@@ -456,7 +456,7 @@ class Surface(object):
 
         pvs_curr = self.voxelised.astype(np.float32)
         pvs_curr[self.assocs_keys] = self.fractions
-        out = np.zeros(np.prod(space.size), dtype=np.float32)
+        out = np.empty(np.prod(space.size), dtype=np.float32)
         curr_inds, dest_inds = self.convert_indices(space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
@@ -740,7 +740,7 @@ class Surface(object):
         """
 
         points = np.empty((0, 3), dtype=np.float32)
-        tris = np.zeros((len(tri_inds), 3), dtype=np.int32)
+        tris = np.empty((len(tri_inds), 3), dtype=np.int32)
         pointsLUT = []
 
         for t in range(len(tri_inds)):

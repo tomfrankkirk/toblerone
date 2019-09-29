@@ -149,7 +149,7 @@ def enforce_and_load_common_arguments(func):
 
         # Processor cores
         if not kwargs.get('cores'):
-            kwargs['cores'] = multiprocessing.cpu_count()
+            kwargs['cores'] = max([multiprocessing.cpu_count()-1, 1])
 
         # Supersampling factor
         sup = kwargs.get('super')
@@ -502,15 +502,16 @@ def stack_images(images):
     # Where FAST has suggested a higher CSF estimate than currently exists, 
     # and the voxel does not intersect the cortical ribbon, accept FAST's 
     # estimate. Then update the WM estimates, reducing where necessary to allow
-    # for the greater CSF volume  
-    ctxmask = (ctx[:,0] > 0)
+    # for the greater CSF volume
+    GM_threshold = 0.01 
+    ctxmask = (ctx[:,0] > GM_threshold)
     to_update = np.logical_and(csf > out[:,2], ~ctxmask)
     tmpwm = out[to_update,1]
     out[to_update,2] = csf[to_update]
-    out[to_update,1] = np.minimum(tmpwm, 1 - out[to_update,2])
+    out[to_update,1] = np.minimum(tmpwm, 1 - (out[to_update,2] + out[to_update,0]))
 
     # Sanity checks: total tissue PV in each vox should sum to 1
-    assert np.all(out[to_update,0] == 0), 'Some update voxels have GM'
+    assert np.all(out[to_update,0] <= GM_threshold), 'Some update voxels have GM'
     assert np.all(np.abs(out.sum(1) - 1) < 1e-6), 'Voxel PVs do not sum to 1'
 
     # For each subcortical structure, create a mask of the voxels which it 

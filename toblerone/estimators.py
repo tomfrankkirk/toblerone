@@ -52,7 +52,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         out_pvs = h.outSurf.output_pvs(space).flatten()
 
         # Combine estimates from each surface into whole hemi PV estimates
-        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        hemiPVs = np.empty((np.prod(space.size), 3), dtype=np.float32)
         hemiPVs[:,1] = in_pvs 
         hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
         hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
