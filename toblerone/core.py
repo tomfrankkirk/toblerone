@@ -50,17 +50,8 @@ def _quickCross(a, b):
 def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""
 
-    return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
+    return np.all(np.abs(points - voxCent) <= vox_size/2, axis=1)
 
-
-
-def _dotVectorAndMatrix(vec, mat):
-    """Row-wise dot product of a vector and matrix. 
-    Returns a vector with the same number of rows as
-    the matrix with the dot prod of that row with the
-    vector in each row"""
-
-    return np.sum(mat * vec, axis=1)
 
 
 def _pointGroupsIntersect(grps, tris): 
@@ -100,7 +91,7 @@ def _separatePointClouds(tris):
         # until proven otherwise
         newGroupNeeded = True 
         for g in range(len(groups)):
-            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
+            if np.any(np.isin(tris[t,:], tris[groups[g],:])):
                 newGroupNeeded = False
                 break 
         
@@ -234,8 +225,8 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = _dotVectorAndMatrix(ray, normals)
-    mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
+    dotRN = (normals * ray).sum(1)
+    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
 
     return mu 
 
@@ -273,15 +264,13 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = _dotVectorAndMatrix(ray, patch.points)
-    onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
+    lmbda = (patch.points * ray).sum(1)
+    onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
-    onPlane2d = np.array(
-        [_dotVectorAndMatrix(d1, onPlane), 
-         _dotVectorAndMatrix(d2, onPlane),
-         np.zeros(onPlane.shape[0])], dtype=np.float32)
+    onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
+        np.zeros(onPlane.shape[0])], dtype=np.float32)
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
@@ -330,7 +319,7 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
         # Classify according to parity of intersections. If odd number of ints
         # found between -inf and the point under test, then it is inside
         assert ((intXs.size % 2) == 0), 'Odd number of intersections returned'
-        return ((np.sum(intXs <= 0) % 2) == 1)
+        return ((intXs <= 0).sum() % 2) == 1
     
     else: 
         return False 
@@ -379,19 +368,19 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
             intMus = _findRayTriangleIntersections3D(testPnts[p,:], rays[p,:], 
                 patch)
 
-            if intMus.shape[0]:
+            if intMus.size:
 
                 # Filter down to intersections in the range (0,1)
                 intMus = intMus[(intMus < 1) & (intMus > 0)]
 
                 # if no ints in this reduced range then point is inside
                 # because an intersection would otherwise be guaranteed
-                if not intMus.shape[0]:
+                if not intMus.size:
                     shouldAppend = True 
 
                 # If even number, then point inside
                 else: 
-                    shouldAppend = not(intMus.shape[0] % 2)
+                    shouldAppend = not(intMus.size % 2)
                 
             # Finally, if there were no intersections at all then the point is
             # also inside (given the root point is also inside, if the test pnt
@@ -498,13 +487,13 @@ def _findVoxelSurfaceIntersections(patch, vertices):
         intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
         if intMus.shape[0]:
-            intPnts = pnt + np.outer(intMus, edge)
             accept = np.logical_and(intMus <= 1, intMus >= 0)
             
-            if np.sum(accept) > 1:
+            if accept.sum() > 1:
                 fold = True
                 return (intersects, fold)
 
+            intPnts = pnt + (intMus[:,None] * edge[None,:])
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)
@@ -546,7 +535,7 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
-    return (np.sum(flags) / Nsubs2)
+    return flags.sum() / Nsubs2
 
 
 
@@ -725,7 +714,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 else:
                     
                     # Smaller interior hull 
-                    if np.sum(cornerFlags) < 4:
+                    if cornerFlags.sum() < 4:
                         hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
                         classes = [1, 0]
                     
