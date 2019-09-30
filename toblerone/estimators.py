@@ -104,10 +104,11 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
     lies outside the structure
 
     Args: 
-        cores: number of processor cores to use
+        surf: Surface object 
+        space: ImageSpace to estimate within 
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
-        surf: a surface 
+        cores: number of processor cores to use
 
     Returns: 
         an array of size refSpace.size containing the PVs. 
