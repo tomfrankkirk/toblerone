@@ -764,9 +764,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     if inFraction > 1.000001:
         raise RuntimeError('Fraction exceeds 1 in', voxIdx)
 
-    if inFraction < 0:
-        raise RuntimeError('Negative fraction in', voxIdx)
-
     return inFraction
 
 
@@ -788,10 +785,9 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
     workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, voxIJKs, supersampler)
+        surf, supersampler)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
