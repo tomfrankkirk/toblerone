@@ -770,6 +770,8 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
     size = surf._index_space.size 
 
+    supersampler = np.squeeze(np.array(supersampler, dtype=np.int16))
+
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 40)
