@@ -198,18 +198,6 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
 
 
 
-def _normalToVector(vec):
-    """Return a normal to the given vector"""
-
-    if np.abs(vec[2]) < np.abs(vec[0]):
-        normal = np.array([vec[1], -vec[0], 0])
-    else:
-        normal = np.array([0, -vec[2], vec[1]])
-
-    return normal 
-
-
-
 def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     """Find points of intersection between a ray and the planes defined by a
     set of triangles. As these points may not lie within their respective 
@@ -261,7 +249,10 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # the Z direction in this new projected space) amongst all the triangles in
     # dimensions 1 and 2 (XY). Define a new coordinate system (d unit vectors) 
     # with d3 along the ray, d2 and d1 in plane.
-    d2 = _normalToVector(ray)
+    if np.abs(ray[2]) < np.abs(ray[0]):
+        d2 = np.array([ray[1], -ray[0], 0])
+    else:
+        d2 = np.array([0, -ray[2], ray[1]])
     d1 = _quickCross(d2, ray)
 
     # Calculate the projection of each point onto the direction vector of the
@@ -621,8 +612,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
-    assert np.all(_cyfilterTriangles(patch.tris, patch.points,
-        voxIJK, vox_size.astype(np.float32)))
 
     # Test all subvox corners now and store the results for later
     allCorners = _getAllSubVoxCorners(supersampler, voxIJK, vox_size)
