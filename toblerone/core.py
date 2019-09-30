@@ -54,15 +54,6 @@ def _filterPoints(points, voxCent, vox_size):
 
 
 
-def _dotVectorAndMatrix(vec, mat):
-    """Row-wise dot product of a vector and matrix. 
-    Returns a vector with the same number of rows as
-    the matrix with the dot prod of that row with the
-    vector in each row"""
-
-    return np.sum(mat * vec, axis=1)
-
-
 def _checkSurfaceNormals(surf, size):
     """Check that a surface's normals are inward facing
     
@@ -255,8 +246,8 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = _dotVectorAndMatrix(ray, normals)
-    mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
+    dotRN = (normals * ray).sum(1)
+    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
 
     return mu 
 
@@ -294,15 +285,14 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = _dotVectorAndMatrix(ray, patch.points)
+    lmbda = (patch.points * ray).sum(1)
     onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
-    onPlane2d = np.array(
-        [_dotVectorAndMatrix(d1, onPlane), 
-         _dotVectorAndMatrix(d2, onPlane),
-         np.zeros(onPlane.shape[0])], dtype=np.float32)
+    onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
+        np.zeros(onPlane.shape[0])], dtype=np.float32)
+
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
