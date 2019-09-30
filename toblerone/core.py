@@ -401,7 +401,7 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
 
 
 
-def _findTrianglePlaneIntersections(patch, voxCent, vox_size):
+def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
     """Find points of intersection of all triangle edges within a patch with 
     the faces of a voxel given by cent and size. 
 
@@ -697,7 +697,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 # Gather points together in preparation for forming 
                 # hulls (the corners will be added just beforehand)
                 hullPts = np.vstack( (localPs, edgeIntXs, \
-                    _findTrianglePlaneIntersections(smallPatch, \
+                    _findTriangleVoxFaceIntersections(smallPatch, \
                     subVoxCent, subvox_size)) )
 
                 if verbose: print('Hulls: mixed in/out')
