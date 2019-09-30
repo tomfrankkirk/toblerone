@@ -265,12 +265,12 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
     lmbda = (patch.points * ray).sum(1)
-    onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
+    onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
     onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(onPlane.shape[0])], dtype=np.float32)
+        np.zeros(lmbda.size)], dtype=np.float32)
 
 
     # Now perform the test 
@@ -369,19 +369,19 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
             intMus = _findRayTriangleIntersections3D(testPnts[p,:], rays[p,:], 
                 patch)
 
-            if intMus.shape[0]:
+            if intMus.size:
 
                 # Filter down to intersections in the range (0,1)
                 intMus = intMus[(intMus < 1) & (intMus > 0)]
 
                 # if no ints in this reduced range then point is inside
                 # because an intersection would otherwise be guaranteed
-                if not intMus.shape[0]:
+                if not intMus.size:
                     shouldAppend = True 
 
                 # If even number, then point inside
                 else: 
-                    shouldAppend = not(intMus.shape[0] % 2)
+                    shouldAppend = not(intMus.size % 2)
                 
             # Finally, if there were no intersections at all then the point is
             # also inside (given the root point is also inside, if the test pnt
@@ -473,7 +473,7 @@ def _findVoxelSurfaceIntersections(patch, vertices):
     fold = False 
 
     # If nothing to test, silently return empty results / false flag
-    if not patch.tris.shape[0]:
+    if not patch.tris.size:
         return (intersects, fold)
 
     # 8 vertices correspond to 12 edge vectors along exterior edges and 
@@ -487,14 +487,14 @@ def _findVoxelSurfaceIntersections(patch, vertices):
         pnt = vertices[ORIGINS[e],:]
         intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
-        if intMus.shape[0]:
-            intPnts = pnt + np.outer(intMus, edge)
+        if intMus.size:
             accept = np.logical_and(intMus <= 1, intMus >= 0)
             
             if accept.sum() > 1:
                 fold = True
                 return (intersects, fold)
 
+            intPnts = pnt + (intMus[:,None] * edge[None,:])
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)
@@ -507,7 +507,7 @@ def _safeFormHull(points):
     elsewhere). For everything else, let the exception continue up. 
     """
 
-    if points.shape[0] > 3:
+    if points.size > 3:
         try:
             hull = ConvexHull(points)
             return hull.volume
