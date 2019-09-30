@@ -341,7 +341,7 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
         # Classify according to parity of intersections. If odd number of ints
         # found between -inf and the point under test, then it is inside
         assert ((intXs.size % 2) == 0), 'Odd number of intersections returned'
-        return ((np.sum(intXs <= 0) % 2) == 1)
+        return (((intXs <= 0).sum() % 2) == 1)
     
     else: 
         return False 
@@ -512,7 +512,7 @@ def _findVoxelSurfaceIntersections(patch, vertices):
             intPnts = pnt + np.outer(intMus, edge)
             accept = np.logical_and(intMus <= 1, intMus >= 0)
             
-            if np.sum(accept) > 1:
+            if accept.sum() > 1:
                 fold = True
                 return (intersects, fold)
 
@@ -557,7 +557,7 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
-    return (np.sum(flags) / Nsubs2)
+    return flags.sum() / Nsubs2
 
 
 
@@ -738,7 +738,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 else:
                     
                     # Smaller interior hull 
-                    if np.sum(cornerFlags) < 4:
+                    if cornerFlags.sum() < 4:
                         hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
                         classes = [1, 0]
                     
