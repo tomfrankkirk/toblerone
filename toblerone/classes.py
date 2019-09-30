@@ -202,7 +202,7 @@ class ImageSpace(object):
             overall = space.world2vox
 
         # Extract min and max vox coords in the reference space 
-        min_max = np.empty((2*len(slist), 3))
+        min_max = np.zeros((2*len(slist), 3))
         for sidx,s in enumerate(slist):
             ps = utils._affineTransformPoints(s.points, overall)
             min_max[sidx*2,:] = ps.min(0)
@@ -371,6 +371,7 @@ class Surface(object):
         self.voxelised = None 
         self.name = name
         self.assocs = None 
+        self.LUT = None  
         self._index_space = None 
 
 
@@ -389,11 +390,6 @@ class Surface(object):
         s.name = name
         s._index_space = None 
         return s
-
-
-    @property
-    def assocs_keys(self):
-        return np.array(list(self.assocs.keys()), dtype=np.int32)
 
 
     def save(self, path):
@@ -455,9 +451,9 @@ class Surface(object):
         """
 
         pvs_curr = self.voxelised.astype(np.float32)
-        pvs_curr[self.assocs_keys] = self.fractions
-        out = np.empty(np.prod(space.size), dtype=np.float32)
-        curr_inds, dest_inds = self.convert_indices(space)
+        pvs_curr[self.LUT] = self.fractions
+        out = np.zeros(np.prod(space.size), dtype=np.float32)
+        curr_inds, dest_inds = self.reindexing_filter(space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
 
@@ -477,19 +473,19 @@ class Surface(object):
             raise RuntimeError("Surface must be indexed first")
 
         if ones: 
-            self.fractions = np.ones(len(self.assocs), dtype=bool) 
+            self.fractions = np.ones(self.LUT.size, dtype=bool) 
         else: 
             self.fractions = core._estimateFractions(self, 
                 supersampler, desc, cores)
 
 
-    def index_on(self, space, struct2ref, cores=multiprocessing.cpu_count()):
+    def index_on(self, space, struct2ref):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
         transformed into voxel coordinates for the space, triangle/voxel 
-        associations calculated and stored on the surface's assocs 
-        attribute, surface normals calculated (triangle cross products) and
+        associations calculated and stored on the surface's LUT and assocs 
+        attributes, surface normals calculated (triangle cross products) and
         finally voxelised within the space (binary mask of voxels contained in 
         the surface). See also Surface.reindex_for() method. 
 
@@ -501,7 +497,8 @@ class Surface(object):
 
         Updates: 
             self.points: converted into voxel coordinates for the space
-            self.assocs: dictionary of voxel/triangle associations 
+            self.assocs: list of triangles intersecting each voxel of the space
+            self.LUT: table of voxel indices to index self.assocs 
             self.xProds: triangle cross products, voxel coordinates
         """
 
@@ -521,7 +518,7 @@ class Surface(object):
 
         # Update surface attributes
         self._index_space = encl_space 
-        self.form_associations(cores)
+        self.form_associations()
         self.calculateXprods()
         self.voxelise()
 
@@ -553,7 +550,7 @@ class Surface(object):
     #     ref_inds = np.arange(np.prod(size))
     #     ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
     #     ref_voxs_in_dest -= FoVoffset
-    #     ref2dest_fltr = self.convert_indices(dest_space)
+    #     ref2dest_fltr = self.reindexing_filter(dest_space)
 
     #     # Update LUT: produce filter of ref voxel inds within the current LUT
     #     # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
@@ -589,7 +586,7 @@ class Surface(object):
 
 
     @ensure_derived_space
-    def convert_indices(self, dest_space, as_bool=False):
+    def reindexing_filter(self, dest_space, as_bool=False):
         """
         Filter of voxels in the current index space that lie within 
         dest_space. Use for extracting PV estimates from index space back to
@@ -637,11 +634,11 @@ class Surface(object):
 
 
     @ensure_derived_space
-    def reindex_assocs_keys(self, space):
-        """Re-express assocs in another space"""
+    def reindex_LUT(self, space):
+        """Re-express LUT in another space"""
 
-        src_inds, dest_inds = self.convert_indices(space)
-        fltr = np.in1d(src_inds, self.assocs_keys, assume_unique=True)
+        src_inds, dest_inds = self.reindexing_filter(space)
+        fltr = np.isin(src_inds, self.LUT, assume_unique=True)
         return dest_inds[fltr]
 
 
@@ -652,15 +649,14 @@ class Surface(object):
         multiple times
         """
 
-        vox_inds = np.array(self.assocs_keys)
-        group_counts = np.array([ len(core._separatePointClouds(self.tris[a,:]))
-            for a in self.assocs.values() ])
-        bridges = vox_inds[group_counts > 1]
+        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
+            for a in self.assocs])
+        bridges = self.LUT[group_counts > 1]
         if space is self._index_space:
             return bridges 
         else: 
-            src_inds, dest_inds = self.convert_indices(space)
-            fltr = np.in1d(src_inds, bridges, assume_unique=True)
+            src_inds, dest_inds = self.reindexing_filter(space)
+            fltr = np.isin(src_inds, bridges, assume_unique=True)
             return dest_inds[fltr]
 
 
@@ -680,7 +676,7 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def form_associations(self, cores=multiprocessing.cpu_count()):
+    def form_associations(self):
         """
         Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
@@ -701,6 +697,7 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
+        cores = multiprocessing.cpu_count()
         chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
@@ -722,7 +719,9 @@ class Surface(object):
         dct = dict(associations)
         assert all(map(len, dct.values()))
 
-        self.assocs = { k: np.array(v) for k,v in dct.items() }
+        self.assocs = np.array(list(dct.values()), dtype=object) 
+        self.LUT = np.array(list(dct.keys()), dtype=np.int32)
+        assert len(self.LUT) == len(self.assocs)
 
 
     def rebaseTriangles(self, tri_inds):
@@ -740,7 +739,7 @@ class Surface(object):
         """
 
         points = np.empty((0, 3), dtype=np.float32)
-        tris = np.empty((len(tri_inds), 3), dtype=np.int32)
+        tris = np.zeros((len(tri_inds), 3), dtype=np.int32)
         pointsLUT = []
 
         for t in range(len(tri_inds)):
@@ -772,7 +771,7 @@ class Surface(object):
         the points / surface normals as required. 
         """
 
-        tri_nums = self.assocs[vox_idx]
+        tri_nums = self.assocs[self.LUT == vox_idx][0]
         (ps, ts) = self.rebaseTriangles(tri_nums)
 
         return Patch(ps, ts, self.xProds[tri_nums,:])
@@ -787,13 +786,12 @@ class Surface(object):
         """
 
         # Load lists of tri numbers for each voxel index 
-        voxs = np.intersect1d(self.assocs_keys, vox_inds, assume_unique=True)
+        vlists = self.assocs[np.isin(self.LUT, vox_inds, assume_unique=True)]
 
-        if voxs.size:
+        if vlists.size:
 
             # Flatten the triangle numbers for all these voxels into single list
-            tri_nums = functools.reduce(operator.iconcat, 
-                [self.assocs[v] for v in voxs], []) 
+            tri_nums = functools.reduce(operator.iconcat, vlists, [])
             tri_nums = np.unique(tri_nums)
 
             return Patch(self.points, self.tris[tri_nums,:], 
@@ -832,7 +830,7 @@ class Surface(object):
             # regardless of what dimension we are projecting rays along. Define
             # a single ray of voxels, convert to linear indices and calculate 
             # the stride from that. 
-            allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
+            allIJKs = np.vstack(np.unravel_index(self.LUT, size)).T
             rayIJK = np.zeros((size[dim], 3), dtype=np.int16)
             rayIJK[:,dim] = np.arange(0, size[dim])
             rayIJK[:,d1] = allIJKs[0,d1]
@@ -846,7 +844,7 @@ class Surface(object):
             # load the surface patches for all these voxels and find ray 
             # intersections to classify the voxel centres. Finally, we remove
             # the entire set of ray voxels from our copy of the LUT and repeat
-            LUT = copy.deepcopy(self.assocs_keys)
+            LUT = copy.deepcopy(self.LUT)
             while LUT.size: 
 
                 # Where does the ray that passes through this voxel start?
@@ -857,7 +855,7 @@ class Surface(object):
                     stride)
 
                 # Romeve those which are present in the LUT / allIJKs arrays
-                keep = np.in1d(LUT, voxRange, assume_unique=True, invert=True)
+                keep = np.isin(LUT, voxRange, assume_unique=True, invert=True)
                 LUT = LUT[keep]
                 allIJKs = allIJKs[keep,:]
                 

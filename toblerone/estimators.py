@@ -32,7 +32,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     surfs = [ s for h in hemispheres for s in h.surfs() ]
 
     for s in surfs: 
-        s.index_on(space, struct2ref, cores)
+        s.index_on(space, struct2ref)
 
     # Estimate PV fractions for each surface
     for h in hemispheres:
@@ -52,7 +52,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         out_pvs = h.outSurf.output_pvs(space).flatten()
 
         # Combine estimates from each surface into whole hemi PV estimates
-        hemiPVs = np.empty((np.prod(space.size), 3), dtype=np.float32)
+        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
         hemiPVs[:,1] = in_pvs 
         hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
         hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
@@ -86,7 +86,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
     for h in hemispheres:
         for s in h.surfs(): 
-            ctxMask[s.reindex_assocs_keys(space)] = True
+            ctxMask[s.reindex_LUT(space)] = True
     ctxMask[outPVs[:,0] > 0] = True 
 
     # Reshape images back into 4D or 3D images
@@ -113,7 +113,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
         an array of size refSpace.size containing the PVs. 
     """
 
-    surf.index_on(space, struct2ref, cores)
+    surf.index_on(space, struct2ref)
     surf._estimate_fractions(supersampler, cores, ones)
     
     return surf.output_pvs(space)

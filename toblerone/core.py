@@ -50,8 +50,38 @@ def _quickCross(a, b):
 def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""
 
-    return np.all(np.abs(points - voxCent) <= vox_size/2, axis=1)
+    return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
 
+
+
+def _dotVectorAndMatrix(vec, mat):
+    """Row-wise dot product of a vector and matrix. 
+    Returns a vector with the same number of rows as
+    the matrix with the dot prod of that row with the
+    vector in each row"""
+
+    return np.sum(mat * vec, axis=1)
+
+
+def _checkSurfaceNormals(surf, size):
+    """Check that a surface's normals are inward facing
+    
+    Args: 
+        surf: surface to test
+        space: an ImageSpace, in which the surface vertices are expressed
+            in voxel coordinates and associations have been formed
+    """
+
+    if (surf.xProds is None) or (surf.LUT is None): 
+        raise RuntimeError("surf.calculateXprods and surf.formAssociations" +
+            " must have been called on the surface prior to this function")
+
+    # Produce a point that we expect to be inside 
+    pnt = surf.points[surf.tris[0,:],:].mean(0)
+    inside = pnt + surf.xProds[0,:]
+
+    return _fullRayIntersectionTest(inside, surf, 
+        inside.round(0).astype(np.int32), size)
 
 
 def _pointGroupsIntersect(grps, tris): 
@@ -91,7 +121,7 @@ def _separatePointClouds(tris):
         # until proven otherwise
         newGroupNeeded = True 
         for g in range(len(groups)):
-            if np.any(np.isin(tris[t,:], tris[groups[g],:])):
+            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
                 newGroupNeeded = False
                 break 
         
@@ -225,8 +255,8 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = (normals * ray).sum(1)
-    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
+    dotRN = _dotVectorAndMatrix(ray, normals)
+    mu = np.sum((planePoints - testPnt) * normals, axis=1) / dotRN 
 
     return mu 
 
@@ -264,13 +294,15 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = (patch.points * ray).sum(1)
-    onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
+    lmbda = _dotVectorAndMatrix(ray, patch.points)
+    onPlane = (patch.points - np.outer(lmbda, ray)) - testPnt 
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
-    # the d2 and d3 in-plane orthonormal vectors
-    onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(lmbda.size)], dtype=np.float32)
+    # the d2 and d3 in-plane orthonormal unit vectors
+    onPlane2d = np.array(
+        [_dotVectorAndMatrix(d1, onPlane), 
+         _dotVectorAndMatrix(d2, onPlane),
+         np.zeros(onPlane.shape[0])], dtype=np.float32)
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
@@ -319,7 +351,7 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
         # Classify according to parity of intersections. If odd number of ints
         # found between -inf and the point under test, then it is inside
         assert ((intXs.size % 2) == 0), 'Odd number of intersections returned'
-        return ((intXs <= 0).sum() % 2) == 1
+        return ((np.sum(intXs <= 0) % 2) == 1)
     
     else: 
         return False 
@@ -368,19 +400,19 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
             intMus = _findRayTriangleIntersections3D(testPnts[p,:], rays[p,:], 
                 patch)
 
-            if intMus.size:
+            if intMus.shape[0]:
 
                 # Filter down to intersections in the range (0,1)
                 intMus = intMus[(intMus < 1) & (intMus > 0)]
 
                 # if no ints in this reduced range then point is inside
                 # because an intersection would otherwise be guaranteed
-                if not intMus.size:
+                if not intMus.shape[0]:
                     shouldAppend = True 
 
                 # If even number, then point inside
                 else: 
-                    shouldAppend = not(intMus.size % 2)
+                    shouldAppend = not(intMus.shape[0] % 2)
                 
             # Finally, if there were no intersections at all then the point is
             # also inside (given the root point is also inside, if the test pnt
@@ -487,13 +519,13 @@ def _findVoxelSurfaceIntersections(patch, vertices):
         intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
         if intMus.shape[0]:
+            intPnts = pnt + np.outer(intMus, edge)
             accept = np.logical_and(intMus <= 1, intMus >= 0)
             
-            if accept.sum() > 1:
+            if np.sum(accept) > 1:
                 fold = True
                 return (intersects, fold)
 
-            intPnts = pnt + (intMus[:,None] * edge[None,:])
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)
@@ -535,7 +567,7 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
-    return flags.sum() / Nsubs2
+    return (np.sum(flags) / Nsubs2)
 
 
 
@@ -621,6 +653,8 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
+    assert np.all(_cyfilterTriangles(patch.tris, patch.points,
+        voxIJK, vox_size.astype(np.float32)))
 
     # Test all subvox corners now and store the results for later
     allCorners = _getAllSubVoxCorners(supersampler, voxIJK, vox_size)
@@ -629,12 +663,12 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
         voxIJK, ~voxCentFlag)
 
     # Test all subvox centres now and store the results for later
-    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32)
-    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32)
-    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32)
+    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
+    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
+    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
     [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
     allCents = (np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
-        + voxIJK - 0.5) 
+        + voxIJK)
     allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK,
         ~voxCentFlag)
 
@@ -679,11 +713,13 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
             # Separate points within the voxel into distinct clouds, to check
             # for multiple surface intersection
+            # TODO: bring this into form associations, and store separate groups
+            # within the associations array to check for bridges 
             groups = _separatePointClouds(smallPatch.tris)
 
             # If neither surface is folded within the subvox and there 
             # are no multiple intersections, we can form hulls. 
-            if (not fold) and (len(groups) < 2):
+            if (not fold) & (len(groups) < 2):
 
                 # Filter down surface nodes that are in the subvox
                 localPs = patch.points[np.unique(smallPatch.tris),:]
@@ -712,7 +748,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 else:
                     
                     # Smaller interior hull 
-                    if cornerFlags.sum() < 4:
+                    if np.sum(cornerFlags) < 4:
                         hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
                         classes = [1, 0]
                     
@@ -759,6 +795,9 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     if inFraction > 1.000001:
         raise RuntimeError('Fraction exceeds 1 in', voxIdx)
 
+    if inFraction < 0:
+        raise RuntimeError('Negative fraction in', voxIdx)
+
     return inFraction
 
 
@@ -776,11 +815,14 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         vector of size prod(FoV)
     """
 
+    size = surf._index_space.size 
+
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    workerChunks = utils._distributeObjects(range(len(surf.assocs)), 40)
+    voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
+    workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, supersampler)
+        surf, voxIJKs, supersampler)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
@@ -813,7 +855,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
 
 
-def _estimateFractionsWorker(surf, supersampler, 
+def _estimateFractionsWorker(surf, voxIJK, supersampler, 
         workerVoxList):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
@@ -821,14 +863,11 @@ def _estimateFractionsWorker(surf, supersampler,
     # exception to the caller instead of raising it here (within a parallel
     # pool the exception will not be raised)
     try:
-        partialVolumes = np.empty(len(workerVoxList), dtype=np.float32)
-        vox_inds = surf.assocs_keys[workerVoxList]
-        vox_ijks = (np.array(np.unravel_index(vox_inds, surf._index_space.size))
-            .astype(np.float32).T)
+        partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
 
-        for idx in range(len(workerVoxList)):
-            partialVolumes[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
-                vox_inds[idx], supersampler)  
+        for idx, v in enumerate(surf.LUT[workerVoxList]):
+            partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
+                v, supersampler)  
         
         return partialVolumes
 
