@@ -303,12 +303,12 @@ def estimate_structure(**kwargs):
     if not kwargs.get('space'): 
         kwargs['space'] = 'world'
 
-    if type(kwargs['surf']) is str: 
-        if (kwargs['surf'].count('first')) and (kwargs['space'] == 'world'):
-            print("Warning: surface seems to be from FIRST but space was set" +
-                " as 'world'. See the docs.")
+    if kwargs['space'] == 'first' and not kwargs.get('struct'):
+        raise RuntimeError("Structural image must be supplied for FIRST surfs")
 
-        surf = Surface(kwargs['surf'], kwargs['space'], kwargs['struct'], 
+    if type(kwargs['surf']) is str: 
+
+        surf = Surface(kwargs['surf'], kwargs['space'], kwargs.get('struct'), 
             op.split(kwargs['surf'])[1])
     
     elif type(kwargs['surf']) is not Surface: 

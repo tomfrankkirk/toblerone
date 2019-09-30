@@ -316,6 +316,10 @@ class Surface(object):
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
 
+        if (path.count('first')) and ('space' == 'world'):
+            print("Warning: surface seems to be from FIRST but space was set" +
+                " as 'world'. See the docs.")
+
         surfExt = op.splitext(path)[-1]
         if surfExt == '.gii':
             gft = nibabel.load(path).darrays
