@@ -477,7 +477,7 @@ def stack_images(images):
     reqd_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
         'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
     reqd_keys.remove('BrStem')
-    if not all([k in images.keys() for k in reqd_keys]):
+    if not all([k in reqd_keys for k in images.keys()]):
         raise RuntimeError("Did not find expected keys in images dict")
     
     # Pop out FAST's estimates  
