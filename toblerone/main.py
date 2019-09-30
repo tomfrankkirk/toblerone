@@ -30,7 +30,7 @@ def timer(func):
         t1 = time.time()
         out = func(*args, **kwargs)
         t2 = time.time()
-        print("Elapsed time: %.1f minutes" % ((t2-t1)//60))
+        print("Elapsed time: %.1f minutes" % ((t2-t1)/60))
         return out 
     
     return timed_function
