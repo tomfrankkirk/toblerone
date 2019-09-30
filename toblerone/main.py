@@ -531,7 +531,7 @@ def stack_images(images):
 
     # Final sanity check, then rescaling so all voxels sum to unity. 
     sums = out.sum(1)
-    assert np.all(np.abs(sums - 1) < 1e-9)
+    assert np.all(np.abs(sums - 1) < 1e-6)
     out = out / sums[:,None]
 
     return out.reshape(shape)

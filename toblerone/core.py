@@ -266,7 +266,6 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
         np.zeros(lmbda.size)], dtype=np.float32)
 
-
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
     fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
