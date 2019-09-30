@@ -637,7 +637,7 @@ class Surface(object):
         """Re-express LUT in another space"""
 
         src_inds, dest_inds = self.reindexing_filter(space)
-        fltr = np.isin(src_inds, self.assocs_keys, assume_unique=True)
+        fltr = np.in1d(src_inds, self.assocs_keys, assume_unique=True)
         return dest_inds[fltr]
 
 
@@ -655,7 +655,7 @@ class Surface(object):
             return bridges 
         else: 
             src_inds, dest_inds = self.reindexing_filter(space)
-            fltr = np.isin(src_inds, bridges, assume_unique=True)
+            fltr = np.in1d(src_inds, bridges, assume_unique=True)
             return dest_inds[fltr]
 
 
@@ -853,7 +853,7 @@ class Surface(object):
                     stride)
 
                 # Romeve those which are present in the LUT / allIJKs arrays
-                keep = np.isin(LUT, voxRange, assume_unique=True, invert=True)
+                keep = np.in1d(LUT, voxRange, assume_unique=True, invert=True)
                 LUT = LUT[keep]
                 allIJKs = allIJKs[keep,:]
                 
