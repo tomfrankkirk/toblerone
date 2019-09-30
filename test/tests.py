@@ -34,7 +34,13 @@ class Toblerone_Tests(unittest.TestCase):
             s2r, supersampler, False, multiprocessing.cpu_count())
 
         truth = np.squeeze(nibabel.load('sph_fractions.nii.gz').get_fdata())
+        np.testing.assert_array_almost_equal(fracs, truth, 1)
         self.assertTrue(True)
 
     def test_struct(self):
+        fracs = toblerone.estimate_structure(surf='L_Puta.surf.gii', 
+            ref='sph_fractions.nii.gz', struct2ref='I')
         
+        truth = np.squeeze(nibabel.load('L_Puta_fracs.nii.gz').get_fdata())
+        np.testing.assert_array_almost_equal(fracs, truth, 1)
+        self.assertTrue(True)
