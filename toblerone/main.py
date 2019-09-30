@@ -257,7 +257,8 @@ def estimate_all(**kwargs):
        output['cortex' + t] = (ctx[:,:,:,i])
 
     output['cortexmask'] = ctxmask
-    stacked = stack_images(output)
+    stacked = stack_images(
+        {k:v for k,v in output.items() if k not in ['BrStem', 'cortexmask']})
     output['GM'] = stacked[:,:,:,0]
     output['WM'] = stacked[:,:,:,1]
     output['nonbrain'] = stacked[:,:,:,2]
@@ -473,15 +474,11 @@ def stack_images(images):
 
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
-    all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
+    reqd_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
         'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
-    if not all([k in all_keys for k in images.keys()]):
+    reqd_keys.remove('BrStem')
+    if not all([k in images.keys() for k in reqd_keys]):
         raise RuntimeError("Did not find expected keys in images dict")
-
-    images = copy.deepcopy(images)
-    if 'cortexmask' in images: 
-        images.pop('cortexmask')
-        images.pop('BrStem')
     
     # Pop out FAST's estimates  
     csf = images.pop('FAST_CSF').flatten()
