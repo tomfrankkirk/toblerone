@@ -32,7 +32,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     surfs = [ s for h in hemispheres for s in h.surfs() ]
 
     for s in surfs: 
-        s.index_on(space, struct2ref)
+        s.index_on(space, struct2ref, cores)
 
     # Estimate PV fractions for each surface
     for h in hemispheres:
@@ -113,7 +113,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
         an array of size refSpace.size containing the PVs. 
     """
 
-    surf.index_on(space, struct2ref)
+    surf.index_on(space, struct2ref, cores)
     surf._estimate_fractions(supersampler, cores, ones)
     
     return surf.output_pvs(space)
