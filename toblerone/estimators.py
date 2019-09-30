@@ -78,7 +78,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     if np.any(outPVs < 0.0):
         raise RuntimeError("Negative PV returned")
 
-    if not np.all(np.sum(outPVs, axis=1) == 1.0):
+    if not np.all(outPVs.sum(1) == 1.0):
         raise RuntimeError("PVs do not sum to 1")
 
     # Form the surface mask (3D logical) as any voxel containing GM or 
