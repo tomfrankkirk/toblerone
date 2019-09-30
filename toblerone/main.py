@@ -6,9 +6,8 @@ import copy
 import shutil
 import time 
 import subprocess
-import glob 
-
 import nibabel
+
 import numpy as np
 import tqdm
 
@@ -85,19 +84,11 @@ def enforce_and_load_common_arguments(func):
             kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
             kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
 
-            if not kwargs.get('struct'):
-                if kwargs.get('flirt'): 
-                    matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
-                    nonroi2roi = np.loadtxt(matpath)
-                    if np.any(np.abs(nonroi2roi[0:3,3])):
-                        print("Warning: T1 has been cropped relative to T1_orig within anat dir.\n" + 
-                            "Please ensure the struct2ref FLIRT matrix is referenced to T1, not T1_orig")
+            s = op.join(kwargs['anat'], 'T1.nii.gz')
+            if not op.isfile(s):
+                raise RuntimeError("Could not find T1.nii.gz in the anat dir")
 
-                s = op.join(kwargs['anat'], 'T1.nii.gz')
-                kwargs['struct'] = s
-                if not op.isfile(s):
-                    raise RuntimeError("Could not find T1.nii.gz in the anat dir")
-
+            kwargs['struct'] = s
  
         # Structural to reference transformation. Either as array or path
         # to file containing matrix
@@ -149,7 +140,7 @@ def enforce_and_load_common_arguments(func):
 
         # Processor cores
         if not kwargs.get('cores'):
-            kwargs['cores'] = max([multiprocessing.cpu_count()-1, 1])
+            kwargs['cores'] = multiprocessing.cpu_count()
 
         # Supersampling factor
         sup = kwargs.get('super')
@@ -159,7 +150,7 @@ def enforce_and_load_common_arguments(func):
                     sup = np.array([int(s) for s in sup])
                 else: 
                     sup = int(sup[0])
-                    sup = np.array(3 * [sup])
+                    sup = np.array([sup for _ in range(3)])
 
                 if type(sup) is not np.ndarray: 
                     raise RuntimeError() 
@@ -282,9 +273,8 @@ def estimate_structure(**kwargs):
 
     Optional args: 
         space: space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set as 'first' and provide 'struct'. 
-        struct: path to structural image from which surfaces were derived, reqd
-            for FIRST surfaces. 
+            for FIRST surfaces set 'first' (FSL convention). 
+        struct: path to structural image from which surfaces were derived
         cores: number of cores to use 
  
     Returns: 
@@ -295,14 +285,7 @@ def estimate_structure(**kwargs):
     if not bool(kwargs.get('surf')):
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
-    if not kwargs.get('space'): 
-        kwargs['space'] = 'world'
-
     if type(kwargs['surf']) is str: 
-        if (kwargs['surf'].count('first')) and (kwargs['space'] == 'world'):
-            print("Warning: surface seems to be from FIRST but space was set" +
-                " as 'world'. Check the docstring for help.")
-
         surf = Surface(kwargs['surf'], kwargs['space'], kwargs['struct'], 
             op.split(kwargs['surf'])[1])
     
@@ -446,34 +429,8 @@ def stack_images(images):
         single 4D array of PVs, arranged GM/WM/non-brain in the 4th dim
     """
 
-    # The logic is as follows: 
-    # Initialise everything as non-brain
-    # Write in PV estimates from the cortical surfaces. This sets the cortical GM
-    # and also all subcortical tissue as WM 
-    # Layer on top FAST's CSF estimates as non-brain. This is because surface methods
-    # dom't pick up ventricular or mid-brain CSF, so wherever FAST has found more CSF
-    # than Toblerone we will take that higher estimate 
-    # Layer in subcortical GM from each individual FIRST structure (except brain stem). 
-    # After adding in each structure's GM, recalculate CSF as either the existing amount, 
-    # or reduce the CSF estimate if the total (GM + CSF) > 1
-    # If there is any remainder unassigned in the voxel, set that as WM
-
-    # To summarise, the tissues are stacked up as: 
-    # All CSF 
-    # Cortical GM
-    # Then within the subcortex only: 
-        # All subcortical volume set as WM 
-        # Subcortical CSF fixed using FAST 
-        # Add in subcortical GM for each structure, reducing CSF if required 
-        # Set the remainder 1 - (GM+CSF) as WM in voxels that were updated 
-
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
-    all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
-        'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
-    if not all([k in all_keys for k in images.keys()]):
-        raise RuntimeError("Did not find expected keys in images dict")
-
     images = copy.deepcopy(images)
     if 'cortexmask' in images: 
         images.pop('cortexmask')
@@ -483,7 +440,7 @@ def stack_images(images):
     csf = images.pop('FAST_CSF').flatten()
     wm = images.pop('FAST_WM').flatten()
     gm = images.pop('FAST_GM')
-    shape = (*gm.shape[0:3], 3)
+    shape = list(gm.shape[0:3]) + [3]
 
     # Pop the cortex estimates and initialise output as all CSF
     ctxgm = images.pop('cortex_GM').flatten()
@@ -493,38 +450,47 @@ def stack_images(images):
     out = np.zeros_like(ctx)
     out[:,2] = 1
 
-    # Then write in Toblerone's cortex estimates from all voxels
-    # that contain either WM or GM (on the ctx image)
+    # Then write in Toblerone's filled cortex estimates from the 
+    # cortex inwards 
     mask = np.logical_or(ctx[:,0], ctx[:,1])
     out[mask,:] = ctx[mask,:]
 
-    # Layer in FAST's CSF estimates (to get mid-brain and ventricular CSF). 
-    # Where FAST has suggested a higher CSF estimate than currently exists, 
-    # and the voxel does not intersect the cortical ribbon, accept FAST's 
-    # estimate. Then update the WM estimates, reducing where necessary to allow
-    # for the greater CSF volume
-    GM_threshold = 0.01 
-    ctxmask = (ctx[:,0] > GM_threshold)
-    to_update = np.logical_and(csf > out[:,2], ~ctxmask)
-    tmpwm = out[to_update,1]
-    out[to_update,2] = csf[to_update]
-    out[to_update,1] = np.minimum(tmpwm, 1 - (out[to_update,2] + out[to_update,0]))
+    # Overwrite using FAST's CSF estimate. Where FAST has suggested a higher
+    # CSF estimate than currently exists, and the voxel is not within the pure
+    # cortex, accept FAST's estimate. Then update the other tissues estimates
+    # in these voxels in the order GM, then WM. This is because we always have 
+    # higher confidence in a GM estimate than WM. 
+    ctxmask = (ctx[:,0] > 0)
+    updates = np.logical_and(csf > out[:,2], ~ctxmask)
+    tmpwm = out[updates,1]
+    tmpgm = out[updates,0]
+    out[updates,2] = csf[updates]
+    out[updates,0] = np.minimum(tmpgm, 1 - out[updates,2])
+    out[updates,1] = np.minimum(tmpwm, 1 - (out[updates,0] + out[updates,2]))
 
-    # Sanity checks: total tissue PV in each vox should sum to 1
-    assert np.all(out[to_update,0] <= GM_threshold), 'Some update voxels have GM'
-    assert np.all(np.abs(out.sum(1) - 1) < 1e-6), 'Voxel PVs do not sum to 1'
+    # Sanity check: total tissue PV in each vox should sum to 1
+    assert np.all(np.abs(out.sum(1) - 1) < 1e-6)
+
+    # Prepare the WM weights to be used when writing in PVs from subcortical 
+    # structures. Lots of tricks are needed to avoid zero- or small-divisions. 
+    # These are taken from FAST's WM/CSF estimates. 
+    div = utils._clipArray(wm+csf)
+    divmask = (div > 0)
+    wmweights = np.zeros_like(wm)
+    wmweights[divmask] = wm[divmask] / div[divmask] 
+    wmweights = utils._clipArray(wmweights)
 
     # For each subcortical structure, create a mask of the voxels which it 
-    # relates to. The following operations then apply only to those voxels 
-    # All subcortical structures interpreted as pure GM 
-    # Update CSF to ensure that GM + CSF in those voxels < 1 
-    # Finally, set WM as the remainder in those voxels.
+    # relates to. Write in the PVs as GM
     for s in images.values():
         smask = (s.flatten() > 0)
         out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
-        out[smask,2] = np.minimum(out[smask,2], 1 - out[smask,0])
-        out[smask,1] = 1 - (out[smask,0] + out[smask,2])
 
+        # And then for the remainders, ie, 1-PV, distribute it amongst
+        # WM and CSF in the proportion of these tissue that FAST assigned. 
+        out[smask,1] = np.maximum(0, wmweights[smask] * (1-out[smask,0]))
+        out[smask,2] = np.maximum(0, 1-np.sum(out[smask,0:2], axis=1))
+        
     # Final sanity check, then rescaling so all voxels sum to unity. 
     sums = out.sum(1)
     assert np.all(np.abs(sums - 1) < 1e-6)
