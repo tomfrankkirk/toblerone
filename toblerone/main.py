@@ -475,6 +475,7 @@ def stack_images(images):
     # to play with the caller's copy. Pop unwanted images
     all_keys = utils.STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
         'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
+    all_keys.remove('BrStem')
     if not all([k in all_keys for k in images.keys()]):
         raise RuntimeError("Did not find expected keys in images dict")
 
