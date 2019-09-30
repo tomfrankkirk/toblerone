@@ -246,7 +246,7 @@ def estimate_all(**kwargs):
     # All the extra stuff (tqdm etc) is used for progress bar
     results = [ pv for _, pv in 
         tqdm.tqdm(enumerate(map(estimator, structures)), 
-        total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
+        total=len(structures), desc=desc, bar_format=core.__BAR_FORMAT, 
         ascii=True) ] 
 
     output.update(dict(zip([s.name for s in structures], results)))
