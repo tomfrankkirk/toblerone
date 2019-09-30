@@ -785,7 +785,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 33)
+    workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 40)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, supersampler)
 
@@ -820,21 +820,23 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
 
 
-def _estimateFractionsWorker(surf, voxIJK, supersampler, 
-        workerVoxList):
+def _estimateFractionsWorker(surf, supersampler, chunk):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
     # estimateVoxelFraction can throw, in which case we want to return the 
     # exception to the caller instead of raising it here (within a parallel
     # pool the exception will not be raised)
     try:
-        partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
+        pvs = np.zeros(len(chunk), dtype=np.float32)
+        vox_inds = surf.assocs_keys[chunk]
+        vox_ijks = np.array(np.unravel_index(vox_inds, surf._index_space.size),
+            dtype=np.float32).T
 
-        for idx, v in enumerate(surf.assocs_keys[workerVoxList]):
-            partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
-                v, supersampler)  
+        for idx in range(len(chunk)):
+            pvs[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
+                vox_inds[idx], supersampler)  
         
-        return partialVolumes
+        return pvs
 
     except Exception as e:
         return e
