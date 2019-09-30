@@ -72,7 +72,7 @@ def _checkSurfaceNormals(surf, size):
             in voxel coordinates and associations have been formed
     """
 
-    if (surf.xProds is None) or (surf.LUT is None): 
+    if (surf.xProds is None) or (surf.assocs_keys is None): 
         raise RuntimeError("surf.calculateXprods and surf.formAssociations" +
             " must have been called on the surface prior to this function")
 
@@ -820,7 +820,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     voxIJKs = utils._coordinatesForGrid(size).astype(np.float32)
-    workerChunks = utils._distributeObjects(range(surf.LUT.size), 33)
+    workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 33)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, voxIJKs, supersampler)
 
@@ -865,7 +865,7 @@ def _estimateFractionsWorker(surf, voxIJK, supersampler,
     try:
         partialVolumes = np.zeros(len(workerVoxList), dtype=np.float32)
 
-        for idx, v in enumerate(surf.LUT[workerVoxList]):
+        for idx, v in enumerate(surf.assocs_keys[workerVoxList]):
             partialVolumes[idx] = _estimateVoxelFraction(surf, voxIJK[v,:], 
                 v, supersampler)  
         
