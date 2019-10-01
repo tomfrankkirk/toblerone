@@ -265,8 +265,3 @@ def fsl_fs_anat_cmd(*args):
     kwargs = vars(parser.parse_args(args))
     main.fsl_fs_anat(**kwargs)
 
-
-def tests_cmd():
-    """Run test suite (warning, takes some time)"""
-
-    testing.run_tests()
