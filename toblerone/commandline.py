@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from . import main, utils
+from . import main, utils, testing
 from .classes import CommonParser, ImageSpace
 
 suffix = (
@@ -264,3 +264,9 @@ def fsl_fs_anat_cmd(*args):
     parser.add_argument('-out', type=str, required=False)
     kwargs = vars(parser.parse_args(args))
     main.fsl_fs_anat(**kwargs)
+
+
+def tests_cmd():
+    """Run test suite (warning, takes some time)"""
+
+    testing.run_tests()
