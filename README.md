@@ -33,9 +33,7 @@ The FLIRT matrix adjustment code was supplied by Tim Coalson and Martin Craig, a
 
 The triangle-voxel intersection test is a direct port of Tomas Akenine-Moller's code (http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt).
 
-Martin Craig generously did almost all the trouble-shooting and module creation for this code. 
-
-With thanks to all the above.
+Martin Craig generously did the vast-majority of trouble shooting and setup for this module. 
 
 ## License
 

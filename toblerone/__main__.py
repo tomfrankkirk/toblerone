@@ -2,7 +2,7 @@ import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
 from toblerone.commandline import estimate_structure_cmd, resample_cmd 
-from toblerone.commandline import fsl_fs_anat_cmd, suffix, tests_cmd
+from toblerone.commandline import fsl_fs_anat_cmd, suffix
 
 def main():
 
@@ -22,15 +22,13 @@ Usage:
                             step for other Toblerone functions)
 
 -resample               resampling via super-resolution method (as in FSL's applywarp)           
-
--tests                  run the test suite (warning, takes some time)
 """)
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, fsl_fs_anat_cmd, resample_cmd, tests_cmd]
+        estimate_structure_cmd, fsl_fs_anat_cmd, resample_cmd]
     names = ['-estimate_all', '-estimate_cortex', '-estimate_structure', 
-        '-fsl_fs_anat', '-resample', '-tests']
+        '-fsl_fs_anat', '-resample']
 
     args = sys.argv
 
@@ -49,7 +47,7 @@ Usage:
         for f, n in zip(funcs, names):
             if name == n:
                 matched = True 
-                if (fargs) or (name == '-tests'):
+                if fargs:
                     f(*fargs)
                 else:
                     print(f.__doc__ + suffix)

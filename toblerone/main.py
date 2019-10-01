@@ -73,7 +73,7 @@ def enforce_and_load_common_arguments(func):
             raise RuntimeError("Path to reference image must be given")
 
         if not op.isfile(kwargs['ref']):
-            raise RuntimeError("Reference image does not exist")
+            raise RuntimeError("Reference image %s does not exist" % kwargs['ref'])
 
         # If given a anat_dir we can load the structural image in 
         if kwargs.get('anat'):
