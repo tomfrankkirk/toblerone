@@ -22,6 +22,13 @@ To check the installation you can run `toblerone -tests`
 
 #### Python scripting
 
+The python interface provides more control over the individual functions and also allows you to assemble your own PV estimation framework (if the standard ones listed below are not suitable). The following are available at the module level (ie, `toblerone.estimate_all`)
+
+- `fsl_fs_anat` Pre-processing step for neuroimaging applications. Runs FSL's `fsl_anat` script (cropping, re-orienting, bias-field correction, brain extraction, tissue segmentation via FAST and subcortical structure segmentation via FIRST) on a T1 image and then augments the output with FreeSurfer's `recon-all` to get cortical surfaces. The output of this (referred to as an `anat_dir`) can then be passed as an input to other functions.  
+
+- `estimate_structure` Estimate PVs arising from a structure defined by a single surface. Structures defined by multiple surfaces can be processed by estimating on each individual surface and subtracting the results (as is done in `estimate_cortex`). This returns an array of size equal to the reference image space, where the value in each position corresponds to the proportion of that voxel that is *interior* to the structure. 
+
+- `estimate_cortex` Estimate PVs within the cortical ribbon (either one or both hemispheres). If both hemispheres are requested (default) then the results from each will be combined into a single image. Returns an array of size equal to the reference, extended to three volumes in the 4th dimension (eg X Y Z 3), where the three values in each position give the GM, WM and non-brain (CSF + background + everything else) PVs respectively.  
 
 #### Command line 
 
