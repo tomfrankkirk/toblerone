@@ -94,7 +94,7 @@ class ImageSpace(object):
         corner, not center
         """
 
-        orig = 3 * [-0.5]
+        orig = np.array(3 * [-0.5])
         return utils._affineTransformPoints(orig, self.vox2world)
 
 

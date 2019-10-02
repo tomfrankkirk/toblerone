@@ -14,16 +14,22 @@ from toblerone import estimators
 cores = multiprocessing.cpu_count()
 
 def get_testdir():
-    pwd = op.realpath(__file__)
-    return op.abspath(op.join(pwd, '../../../testdata'))
+    return op.dirname(op.realpath(__file__))
 
 def test_indexing():
     td = get_testdir()
     surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
-    spc = toblerone.ImageSpace(op.join(td, 'sph_fractions.nii.gz'))
+    spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
     surf.index_on(spc, np.identity(4))
-    truth = pickle.load(gzip.open(op.join(td, 'sph_indexed.gz')))
-    assert surf.assocs == truth
+    truth = pickle.load(gzip.open(op.join(td,'sph_indexed.gz')))
+    truthspace = truth._index_space
+    space = surf._index_space
+    assert surf.assocs == truth.assocs
+    assert np.all(space.origin == truthspace.origin)
+    assert np.all(space.size == truthspace.size)
+    assert np.all(space.offset == truthspace.offset)
+    assert np.array_equal(surf.voxelised, truth.voxelised)
+
 
 def test_sph():
     td = get_testdir()
@@ -36,7 +42,7 @@ def test_sph():
         s2r, supersampler, False, multiprocessing.cpu_count())
 
     truth = np.squeeze(nibabel.load(op.join('sph_fractions.nii.gz')).get_fdata())
-    assert np.testing.assert_array_almost_equal(fracs, truth, 1)
+    np.testing.assert_array_almost_equal(fracs, truth, 1)
 
 def test_struct():
     td = get_testdir()
@@ -45,4 +51,4 @@ def test_struct():
     
     truth = np.squeeze(nibabel.load(
         op.join(td, 'L_Puta_fracs.nii.gz')).get_fdata())
-    assert np.testing.assert_array_almost_equal(fracs, truth, 1)
+    np.testing.assert_array_almost_equal(fracs, truth, 1)
