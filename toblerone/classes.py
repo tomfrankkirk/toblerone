@@ -62,7 +62,6 @@ class ImageSpace(object):
         self.size = img.header['dim'][1:4]
         self.vox_size = img.header['pixdim'][1:4]
         self.vox2world = img.affine
-        self.world2vox = np.linalg.inv(self.vox2world)
         self._offset = None   
 
 
@@ -88,7 +87,7 @@ class ImageSpace(object):
 
 
     @property
-    def origin(self): 
+    def bbox_origin(self): 
         """
         Origin of the image's bounding box, referenced to first voxel's 
         corner, not center
@@ -96,6 +95,11 @@ class ImageSpace(object):
 
         orig = np.array(3 * [-0.5])
         return utils._affineTransformPoints(orig, self.vox2world)
+
+
+    @property
+    def world2vox(self):
+        return np.linalg.inv(self.vox2world)
 
 
     def supersample(self, factor):
@@ -113,32 +117,59 @@ class ImageSpace(object):
         if not len(factor) == 3:
             raise RuntimeError("Factor must have length 3")
 
+        factor = np.array(factor)
         newSpace = copy.deepcopy(self)
 
-        newSpace.size = (self.size * factor).round()
-        newSpace.vox_size = self.vox_size / factor
-        for r in range(3):
-            newSpace.vox2world[0:3,r] /= factor[r]
+        newSpace.size = (self.size * factor).astype(np.int16)
+        newSpace.vox_size /= factor
+        newSpace.vox2world[0:3,0:3] /= factor[None,:]
 
-        # Start at the vox centre of [0 0 0] on the original grid
-        # Move in by 0.5 voxels along the diagonal direction vector of the voxel
-        # Then move back out by 0.5 voxels of the NEW direction vector to get
-        # the vox cent for [0 0 0] within the new grid
-        orig = (self.vox2world[0:3,3] 
-            - 0.5 * np.sum(self.vox2world[0:3,0:3], axis=1))
-        new = orig + 0.5 * np.sum(newSpace.vox2world[0:3,0:3], axis=1)
-        newSpace.vox2world[0:3,3] = new 
+        # Get the corner of the reference space bounding box 
+        # Then move in by 0.5 voxels of the new voxel grid to the find the point 
+        # corresponding to voxel (0,0,0) on the new grid 
+        new_orig = self.bbox_origin + (newSpace.vox2world[0:3,0:3] @ np.array((3*[0.5])))
+        newSpace.vox2world[0:3,3] = new_orig
 
         # Check the bounds of the new voxel grid we have created
-        svertices = np.array(list(itertools.product([-0.5, newSpace.size[0] - 0.5], 
-            [-0.5, newSpace.size[1] - 0.5], [-0.5, newSpace.size[2] - 0.5])))
-        rvertices = np.array(list(itertools.product([-0.5, self.size[0] - 0.5], 
-            [-0.5, self.size[1] - 0.5], [-0.5, self.size[2] - 0.5])))
-        rvertices = utils._affineTransformPoints(rvertices, self.vox2world)
-        svertices = utils._affineTransformPoints(svertices, newSpace.vox2world)
-        assert np.all(np.abs(rvertices - svertices) < 1e-6)
+        np.testing.assert_array_almost_equal(self.bbox_origin, newSpace.bbox_origin, 6)
+        box_diag_ref = self.vox2world[0:3,0:3] @ self.size 
+        box_diag_new = newSpace.vox2world[0:3,0:3] @ newSpace.size 
+        np.testing.assert_array_almost_equal(box_diag_ref, box_diag_new, 6)
 
         return newSpace
+
+
+    def subsample(self):
+        pass 
+
+
+    def crop(self, start_extents, end_extents):
+
+        start_extents = np.array(start_extents)
+        end_extents = np.array(end_extents)
+        if (start_extents.size != 3) and (end_extents.size != 3):
+            raise RuntimeError("Extents must be 3 elements each")
+
+        if not np.all(end_extents > start_extents):
+            raise RuntimeError("End extents must be smaller than start_extents")
+
+        if np.any(start_extents < 0):
+            raise RuntimeError("Start extents must be positive")
+
+        if np.any(end_extents > spc.size):
+            raise RuntimeError("End extents exceed image size")
+
+        new_size = end_extents - start_extents
+        if not np.any(new_size < self.size):
+            print("Warning: this combination of start/end does not crop in any dimension")
+
+        new = copy.deepcopy(self)
+        new_orig = self.vox2world[0:3,3] + (self.vox2world[0:3,0:3] @ start_extents) 
+        new.vox2world[0:3,3] = new_orig
+        new.size = new_size 
+
+        return new 
+
 
 
     def save_image(self, data, path):
@@ -162,6 +193,7 @@ class ImageSpace(object):
 
         nii = nibabel.nifti2.Nifti2Image(data, self.vox2world)
         nibabel.save(nii, path)
+
 
     @classmethod
     def minimal_enclosing(cls, surfs, reference, affine):
@@ -222,7 +254,6 @@ class ImageSpace(object):
         # vox2world matrix accordingly 
         space.size = size 
         space.vox2world[0:3,3] = min_max_mm[0,:]
-        space.world2vox = np.linalg.inv(space.vox2world)
         space.offset = FoVoffset 
 
         check = utils._affineTransformPoints(min_max_mm, space.world2vox)
