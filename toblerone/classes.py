@@ -105,17 +105,24 @@ class ImageSpace(object):
     def supersample(self, factor):
         """
         Produce a new image space which is a copy of the current space, 
-        supersampled by a factor of (a,b,c) in each dimension 
+        upsampled by a factor of (a,b,c) in each dimension 
 
         Args:
-            factor: tuple/list of length 3, ints in each image dimension
+            factor: int, or sequence of 3 ints, multiplier in each dimension 
         
         Returns: 
-            new image space
+            ImageSpace object
         """
 
-        if not len(factor) == 3:
-            raise RuntimeError("Factor must have length 3")
+        if isinstance(factor, int):
+            factor = 3 * [factor]
+        else: 
+            try: 
+                assert len(factor) == 3
+            except Exception as e: 
+                raise RuntimeError("Factor must be an int or sequence of 3 ints")
+
+        factor = np.array(factor)
 
         factor = np.array(factor)
         newSpace = copy.deepcopy(self)
@@ -139,11 +146,65 @@ class ImageSpace(object):
         return newSpace
 
 
-    def subsample(self):
-        pass 
+    def subsample(self, factor, mode='floor'):
+        """
+        Subsample an ImageSpace and return new object. 
+        
+        Args: 
+            factor: int, or sequence of 3 ints, by which each dimension's size
+                will be divided - eg, 2 corresponds to 0.5 original size 
+            mode: 'floor' [defualt] or 'ceil'. if the FoV of the new grid 
+                does not match that of the original, round down/up respectively
+                to get the new extents 
+
+        Returns:
+            ImageSpace object
+        """
+        
+        if (mode != 'floor') and (mode != 'ceil'):
+            raise RuntimeError("Mode must be floor or ceil")
+
+        if isinstance(factor, int):
+            factor = 3 * [factor]
+        else: 
+            try: 
+                assert len(factor) == 3
+            except Exception as e: 
+                raise RuntimeError("Factor must be an int or sequence of 3 ints")
+
+        factor = np.array(factor)
+        if not np.all(factor >= 1):
+            raise RuntimeError("This tool can only be used for down-sampling")
+
+        new = copy.deepcopy(self)
+        if mode == 'floor':
+            func = np.floor 
+        else:
+            func = np.ceil 
+        
+        new.size = func(self.size / factor).astype(np.int16)
+        new.vox2world[0:3,0:3] *= factor[None,:]
+        new.vox_size *= factor 
+        new_orig = self.bbox_origin + (new.vox2world[0:3,0:3] @ np.array([0.5, 0.5, 0.5]))
+        new.vox2world[0:3,3] = new_orig
+
+        return new 
 
 
     def crop(self, start_extents, end_extents):
+        """
+        Crop space to lie between start and end points, return new ImageSpace.
+        0-indexing is used; for example the extents [0, 4] maps to [0,1,2,3]
+
+        Args: 
+            start_extents: sequence of 3 ints, indices from which subspace
+                should start 
+            end_extents: sequence of 3 ints, indices at which the subspace
+                should end 
+
+        Returns:
+            new ImageSpace object 
+        """
 
         start_extents = np.array(start_extents)
         end_extents = np.array(end_extents)
@@ -156,7 +217,7 @@ class ImageSpace(object):
         if np.any(start_extents < 0):
             raise RuntimeError("Start extents must be positive")
 
-        if np.any(end_extents > spc.size):
+        if np.any(end_extents > self.size):
             raise RuntimeError("End extents exceed image size")
 
         new_size = end_extents - start_extents
@@ -171,6 +232,36 @@ class ImageSpace(object):
         return new 
 
 
+    @classmethod 
+    def create(cls, bbox_corner, size, vox_size):
+        """
+        Create an ImageSpace from bounding box location and voxel size. 
+        Note that the voxels will be axis-aligned (no rotation). 
+
+        Args: 
+            bbox_corner: 3-vector, location of the minimum corner of the
+                bounding box, at which the corner of voxel 0 0 0 will lie. 
+            size: 3-vector, number of voxels in each spatial dimension 
+            vox_size: 3-vector, size of voxel in each dimension 
+
+        Returns
+            ImageSpace object 
+        """
+
+        vox_size = np.array(vox_size)
+        size = np.array(size)
+        bbox_corner = np.array(bbox_corner)
+
+        spc = cls.__new__(cls)
+        spc.vox2world = np.identity(4)
+        spc.vox2world[(0,1,2),(0,1,2)] = vox_size
+        orig = bbox_corner + (np.array((3*[0.5])) @ spc.vox2world[0:3,0:3])
+        spc.vox2world[0:3,3] = orig 
+        spc.size = size 
+        spc.vox_size = vox_size
+    
+        return spc 
+
 
     def save_image(self, data, path):
         """Save 3D or 4D data array at path using this image's voxel grid"""
@@ -180,7 +271,7 @@ class ImageSpace(object):
                 warnings.warn("Reshaping data to 3D volume")
                 data = data.reshape(self.size)
             elif not(data.size % np.prod(self.size)):
-                warnings.warn("Reshaping data to 4D volume")
+                warnings.warn("Saving as 4D volume")
                 data = data.reshape((*self.size, -1))
             else:
                 raise RuntimeError("Data size does not match image size")
@@ -460,7 +551,7 @@ class Surface(object):
         m0.update(common)
         ps = nibabel.gifti.GiftiDataArray(self.points, 
             intent='NIFTI_INTENT_POINTSET', 
-            coordsys=nibabel.gifti.GiftiCoordSystem(1,1), 
+            coordsys=nibabel.gifti.GiftiCoordSystem(1,1),  
             datatype='NIFTI_TYPE_FLOAT32', 
             meta=nibabel.gifti.GiftiMetaData.from_dict(m0))
 
