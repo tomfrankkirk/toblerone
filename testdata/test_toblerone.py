@@ -52,3 +52,7 @@ def test_struct():
     truth = np.squeeze(nibabel.load(
         op.join(td, 'L_Puta_fracs.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs, truth, 1)
+
+def test_imagespace():
+    spc = toblerone.ImageSpace('sph_fractions.nii.gz')
+    sspc = spc.supersample([2,2,2])
