@@ -56,3 +56,6 @@ def test_struct():
 def test_imagespace():
     spc = toblerone.ImageSpace('sph_fractions.nii.gz')
     sspc = spc.supersample([2,2,2])
+
+    assert np.all(spc.bbox_origin == sspc.bbox_origin)
+    assert np.all(spc.FoV_size == sspc.FoV_size)
