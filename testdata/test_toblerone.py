@@ -25,7 +25,7 @@ def test_indexing():
     truthspace = truth._index_space
     space = surf._index_space
     assert surf.assocs == truth.assocs
-    assert np.all(space.origin == truthspace.origin)
+    assert np.all(space.bbox_origin == truthspace.bbox_origin)
     assert np.all(space.size == truthspace.size)
     assert np.all(space.offset == truthspace.offset)
     assert np.array_equal(surf.voxelised, truth.voxelised)
