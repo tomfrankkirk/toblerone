@@ -259,6 +259,7 @@ class ImageSpace(object):
             path += '.nii.gz'
 
         nii = nibabel.nifti2.Nifti2Image(data, self.vox2world)
+        nii.header.set_xyzt_units(2,None)
         nibabel.save(nii, path)
 
 
