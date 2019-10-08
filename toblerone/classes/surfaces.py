@@ -406,7 +406,7 @@ class Surface(object):
         """
 
         group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
-            for a in self.assocs])
+            for a in self.assocs.values() ])
         bridges = self.assocs_keys[group_counts > 1]
         if space is self._index_space:
             return bridges 
