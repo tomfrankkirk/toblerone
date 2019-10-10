@@ -150,6 +150,12 @@ class Surface(object):
 
     def save(self, path):
         """Save surface as GIFTI file at path"""
+
+        if not path.endswith('.surf.gii'):
+            if path.endswith('.gii'):
+                path.replace('.gii', '.surf.gii')
+            else: 
+                path += '.surf.gii'
         
         if self.name is None: 
             warnings.warn("Surface has no name: will save as type 'Other'")
@@ -391,7 +397,7 @@ class Surface(object):
 
     @ensure_derived_space
     def reindex_LUT(self, space):
-        """Re-express LUT in another space"""
+        """Return a copy of LUT indices expressed in another space"""
 
         src_inds, dest_inds = self.reindexing_filter(space)
         fltr = np.in1d(src_inds, self.assocs_keys, assume_unique=True)
