@@ -344,7 +344,7 @@ def _world_to_FLIRT(source, reference, transform):
 
 
 
-def _affineTransformPoints(points, affine):
+def affineTransformPoints(points, affine):
     """Apply affine transformation to set of points.
 
     Args: 
