@@ -120,7 +120,7 @@ class Surface(object):
             # Convert from FSL scaled voxel mm to struct voxel coords
             # Then to world mm coords
             ps /= structSpace.vox_size
-            ps = utils._affineTransformPoints(ps, structSpace.vox2world)
+            ps = utils.affineTransformPoints(ps, structSpace.vox2world)
 
         self.points = ps.astype(np.float32)
         self.tris = ts.astype(np.int32)
@@ -434,7 +434,7 @@ class Surface(object):
     def applyTransform(self, transform):
         """Apply affine transformation (4x4 array) to surface coordinates"""
 
-        self.points = (utils._affineTransformPoints(
+        self.points = (utils.affineTransformPoints(
             self.points, transform).astype(np.float32))
 
 
