@@ -78,7 +78,7 @@ class Surface(object):
             gft = nibabel.load(path).darrays
             ps, ts = tuple(map(lambda o: o.data, gft))
         elif surfExt == '.vtk':
-            obj = vtki.PolyData(path)
+            obj = pyvista.PolyData(path)
             err = RuntimeError("Surface cannot be cast to triangle data")
             if obj.faces.size % 4:
                 raise err
