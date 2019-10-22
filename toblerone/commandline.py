@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from . import main, utils, testing
+from . import main, utils
 from .classes import CommonParser, ImageSpace
 
 suffix = (
