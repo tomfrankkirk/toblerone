@@ -219,14 +219,9 @@ def estimate_all_cmd(*args):
     # path as the output directory and name as the basic filename. Otherwise we
     # use the input directory for output
     outdir = ''
-    namebase = ''
     ext = '.nii.gz'
     if kwargs.get('out'):
-        outdir = op.split(kwargs['out'])[0]
-        namebase = utils._splitExts(kwargs['out'])[0]
-    
-    if not namebase:
-        namebase = utils._splitExts(kwargs['ref'])[0]
+        outdir = op.dirname(kwargs['out'])
 
     if not outdir: 
         outdir = op.join(op.dirname(kwargs['ref']), namebase + '_surfpvs')
@@ -241,11 +236,10 @@ def estimate_all_cmd(*args):
     refSpace = ImageSpace(kwargs['ref'])
     for k, o in output.items():
         if k in ['stacked', 'GM', 'WM', 'nonbrain']:
-            path = op.join(outdir, namebase + ext)
+            path = op.join(outdir, k + ext)
         else: 
-            path = op.join(intermediatedir, namebase + ext)
-        refSpace.save_image(o, 
-            utils._addSuffixToFilename('_' + k, path))
+            path = op.join(intermediatedir, k + ext)
+        refSpace.save_image(o, path)
 
 
 def fsl_fs_anat_cmd(*args):
