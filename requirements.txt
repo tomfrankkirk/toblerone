@@ -3,5 +3,4 @@ nibabel
 numpy
 scipy
 tqdm
-vtk
 pyvista
