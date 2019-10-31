@@ -176,11 +176,11 @@ def enforce_and_load_common_arguments(func):
 
         return kwargs
 
-    def enforced(**kwargs):
-        kwargs = enforcer(**kwargs)
+    def common_args_enforced(**kwargs):
+        kwargs = common_args_enforced(**kwargs)
         return func(**kwargs)
 
-    return enforced
+    return common_args_enforced
 
 
 @timer
