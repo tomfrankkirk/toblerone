@@ -42,7 +42,7 @@ def estimate_cortex_cmd(*args):
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
-        -out: path to save output (default alongside ref, using same basename)
+        -out: directory to save output within (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
     """
     
@@ -63,23 +63,24 @@ def estimate_cortex_cmd(*args):
     PVs, mask = main.estimate_cortex(**kwargs)
 
     # Output 
+    ext = '.nii.gz'
     if not kwargs.get('out'):
-        kwargs['out'] = utils._default_output_path(kwargs['ref'], 
-            kwargs['ref'])
+        namebase = op.splitext(utils._splitExts(kwargs['ref'])[0])[0]
+        outdir = op.join(op.dirname(kwargs['ref']), namebase + '_cortexpvs')
+    else: 
+        outdir = kwargs['out']
 
-    outPath = utils._addSuffixToFilename('_cortex_pvs', kwargs['out'])
-    maskPath = utils._addSuffixToFilename('_cortexmask', kwargs['out'])
-
+    utils._weak_mkdir(outdir)
     refSpace = ImageSpace(kwargs['ref'])
-    print("Saving output to", kwargs['outdir'])
+    maskPath = op.join(outdir, 'cortexmask' + ext)
     refSpace.save_image(mask, maskPath)
 
-    if kwargs.get('stack'):
-        refSpace.save_image(PVs, outPath)    
-    else:
-        for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
-            refSpace.save_image(PVs[:,:,:,i], 
-            utils._addSuffixToFilename(t, outPath))
+    print('Saving output at', outdir)
+    p = op.join(outdir, 'stacked' + ext)
+    refSpace.save_image(PVs, p)
+    for i,t in enumerate(['GM', 'WM', 'nonbrain']):
+        p = op.join(outdir, t + ext)
+        refSpace.save_image(PVs[:,:,:,i], p)
 
 
 def resample_cmd(*args):
@@ -152,15 +153,21 @@ def estimate_structure_cmd(*args):
     parser.add_argument('-ones', action='store_true')
     kwargs = parser.parse(args)
 
-    if kwargs.get('out') is None:
-        surfname = utils._splitExts(kwargs['surf'])[0]
-        kwargs['out'] = utils._default_output_path(kwargs['ref'], 
-            kwargs['ref'], '_%s_pvs' % surfname)
+    ext = '.nii.gz'
+    if not kwargs.get('out'):
+        namebase = op.splitext(utils._splitExts(kwargs['ref'])[0])[0]
+        sname = op.splitext(utils._splitExts(kwargs['surf'])[0])[0]
+        outdir = op.dirname(kwargs['ref'])
+        kwargs['out'] = op.join(outdir, '%s_%s_pvs%s' % (namebase, sname, ext))
+    else: 
+        if not kwargs['out'].endswith(ext):
+            kwargs['out'] += ext 
 
     # Estimate
     PVs = main.estimate_structure(**kwargs)
 
     # Output
+    print('Saving output at', kwargs['out'])
     refSpace = ImageSpace(kwargs['ref'])
     refSpace.save_image(PVs, kwargs['out'])
 
@@ -188,7 +195,7 @@ def estimate_all_cmd(*args):
     Optional args: 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -cores: number of cores to use
-        -out: path to save output (default alongside ref)
+        -out: directory to save output within (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
     """
     
@@ -211,20 +218,21 @@ def estimate_all_cmd(*args):
         if not op.isdir(kwargs.get('anat')):
             raise RuntimeError("anat dir %s does not exist" % kwargs['anat'])
     else: 
-        raise RuntimeError("anat dir must be provided (run fsl_fs_anat()")
+        if not all([op.isdir(kwargs['fastdir']), 
+            op.isdir(kwargs['firstdir']), op.isdir(kwargs['fsdir'])]):
+            raise RuntimeError("Either separate -firstdir, -fsdir and -fastdir"+
+                " must be provided, or an -anat dir must be provided")
 
     output = main.estimate_all(**kwargs)
 
-    # Output paths. If given an -out argument of the form path/name then we use
-    # path as the output directory and name as the basic filename. Otherwise we
-    # use the input directory for output
-    outdir = ''
+    # Output paths. If given -out then use that as output, otherwise
+    # save alongside reference image 
     ext = '.nii.gz'
-    if kwargs.get('out'):
-        outdir = op.dirname(kwargs['out'])
-
-    if not outdir: 
+    if not kwargs.get('out'):
+        namebase = op.splitext(utils._splitExts(kwargs['ref'])[0])[0]
         outdir = op.join(op.dirname(kwargs['ref']), namebase + '_surfpvs')
+    else: 
+        outdir = kwargs['out']
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, 'intermediate_pvs')
@@ -234,6 +242,7 @@ def estimate_all_cmd(*args):
     # Load the reference image space and save the various outputs. 
     # 'stacked' goes in the outdir, all others go in outdir/intermediate 
     refSpace = ImageSpace(kwargs['ref'])
+    print('Saving output at', outdir)
     for k, o in output.items():
         if k in ['stacked', 'GM', 'WM', 'nonbrain']:
             path = op.join(outdir, k + ext)

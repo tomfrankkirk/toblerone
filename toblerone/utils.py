@@ -125,31 +125,6 @@ def _loadSurfsToDict(fsdir):
     return surfs
 
 
-def _default_output_path(dir, fname, suffix='', ext=True):
-    """Produce a default path from a dir, filename, optionally adding
-    a suffix and preserving extensions of given filename. 
-
-    Args: 
-        dir: directory to serve as path root
-        fname: file for the basename, eg file1.txt -> file1
-        suffix: to add onto the file eg _suff -> file1_suff
-        ext: bool, preserve the extension of the fname 
-
-    Returns: 
-        path
-    """
-    
-    if op.isfile(dir):
-        dir = op.dirname(dir)
-    fname = op.split(fname)[1]
-    fname, fexts = _splitExts(fname)
-    name = _addSuffixToFilename(suffix, fname)
-    out = op.join(dir, name)
-    if ext:
-        out = out + fexts 
-    return out 
-
-
 def _addSuffixToFilename(suffix, fname):
     """Add suffix to filename, whilst preserving original extension, eg:
     'file.ext1.ext2' + '_suffix' -> 'file_suffix.ext1.ext2'
@@ -188,7 +163,7 @@ def _weak_mkdir(dir):
     """Create a directory if it does not already exist"""
 
     if not op.isdir(dir):
-        os.mkdir(dir)
+        os.makedirs(dir)
 
 
 def _shellCommand(cmd):   
