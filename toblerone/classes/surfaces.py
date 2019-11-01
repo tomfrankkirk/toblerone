@@ -477,7 +477,7 @@ class Surface(object):
             for k in res.keys():
                 associations[k] += res[k]
 
-        # Convert back to dict and assert no empty entries 
+        # Convert back to dict, store attributes on self 
         dct = dict(associations)
         self.assocs = dct 
         self.assocs_keys = np.array(list(self.assocs.keys()), dtype=np.int32)

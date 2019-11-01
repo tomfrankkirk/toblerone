@@ -13,6 +13,7 @@ import copy
 import functools
 import itertools
 import multiprocessing
+import collections 
 
 import numpy as np 
 import tqdm
@@ -130,9 +131,14 @@ def _separatePointClouds(tris):
 
 
 def _formAssociationsWorker(tris, points, size, triInds):
-    """Worker function for use with multiprocessing. See formAssociations"""
+    """
+    Worker function for use with multiprocessing. See formAssociations
+    
+    Returns: 
+        defaultdict, key: vox idx, value: list of tri numbers 
+    """
 
-    workerResults = {}
+    workerResults = collections.defaultdict(list)
     vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 
     for t in triInds:
@@ -149,15 +155,9 @@ def _formAssociationsWorker(tris, points, size, triInds):
             range(minVs[2], maxVs[2] + 1))), dtype=np.float32)
 
         for voxel in neighbourhood: 
-
             if _ctestTriangleVoxelIntersection(voxel, vox_size, tri):
-
-                ind = np.ravel_multi_index(voxel.astype(np.int16), 
-                    size)
-                if ind in workerResults:
-                    workerResults[ind].append(t)
-                else: 
-                    workerResults[ind] = [t]
+                ind = np.ravel_multi_index(voxel.astype(np.int16), size)
+                workerResults[ind].append(t)
     
     return workerResults
 
