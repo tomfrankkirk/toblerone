@@ -133,10 +133,10 @@ def estimate_structure_cmd(*args):
             registration between structural image used to produce surfaces 
             and reference. Use 'I' for identity, if using FLIRT also set -flirt 
         -surf: path to surface (see space argument below)
+        -space: space in which surface is defined: default is 'world' (mm coords),
+            for FIRST surfaces set 'first' (FSL convention). 
 
     Optional args: 
-        space: space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set 'first' (FSL convention). 
         -flirt: bool denoting struct2ref is FLIRT transform. If so, set -struct
         -struct: path to structural image from which surfaces were derived
         -cores: number of cores to use 
