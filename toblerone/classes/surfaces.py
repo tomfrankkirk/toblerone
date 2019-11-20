@@ -241,6 +241,16 @@ class Surface(object):
                 supersampler, desc, cores)
 
 
+    @property
+    def coordsys(self): 
+        if isinstance(self._index_space, ImageSpace):
+            return "voxel"
+        elif self._index_space is None: 
+            return "world"
+        else: 
+            raise RuntimeError("Unexpected _index_space on surface")
+
+
     def index_on(self, space, struct2ref, cores=multiprocessing.cpu_count()):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
@@ -284,6 +294,31 @@ class Surface(object):
         self.calculateXprods()
         self.voxelise()
 
+
+    def deindex(self, struct2ref):
+        """
+        Undo the changes made by index_on(). The original struct2ref 
+        transformation used for indexing must be provided. Converts the
+        surface back to original world coords and removes associations and
+        voxelisation data.
+
+        Returns: 
+            the current ImageSpace used for indexing 
+        """
+
+        if self.coordsys != "voxel":
+            raise RuntimeError("Surface is not indexed")
+
+        else: 
+            spc = copy.copy(self._index_space)
+            self.applyTransform(spc.vox2world)
+            self.applyTransform(np.linalg.inv(struct2ref))
+            self.voxelised = None 
+            self.xProds = None 
+            self.assocs = None 
+            self.assocs_keys = None 
+            self._index_space = None 
+            return spc 
 
     # @ensure_derived_space
     # def reindex_for(self, dest_space):
@@ -404,12 +439,31 @@ class Surface(object):
         return dest_inds[fltr]
 
 
-    @ensure_derived_space
-    def find_bridges(self, space): 
+    def find_bridges(self, space, struct2ref=None): 
         """
         Find voxels within space that are intersected by this surface 
         multiple times
+
+        Args: 
+            space: ImageSpace, or path to image, in which to find bridge voxels
+            struct2ref: (optional) 4x4 affine world-world transformation from 
+                surface coords to the target ImageSpace (NOT VOXEL COORDS). 
+                Required if surface is not already indexed. 
         """
+
+        # If surface not indexed, then do so now 
+        if self.coordsys == "world": 
+            if struct2ref is None:
+                raise RuntimeError("struct2ref arg reqd. for indexing surface")
+            self.index_on(space, struct2ref)
+
+        # Sanity checks to ensure compatability of index space 
+        else: 
+            assert isinstance(self._index_space, ImageSpace)
+            if not self._index_space.derives_from(space):
+                warnings.warn("Surface will be re-indexed to find bridges")
+                self.deindex()
+                self.index_on(space)
 
         group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
             for a in self.assocs.values() ])

@@ -6,24 +6,28 @@ import itertools
 import multiprocessing as mp 
 import scipy.sparse as spmat
 import nibabel 
+from pdb import set_trace
 
 from . import utils 
 from .classes import  ImageSpace, Surface
 
 def vol2surf(img, ins, outs, spc, factor, cores=mp.cpu_count()-1):
 
+    s2r = np.eye(4)
     img = nibabel.load(img)
     data = img.get_fdata()
 
-    if not isinstance(spc, tob.ImageSpace):
-        spc = tob.ImageSpace(spc)
+    if not isinstance(spc, ImageSpace): spc = ImageSpace(spc)
+    if not isinstance(ins, Surface): ins = Surface(ins)
+    if not isinstance(outs, Surface): outs = Surface(outs)
 
-    if not isinstance(ins, tob.Surface):
-        ins = tob.Surface(ins)
-        outs = tob.Surface(outs)
-
-    ins.applyTransform(spc.world2vox)
-    outs.applyTransform(spc.world2vox)
+    # Need to find bridges - for which surfaces must be indexed first
+    # Which in turn means they need to be in voxel coords
+    surfs = [ins, outs]
+    bridges = np.union1d(*(s.find_bridges(spc, s2r) for s in surfs))
+    [ s.deindex(s2r) for s in surfs ]
+    overall = spc.world2vox @ s2r
+    [ s.applyTransform(overall) for s in surfs ]
 
     if len(data.shape) != 1: 
         data = data.reshape(-1)
@@ -130,7 +134,7 @@ def _form_voxtri_mat(ins, outs, spc, factor, cores):
                                outps=outs.points, spc=spc, factor=factor)
     
     if cores > 1: 
-        chunks = tutils._distributeObjects(range(ins.tris.shape[0]), cores)
+        chunks = utils._distributeObjects(range(ins.tris.shape[0]), cores)
         chunks = [ ins.tris[c,:] for c in chunks ]   
         with mp.Pool(cores) as p: 
             vtsamps = p.map(worker, chunks)
