@@ -145,18 +145,16 @@ def _formAssociationsWorker(tris, points, size, triInds):
 
         # Get vertices of triangle in voxel space (to nearest vox)
         tri = points[tris[t,:]]
-        minVs = np.floor(np.min(tri, axis=0)).astype(np.int16)
-        maxVs = np.ceil(np.max(tri, axis=0)).astype(np.int16)
+        lims = np.vstack((tri.min(0), tri.max(0)+1)).round().astype(np.int16)
 
         # Loop over the neighbourhood voxels of this bounding box
-        neighbourhood = np.array(list(itertools.product(
-            range(minVs[0], maxVs[0] + 1), 
-            range(minVs[1], maxVs[1] + 1),
-            range(minVs[2], maxVs[2] + 1))), dtype=np.float32)
+        nhood = np.array(list(itertools.product(
+            range(*lims[:,0]), range(*lims[:,1]), range(*lims[:,2]))), 
+            dtype=np.float32)
 
-        for voxel in neighbourhood: 
-            if _ctestTriangleVoxelIntersection(voxel, vox_size, tri):
-                ind = np.ravel_multi_index(voxel.astype(np.int16), size)
+        for ijk in nhood: 
+            if _ctestTriangleVoxelIntersection(ijk, vox_size, tri):
+                ind = np.ravel_multi_index(ijk.astype(np.int16), size)
                 workerResults[ind].append(t)
     
     return workerResults
