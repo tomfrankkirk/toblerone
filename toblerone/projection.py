@@ -14,7 +14,7 @@ from . import utils
 from .classes import  ImageSpace, Surface
 
 
-def vol2surf(vdata, in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
+def vol2surf(vdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     """
     Project volumetric data to the cortical ribbon defined by inner/outer 
     surfaces. NB any registration transforms must be applied to the surfaces 
@@ -25,26 +25,21 @@ def vol2surf(vdata, in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
         in_surf: inner Surface of ribbon, in world mm coordinates 
         out_surf: outer Surface of ribbon, in world mm coordinates
         spc: ImageSpace in which data exists 
-        factor: voxel subdivision factor 
+        factor: voxel subdivision factor (default 10)
         cores: number of processor cores (default max)
 
     Returns:   
-        flat np.array of size equal to surf.n_vertices
+        flat np.array of size equal to n_vertices
     """
 
     if not vdata.size == spc.size.prod(): 
         raise RuntimeError("Size of vdata does not match size of ImageSpace")
 
-    # Create copies of the provided surfaces and convert them into vox coords 
-    in_surf = copy.deepcopy(in_surf)
-    out_surf = copy.deepcopy(out_surf)
-    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
-
     v2s_weights = vol2surf_weights(in_surf, out_surf, spc, factor, cores)
     return v2s_weights.dot(vdata.reshape(-1))
 
 
-def vol2surf_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
+def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     """
     Weighting matrix used to project data from volumetric space to surface. 
     To use this matrix: weights.dot(data_to_project)
@@ -53,7 +48,7 @@ def vol2surf_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
         in_surf: inner Surface of ribbon, in world mm coordinates 
         out_surf: outer Surface of ribbon, in world mm coordinates
         spc: ImageSpace in which data exists 
-        factor: voxel subdivision factor 
+        factor: voxel subdivision factor (default 10)
         cores: number of processor cores (default max)
 
     Returns:   
@@ -115,7 +110,7 @@ def __vol2surf_worker(vertices, voxprism_mat, vtxtri_mat):
     return weights.tocsr()
 
 
-def surf2vol(sdata, in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
+def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     """
     Project data defined on surface vertices to a volumetric space. NB any 
     registration transforms must be applied to the surfaces beforehand, 
@@ -126,7 +121,7 @@ def surf2vol(sdata, in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
         in_surf: inner Surface of ribbon, in world mm coordinates 
         out_surf: outer Surface of ribbon, in world mm coordinates
         spc: ImageSpace in which to project data
-        factor: voxel subdivision factor 
+        factor: voxel subdivision factor (default 10)
         cores: number of processor cores (default max)
 
     Returns:   
@@ -136,18 +131,25 @@ def surf2vol(sdata, in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
     if not sdata.size == in_surf.points.shape[0]:
         raise RuntimeError("Size of sdata does not match surface")
 
-    # Create copies of the provided surfaces and convert them into vox coords 
-    in_surf = copy.deepcopy(in_surf)
-    out_surf = copy.deepcopy(out_surf)
-    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
-
-    s2v_weights = surf2vol_weights(in_surf, out_surf, spc, factor, cores).tocsc().T
+    s2v_weights = surf2vol_weights(in_surf, out_surf, spc, factor, cores)
     return s2v_weights.dot(sdata.reshape(-1))
 
 
-def surf2vol_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
+def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     """
-    Returns CSR matrix of size (n_voxs x n_vertices)
+    Weights matrix used to project data from surface to volumetric space. NB 
+    any registration transforms must be applied to the surfaces beforehand, 
+    such that they are in world-mm coordinates for this function. 
+
+    Args: 
+        in_surf: inner Surface of ribbon, in world mm coordinates 
+        out_surf: outer Surface of ribbon, in world mm coordinates
+        spc: ImageSpace in which to project data
+        factor: voxel subdivision factor (default 10)
+        cores: number of processor cores (default max)
+
+    Returns:   
+        scipy sparse CSR matrix of size (n_voxs x n_verts)
     """
 
     # Create copies of the provided surfaces and convert them into vox coords 
@@ -155,15 +157,15 @@ def surf2vol_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
     out_surf = copy.deepcopy(out_surf)
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
 
-    tri_weights = _voxprism_mat(in_surf, out_surf, spc, factor, cores)
-    vtx_weights = _vtxtri_mat(in_surf, cores).tocsc()
-    voxs_nonzero = np.flatnonzero(tri_weights.sum(1) > 0)
+    voxprism_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores)
+    vtxtri_mat = _vtxtri_mat(in_surf, cores).tocsc()
+    voxs_nonzero = np.flatnonzero(voxprism_mat.sum(1) > 0)
 
     if cores > 1: 
         vox_ranges = [ voxs_nonzero[c] for c in 
             utils._distributeObjects(range(voxs_nonzero.size), cores) ]
         worker = functools.partial(__surf2vol_worker, 
-            tri_weights=tri_weights, vtx_weights=vtx_weights)
+            voxprism_mat=voxprism_mat, vtxtri_mat=vtxtri_mat)
 
         with mp.Pool(cores) as p: 
             ws = p.map(worker, vox_ranges)
@@ -178,20 +180,20 @@ def surf2vol_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
     return weights
 
 
-def __surf2vol_worker(voxs, tri_weights, vtx_weights):
+def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
     """
-    Returns CSR matrix of size (n_vertices x n_vertices)
+    Returns CSR matrix of size (n_vertices x n_verts)
     """
 
     # Weights matrix is sized (n_voxs x n_vertices)
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
-    weights = spmat.dok_matrix((tri_weights.shape[0], vtx_weights.shape[0]), 
+    weights = spmat.dok_matrix((voxprism_mat.shape[0], vtxtri_mat.shape[0]), 
                 dtype=np.float32)  
 
     for vox in voxs:
-        tw = tri_weights[vox,:]
-        vtw = vtx_weights[:,tw.indices]
+        tw = voxprism_mat[vox,:]
+        vtw = vtxtri_mat[:,tw.indices]
         uniq_vtx, at_inds = np.unique(vtw.indices, return_inverse=True)
         voxw = np.bincount(at_inds, weights=vtw.data)
         weights[vox,uniq_vtx] = (voxw / voxw.sum())   
@@ -209,7 +211,7 @@ def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
         in_surf: Surface object, inner surface of cortical ribbon
         out_surf: Surface object, outer surface of cortical ribbon
         spc: ImageSpace object within which to project 
-        factor: int voxel subdivision factor
+        factor: voxel subdivision factor
         cores: number of cpu cores
         
     Returns: 
@@ -219,20 +221,21 @@ def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
             NB this matrix is not normalised in any way!
     """
 
-    worker = functools.partial(__voxprism_mat_worker, in_surf=in_surf, out_surf=out_surf,
-        spc=spc, factor=factor)
+    n_tris = in_surf.tris.shape[0]
+    worker = functools.partial(__voxprism_mat_worker, in_surf=in_surf, 
+        out_surf=out_surf, spc=spc, factor=factor)
     
     if cores > 1: 
-        t_ranges = utils._distributeObjects(range(in_surf.tris.shape[0]), cores)
+        t_ranges = utils._distributeObjects(range(n_tris), cores)
         with mp.Pool(cores) as p: 
             vpmats = p.map(worker, t_ranges)
             
         vpmat = vpmats[0]
-        for vt in vpmats[1:]:
-            vpmat += vt
+        for vp in vpmats[1:]:
+            vpmat += vp
             
     else: 
-        vpmat = worker(range(in_surf.tris.shape[0]))
+        vpmat = worker(range(n_tris))
         
     return vpmat
 
@@ -253,7 +256,7 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
     """
 
     vox_tri_samps = spmat.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]), dtype=np.int32)
+        in_surf.tris.shape[0]), dtype=np.int16)
     sampler = np.linspace(0,1, 2*factor + 1)[1:-1:2]
     sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
     samples = np.vstack((sx.flatten(),sy.flatten(),sz.flatten())).T - 0.5
@@ -262,7 +265,7 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
         hull = np.vstack((in_surf.points[in_surf.tris[t,:],:], 
                         out_surf.points[out_surf.tris[t,:],:]))
         hull_lims = np.round(np.vstack((hull.min(0), hull.max(0) + 1)))
-        nhood = hull_lims.astype(np.int32)
+        nhood = hull_lims.astype(np.int16)
         nhood = np.array(list(itertools.product(
                 range(*nhood[:,0]), range(*nhood[:,1]), range(*nhood[:,2]))))
         fltr = np.all((nhood > -1) & (nhood < spc.size), 1)
@@ -273,7 +276,7 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
             hull = Delaunay(hull)  
             
             for vidx,ijk in zip(nhood_v, nhood):
-                v_samps = np.array(ijk) + samples
+                v_samps = ijk + samples
                 samps_in = (hull.find_simplex(v_samps) >= 0).sum()
 
                 if samps_in:
@@ -300,7 +303,7 @@ def _vtxtri_mat(surf, cores=mp.cpu_count()):
         cores: number of cores to use 
 
     Returns:
-        sparse CSR matrix. 
+        sparse CSR matrix of shape (n_verts x n_tris)
     """
 
     n_vtx = surf.points.shape[0]
