@@ -20,7 +20,7 @@ if __name__ == "__main__":
     ins.applyTransform(spc.world2vox)
     outs.applyTransform(spc.world2vox)
     # x = projection._form_vtxtri_mat(ins)
-    x = projection.vol2surf_weights(ins, outs, spc, factor, 16)
+    x = projection.vol2prism_weights(ins, outs, spc, factor, 16)
 
     set_trace()
     print('dibe')
