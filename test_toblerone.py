@@ -7,6 +7,7 @@ import pickle
 import gzip
 import numpy as np 
 import multiprocessing
+from pdb import set_trace
 
 import toblerone
 from toblerone import estimators
@@ -14,7 +15,7 @@ from toblerone import estimators
 cores = multiprocessing.cpu_count()
 
 def get_testdir():
-    return op.dirname(op.realpath(__file__))
+    return op.join(op.dirname(op.realpath(__file__)), 'testdata')
 
 def test_indexing():
     td = get_testdir()
@@ -41,7 +42,7 @@ def test_sph():
     fracs = estimators._structure(surf, spc, 
         s2r, supersampler, False, multiprocessing.cpu_count())
 
-    truth = np.squeeze(nibabel.load(op.join('sph_fractions.nii.gz')).get_fdata())
+    truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
 def test_struct():
@@ -54,8 +55,13 @@ def test_struct():
     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
 def test_imagespace():
-    spc = toblerone.ImageSpace('sph_fractions.nii.gz')
+    td = get_testdir()
+    spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
     sspc = spc.supersample([2,2,2])
 
     assert np.all(spc.bbox_origin == sspc.bbox_origin)
     assert np.all(spc.FoV_size == sspc.FoV_size)
+
+
+if __name__ == "__main__":
+    test_indexing()
