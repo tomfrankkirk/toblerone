@@ -1,12 +1,10 @@
 from scipy.spatial import Delaunay
 import numpy as np 
 import functools 
-import collections 
 import itertools
 import multiprocessing as mp 
 import scipy.sparse as spmat
 import nibabel 
-from operator import iconcat
 import warnings
 from pdb import set_trace
 
@@ -24,8 +22,8 @@ def vol2surf_weights(ins, outs, spc, factor, cores):
         warnings.warn("Surface not wholly contained within ImageSpace. " +
             "Is the surface in voxel coordinates?")
 
-    tri_weights = _form_voxtri_mat(ins, outs, spc, factor, cores).tocsc()
-    vtx_weights = _form_vtxtri_mat(ins, cores)
+    tri_weights = _voxprism_mat(ins, outs, spc, factor, cores).tocsc()
+    vtx_weights = _vtxtri_mat(ins, cores)
 
     worker = functools.partial(__vol2surf_worker, 
             tri_weights=tri_weights, vtx_weights=vtx_weights)
@@ -116,9 +114,24 @@ def __surf2vol_worker(voxs, tri_weights, vtx_weights):
 
     return weights.tocsr()       
 
-def _form_voxtri_mat(ins, outs, spc, factor, cores):     
+def vol2prism_weights(ins, outs, spc, factor, cores):
+
+    voxtri_mat = _voxprism_mat(ins, outs, spc, factor, cores)
+    sums = voxtri_mat.sum(0).A.reshape(-1)
+    for abv in np.flatnonzero(sums):
+        voxtri_mat[abv,:] /= voxtri_mat[abv,:].sum()
+
+    set_trace()
+    fltr = (sums > 0)
+    voxtri_mat[fltr,:] /= sums[fltr][:,None]
+    set_trace()
+    return voxtri_mat
+
+def prism2vol_weights(): 
+    pass 
+
+def _voxprism_mat(ins, outs, spc, factor, cores):     
     """
-    Core method used by vol2surf and surf2vol projection functions
 
     Args: 
         ins: Surface object, inner surface of cortical ribbon
@@ -128,29 +141,30 @@ def _form_voxtri_mat(ins, outs, spc, factor, cores):
         cores: number of cpu cores
         
     Returns: 
-        vox_tri_samps: a scipy.sparse DoK matrix (dictionary of keys format), 
-            of shape (n_voxs, n_tris), in which each entry at index [I,J] 
-            gives the number of samples from triangle J that are in voxel I. 
+        vox_prism_mat: a scipy.sparse CSR matrix (compressed rows), of shape
+            (n_voxs, n_tris), in which each entry at index [I,J] gives the 
+            number of samples from triangle prism J that are in voxel I. 
+            NB this matrix is not normalised in any way!
     """
 
-    worker = functools.partial(__vtmat_worker, ins=ins, outs=outs,
+    worker = functools.partial(__voxprism_mat_worker, ins=ins, outs=outs,
         spc=spc, factor=factor)
     
     if cores > 1: 
         t_ranges = utils._distributeObjects(range(ins.tris.shape[0]), cores)
         with mp.Pool(cores) as p: 
-            vtsamps = p.map(worker, t_ranges)
+            vpmats = p.map(worker, t_ranges)
             
-        vox_tri_samps = vtsamps[0]
-        for vt in vtsamps[1:]:
-            vox_tri_samps += vt
+        vpmat = vpmats[0]
+        for vt in vpmats[1:]:
+            vpmat += vt
             
     else: 
-        vox_tri_samps = worker(range(ins.tris.shape[0]))
+        vpmat = worker(range(ins.tris.shape[0]))
         
-    return vox_tri_samps
+    return vpmat
 
-def __vtmat_worker(t_range, ins, outs, spc, factor):
+def __voxprism_mat_worker(t_range, ins, outs, spc, factor):
     """
     Helper method for _form_voxtri_mat(), to be used in mp.Pool()
     """
@@ -188,19 +202,7 @@ def __vtmat_worker(t_range, ins, outs, spc, factor):
     return vox_tri_samps.tocsr()
 
 
-def triangle_areas(ps, ts):
-    return 0.5 * np.linalg.norm(np.cross(
-        ps[ts[:,1],:] - ps[ts[:,0],:], 
-        ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
-
-
-def vertex_areas(ps, ts):
-    tri_areas = triangle_areas(ps,ts)  
-    vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
-    return vtx_areas
-
-
-def _form_vtxtri_mat(surf, cores=mp.cpu_count()):
+def _vtxtri_mat(surf, cores=mp.cpu_count()):
     """
     dfhjs
     Returns: 
@@ -243,6 +245,17 @@ def __vtxtri_mat_worker(vtx_range, surf, vtx_tri_areas):
     return vtx_tri_mat.tocsr()
 
 
+
+def triangle_areas(ps, ts):
+    return 0.5 * np.linalg.norm(np.cross(
+        ps[ts[:,1],:] - ps[ts[:,0],:], 
+        ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
+
+
+def vertex_areas(ps, ts):
+    tri_areas = triangle_areas(ps,ts)  
+    vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
+    return vtx_areas
 # def vertex2tri(surf):
     
 #     def _worker(x):
