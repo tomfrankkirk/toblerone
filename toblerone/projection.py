@@ -204,8 +204,7 @@ def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
 def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
-    number of samples from triangle prism J that are inside voxel I. 
-    WARNING: this is not normalised (the size of elements depends on factor)
+    fraction of samples from voxel I that are in triangle prism J. 
 
     Args: 
         in_surf: Surface object, inner surface of cortical ribbon
@@ -237,7 +236,7 @@ def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
     else: 
         vpmat = worker(range(n_tris))
         
-    return vpmat
+    return vpmat / (factor ** 3)
 
 
 def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
@@ -356,12 +355,16 @@ def __vtxtri_mat_worker(vtx_range, surf, vtx_tri_areas):
 
 
 def _triangle_areas(ps, ts):
+    """Areas of triangles, vector of length n_tris"""
     return 0.5 * np.linalg.norm(np.cross(
         ps[ts[:,1],:] - ps[ts[:,0],:], 
         ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
 
 
 def _vertex_areas(ps, ts):
+    """Areas surrounding each vertex in surface, default 1/3 of each tri"""
+
+     
     tri_areas = _triangle_areas(ps,ts)  
     vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
     return vtx_areas
