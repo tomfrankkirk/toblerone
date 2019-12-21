@@ -2,15 +2,12 @@
 # structures. These are wrappers around the core Toblerone functions 
 # that handle the aggregate various pieces of information into overall results
 
-import functools
-import multiprocessing
 import warnings
-import tqdm
 
 import numpy as np
 
 from . import core, utils 
-from .classes import Hemisphere, Surface, Patch, ImageSpace
+from .classes import Hemisphere, Surface, ImageSpace
 
 def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
@@ -38,7 +35,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     for h in hemispheres:
         if np.any(np.max(np.abs(h.inSurf.points)) > 
             np.max(np.abs(h.outSurf.points))):
-            raise RuntimeWarning("Inner surface vertices appear to be further",\
+            warnings.warn("Inner surface vertices appear to be further",\
                 "from the origin than the outer vertices. Are the surfaces in",\
                 "the correct order?")
         

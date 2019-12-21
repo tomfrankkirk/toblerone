@@ -1,14 +1,16 @@
+"""
+Toblerone surface-volume projection functions
+"""
+
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 import numpy as np 
 import functools 
 import itertools
 import multiprocessing as mp 
-import scipy.sparse as spmat
-import nibabel 
-import warnings
+from scipy import sparse 
+
 import copy 
-from pdb import set_trace
 
 from . import utils 
 from .classes import  ImageSpace, Surface
@@ -97,7 +99,7 @@ def __vol2surf_worker(vertices, voxprism_mat, vtxtri_mat):
         CSR matrix of size (n_vertices x n_voxs)
     """
 
-    weights = spmat.dok_matrix((vtxtri_mat.shape[0], voxprism_mat.shape[0]), 
+    weights = sparse.dok_matrix((vtxtri_mat.shape[0], voxprism_mat.shape[0]), 
                 dtype=np.float32)  
 
     for vtx in vertices: 
@@ -188,7 +190,7 @@ def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
     # Weights matrix is sized (n_voxs x n_vertices)
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
-    weights = spmat.dok_matrix((voxprism_mat.shape[0], vtxtri_mat.shape[0]), 
+    weights = sparse.dok_matrix((voxprism_mat.shape[0], vtxtri_mat.shape[0]), 
                 dtype=np.float32)  
 
     for vox in voxs:
@@ -254,7 +256,7 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
         sparse CSR matrix of size (n_vox x n_tris)
     """
 
-    vox_tri_samps = spmat.dok_matrix((spc.size.prod(), 
+    vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
         in_surf.tris.shape[0]), dtype=np.int16)
     sampler = np.linspace(0,1, 2*factor + 1)[1:-1:2]
     sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
@@ -344,7 +346,7 @@ def __vtxtri_mat_worker(vtx_range, surf, vtx_tri_areas):
 
     n_vtx = surf.points.shape[0]
     n_tris = surf.tris.shape[0]
-    vtx_tri_mat = spmat.dok_matrix((n_vtx,n_tris), dtype=np.float32)
+    vtx_tri_mat = sparse.dok_matrix((n_vtx,n_tris), dtype=np.float32)
 
     for vtx in vtx_range:
         inds = (surf.tris == vtx)

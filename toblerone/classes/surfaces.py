@@ -11,17 +11,14 @@ Patch: a subcalss of Surface, representing a smaller portion of a surface,
 
 import itertools
 import os.path as op 
-import collections 
-import operator
 import functools
 import copy 
 import warnings 
+import multiprocessing
 
 import numpy as np 
-import multiprocessing
 import nibabel 
 import pyvista 
-
 
 from toblerone import utils, core 
 from .image_space import ImageSpace
@@ -269,8 +266,8 @@ class Surface(object):
 
         Updates: 
             self.points: converted into voxel coordinates for the space
-            self.assocs: dict of triangles intersecting each voxel of the space
-            self.assocs_keys: voxel indices that are keys into assocs dict  
+            self.assocs: sparse CSR bool matrix of size (voxs, tris)
+            self.assocs_keys: voxel indices that contain surface 
             self.xProds: triangle cross products, voxel coordinates
         """
 
@@ -462,14 +459,18 @@ class Surface(object):
             assert isinstance(self._index_space, ImageSpace)
             if not self._index_space.derives_from(space):
                 warnings.warn("Surface will be re-indexed to find bridges")
-                self.deindex()
-                self.index_on(space)
+                raise RuntimeError("fix me")
+                # self.deindex()
+                # self.index_on(space)
 
-        group_counts = np.array([len(core._separatePointClouds(self.tris[a,:]))
-            for a in self.assocs.values() ])
+        group_counts = np.array([len(core._separatePointClouds(
+            self.tris[self.assocs[v,:].indices,:])) 
+            for v in self.assocs_keys ])
         bridges = self.assocs_keys[group_counts > 1]
+
         if space is self._index_space:
             return bridges 
+
         else: 
             src_inds, dest_inds = self.reindexing_filter(space)
             fltr = np.in1d(src_inds, bridges, assume_unique=True)
@@ -499,9 +500,9 @@ class Surface(object):
         results will be stored on the surface object (ie, self)
 
         Returns: 
-            None, but associations (a list of lists) and assocs_keys (used to index 
-                between the associations list and vox index) are set on the 
-                calling object. 
+            None, but associations (sparse CSR matrix of size (voxs, tris)
+            and assocs_keys (array of voxel indices containint the surface)
+            will be set on the calling object. 
         """
 
         size = self._index_space.size 
@@ -514,27 +515,24 @@ class Surface(object):
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
         cores = multiprocessing.cpu_count()
-        chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
 
         if cores > 1:
+            chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
             with multiprocessing.Pool(cores) as p:
-                allResults = p.map(workerFunc, chunks, chunksize=1)
+                worker_assocs = p.map(workerFunc, chunks, chunksize=1)
+
+            assocs = worker_assocs[0]
+            for a in worker_assocs[1:]:
+                assocs += a 
+
         else:
-            allResults = list(map(workerFunc, chunks))
+            assocs = workerFunc(range(self.tris.shape[0]))
 
-        # Flatten results down from each worker. Iterate only over the keys
-        # present in each dict. Use a default dict of empty [] to hold results
-        associations = collections.defaultdict(list)
-        for res in allResults: 
-            for k in res.keys():
-                associations[k] += res[k]
-
-        # Convert back to dict, store attributes on self 
-        dct = dict(associations)
-        self.assocs = dct 
-        self.assocs_keys = np.array(list(self.assocs.keys()), dtype=np.int32)
+        # Assocs keys is a list of all voxels touched by triangles
+        self.assocs = assocs 
+        self.assocs_keys = np.flatnonzero(assocs.sum(1).A)
 
 
     def rebaseTriangles(self, tri_inds):
@@ -584,7 +582,7 @@ class Surface(object):
         the points / surface normals as required. 
         """
 
-        tri_nums = self.assocs[vox_idx]
+        tri_nums = self.assocs[vox_idx,:].indices
         (ps, ts) = self.rebaseTriangles(tri_nums)
 
         return Patch(ps, ts, self.xProds[tri_nums,:])
@@ -597,17 +595,11 @@ class Surface(object):
 
         If no patches exist for this list of voxels return None.
         """
+        
+        tri_nums = self.assocs[vox_inds,:].indices
 
-        # Load lists of tri numbers for each voxel index 
-        voxs = np.intersect1d(self.assocs_keys, vox_inds, assume_unique=True)
-
-        if voxs.size:
-
-            # Flatten the triangle numbers for all these voxels into single list
-            tri_nums = functools.reduce(operator.iconcat, 
-                [self.assocs[v] for v in voxs], []) 
+        if tri_nums.size:
             tri_nums = np.unique(tri_nums)
-
             return Patch(self.points, self.tris[tri_nums,:], 
                 self.xProds[tri_nums,:])
 
@@ -708,6 +700,7 @@ class Surface(object):
                             & (rayIJK[:,dim] < intDs[i]))
                         mask[voxRange[indices]] = 1
 
+            assert mask.any(), 'no voxels filled'
             self.voxelised = mask 
 
         except Exception as e:
