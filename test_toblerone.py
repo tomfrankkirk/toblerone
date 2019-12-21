@@ -25,12 +25,13 @@ def test_indexing():
     truth = pickle.load(gzip.open(op.join(td,'sph_indexed.gz')))
     truthspace = truth._index_space
     space = surf._index_space
-    assert surf.assocs == truth.assocs
+    for k in surf.assocs_keys:
+        assert np.array_equal(surf.assocs[k,:].indices, truth.assocs[k])
+
     assert np.all(space.bbox_origin == truthspace.bbox_origin)
     assert np.all(space.size == truthspace.size)
     assert np.all(space.offset == truthspace.offset)
     assert np.array_equal(surf.voxelised, truth.voxelised)
-
 
 def test_sph():
     td = get_testdir()

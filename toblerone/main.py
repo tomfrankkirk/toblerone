@@ -3,9 +3,7 @@ import multiprocessing
 import warnings
 import functools
 import copy
-import shutil
 import time 
-import subprocess
 import glob
 
 import nibabel

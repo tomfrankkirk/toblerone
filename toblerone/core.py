@@ -9,11 +9,10 @@
 # This module should not be directly interacted with: the modules estimators and 
 # pvtools provide outward-facing wrappers for actual PV estimation. 
 
-import copy
 import functools
 import itertools
 import multiprocessing
-import collections 
+from scipy import sparse
 
 import numpy as np 
 import tqdm
@@ -130,7 +129,7 @@ def _separatePointClouds(tris):
     return groups 
 
 
-def _formAssociationsWorker(tris, points, size, triInds):
+def _formAssociationsWorker(tris, points, grid_size, triInds):
     """
     Worker function for use with multiprocessing. See formAssociations
     
@@ -138,26 +137,25 @@ def _formAssociationsWorker(tris, points, size, triInds):
         defaultdict, key: vox idx, value: list of tri numbers 
     """
 
-    workerResults = collections.defaultdict(list)
     vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    assocs = sparse.dok_matrix((grid_size.prod(), tris.shape[0]), dtype=np.bool)
 
     for t in triInds:
 
         # Get vertices of triangle in voxel space (to nearest vox)
+        # Loop over neighbourhood of voxels in bounding box 
         tri = points[tris[t,:]]
         lims = np.vstack((tri.min(0), tri.max(0)+1)).round().astype(np.int16)
-
-        # Loop over the neighbourhood voxels of this bounding box
         nhood = np.array(list(itertools.product(
             range(*lims[:,0]), range(*lims[:,1]), range(*lims[:,2]))), 
             dtype=np.float32)
 
         for ijk in nhood: 
             if _ctestTriangleVoxelIntersection(ijk, vox_size, tri):
-                ind = np.ravel_multi_index(ijk.astype(np.int16), size)
-                workerResults[ind].append(t)
+                vox = np.ravel_multi_index(ijk.astype(np.int16), grid_size)
+                assocs[vox,t] = 1 
     
-    return workerResults
+    return assocs.tocsr()
 
 
 
