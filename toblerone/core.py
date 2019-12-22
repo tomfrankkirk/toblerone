@@ -13,6 +13,7 @@ import functools
 import itertools
 import multiprocessing
 from scipy import sparse
+import copy 
 
 import numpy as np 
 import tqdm
@@ -825,4 +826,82 @@ def _estimateFractionsWorker(surf, supersampler, chunk):
 
     except Exception as e:
         return e
+
+
+
+def _voxelise_worker(surf, dim_range, raysd1d2):
+    """
+    Worker function for Surface.voxelise()
+
+    Args: 
+        surf: the calling surface that is being voxelised  
+        dim_range: the coordinates to operate over (the subset of the
+            overall dimension that is being shared amongst workers)
+        raysd1d2: Nx2 array, for the N rays to project through the 
+            voxel grid, recording the D1 D2 coordinates of their origin
+    """
+
+    size = surf._index_space.size
+    dim = np.argmax(size)
+    other_dims = list({0,1,2} - {dim})
+    mask_size = copy.copy(size)
+    mask_size[other_dims[0]] = len(dim_range)
+    mask = np.zeros(mask_size.prod(), dtype=bool)
+
+    shift = np.zeros(3, np.int32)
+    shift[other_dims[0]] = dim_range.start
+
+    if not raysd1d2.size: 
+        return mask 
+
+    else: 
+
+        rayIJK = np.zeros((size[dim], 3), dtype=np.int32)
+        rayIJK[:,dim] = np.arange(0, size[dim])
+        start_point = np.zeros(3, dtype=np.float32)
+
+        for d1d2 in raysd1d2: 
+
+            start_point[other_dims] = d1d2    
+            rayIJK[:,other_dims] = d1d2[None,:]
+            ray_voxs_orig = np.ravel_multi_index(rayIJK.T, size)
+
+            # Load patches along this ray, we can assert that at least 
+            # one patch must be returned. Find intersections 
+            patches = surf.to_patches(ray_voxs_orig)
+            assert patches is not None, 'No patches returned for voxel in LUT'
+            intersectionMus = _findRayTriangleIntersections2D(
+                start_point, patches, dim)
+
+            if not intersectionMus.size:
+                continue
+            
+            # If intersections were found, perform a parity test. 
+            # Any ray should make an even number of intersections
+            # as it crosses from -ve to +ve infinity
+            if (intersectionMus.shape[0] % 2):
+                raise RuntimeError("voxelise: odd number of intersections" + 
+                " found. Does the FoV cover the full extents of the surface?")
+
+            # Calculate points of intersection along the ray. 
+            sorted = np.argsort(intersectionMus)
+            intDs = start_point[dim] + (intersectionMus[sorted])
+            shiftIJK = rayIJK - shift[None,:]
+            ray_voxs_sub = np.ravel_multi_index(shiftIJK.T, mask_size)
+
+            # Assignment. All voxels before the first point of intersection
+            # are outside. The mask is already zeroed for these. All voxels
+            # between point 1 and n could be in or out depending on parity
+            for i in range(1, len(sorted)+1):
+
+                # Starting from infinity, all points between an odd numbered
+                # intersection and the next even one are inside the mask 
+                # Points beyond the last intersection are outside the mask
+                if ((i % 2) & ((i+1) <= len(sorted))):
+                    indices = ((rayIJK[:,dim] > intDs[i-1]) 
+                        & (rayIJK[:,dim] < intDs[i]))
+                    mask[ray_voxs_sub[indices]] = 1
+
+        return mask.reshape(mask_size)
+
 

@@ -289,7 +289,7 @@ class Surface(object):
         self._index_space = encl_space 
         self.form_associations(cores)
         self.calculateXprods()
-        self.voxelise()
+        self.voxelise(cores)
 
 
     def deindex(self, struct2ref):
@@ -607,107 +607,67 @@ class Surface(object):
             return None
 
 
+    def voxelise(self, cores=multiprocessing.cpu_count()):
+        """
+        Voxelise surface within its current index space. A flat boolean 
+        mask will be stored on the calling object as .voxelised. 
+
+        Args:
+            cores: number of cores to use 
+        """
+
+        if self._index_space is None:
+            raise RuntimeError("Surface must be indexed for voxelisation")
+
+        # We will project rays along the longest dimension and split the 
+        # grid along the first of the other two. 
+        size = self._index_space.size 
+        dim = np.argmax(size)
+        other_dims = list({0,1,2} - {dim})
+        other_size = size[other_dims]
+        
+        # Get the voxel IJKs for every voxel intersecting the surface
+        # Group these according to their ray number, and then strip out
+        # repeats to get the minimal set of rays that need to be projected
+        # For voxel IJK, and projection along dimension Y, the ray number
+        # is given by I,K within a grid of size XZ. Ray D1D2 is an Nx2 array
+        # holding the unique ray coords in dimensions XZ. 
+        allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
+        ray_numbers = np.ravel_multi_index(allIJKs[:,other_dims].T, 
+            size[other_dims])
+        _, uniq_rays = np.unique(ray_numbers, return_index=True)
+        rayD1D2 = allIJKs[uniq_rays,:]
+        rayD1D2 = rayD1D2[:,other_dims]
+
+        worker = functools.partial(core._voxelise_worker, self)
+
+        if cores > 1: 
+
+            # Share out the rays and subset of the overall dimension range
+            # amongst pool workers
+            sub_ranges = utils._distributeObjects(
+                range(size[other_dims[0]]), cores)
+            subD1D2s = [ 
+                rayD1D2[(rayD1D2[:,0] >= sub.start) & (rayD1D2[:,0] < sub.stop),:]
+                for sub in sub_ranges ] 
+
+            # Check tasks were shared out completely, zip them together for pool
+            assert sum([s.shape[0] for s in subD1D2s]) == rayD1D2.shape[0]
+            assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
+            worker_args = zip(sub_ranges, subD1D2s)
+
+            with multiprocessing.Pool(cores) as p: 
+                submasks = p.starmap(worker, worker_args)
+            mask = np.concatenate(submasks, axis=other_dims[0])
+
+        else: 
+            mask = worker(range(size[other_dims[0]]), rayD1D2)
+
+        assert mask.any(), 'no voxels filled'
+        self.voxelised = mask.reshape(-1)
+
     
-    def voxelise(self):
-        """
-        Voxelise (create binary in/out mask) a surface within a voxel grid
-        of size size. Surface coordinates must be in 0-indexed voxel units, 
-        as will the voxel grid be interpreted (ie, 0 : size - 1 in xyz). 
-        Method is defined as static on the class for compataibility with 
-        multiprocessing.Pool(). NB surface must have been indexed first 
-
-        Updates: 
-            self.voxelised: flat boolean mask of voxels contained
-                 within the surface. Use reshape(size) as required. 
-        """
-
-        try: 
-
-            # Project rays along the largest dimension to classify as many voxels
-            # at once as we can 
-            size = self._index_space.size 
-            dim = np.argmax(size)
-            mask = np.zeros(np.prod(size), dtype=bool)
-            otherdims = [0,1,2]
-            otherdims.remove(dim)
-            d1, d2 = tuple(otherdims)
-            startPoint = np.zeros(3, dtype=np.float32)
-
-            # The lazy way of working out strides through the voxel grid, 
-            # regardless of what dimension we are projecting rays along. Define
-            # a single ray of voxels, convert to linear indices and calculate 
-            # the stride from that. 
-            allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
-            rayIJK = np.zeros((size[dim], 3), dtype=np.int16)
-            rayIJK[:,dim] = np.arange(0, size[dim])
-            rayIJK[:,d1] = allIJKs[0,d1]
-            rayIJK[:,d2] = allIJKs[0,d2]
-            linearInds = np.ravel_multi_index((rayIJK[:,0], rayIJK[:,1], 
-                rayIJK[:,2]), size)
-            stride = linearInds[1] - linearInds[0]
-
-            # We now cycle through each voxel in the LUT, check which ray it 
-            # lies on, calculate the indices of all other voxels on this ray, 
-            # load the surface patches for all these voxels and find ray 
-            # intersections to classify the voxel centres. Finally, we remove
-            # the entire set of ray voxels from our copy of the LUT and repeat
-            LUT = copy.deepcopy(self.assocs_keys)
-            while LUT.size: 
-
-                # Where does the ray that passes through this voxel start?
-                # Load all other voxels on this ray
-                startPoint[[d1,d2]] = [allIJKs[0,d1], allIJKs[0,d2]]
-                startInd = np.ravel_multi_index(startPoint.astype(np.int32), size)
-                voxRange = np.arange(startInd, startInd + (size[dim])*stride, 
-                    stride)
-
-                # Romeve those which are present in the LUT / allIJKs arrays
-                keep = np.in1d(LUT, voxRange, assume_unique=True, invert=True)
-                LUT = LUT[keep]
-                allIJKs = allIJKs[keep,:]
-                
-                # Load patches along this ray, we can assert that at least 
-                # one patch must be returned. Find intersections 
-                patches = self.to_patches(voxRange)
-                assert patches is not None, 'No patches returned for voxel in LUT'
-                intersectionMus = core._findRayTriangleIntersections2D(
-                    startPoint, patches, dim)
-
-                if not intersectionMus.size:
-                    continue
-                
-                # If intersections were found, perform a parity test. 
-                # Any ray should make an even number of intersections
-                # as it crosses from -ve to +ve infinity
-                if (intersectionMus.shape[0] % 2):
-                    raise RuntimeError("voxelise: odd number of intersections" + 
-                    " found. Does the FoV cover the full extents of the surface?")
-
-                # Calculate points of intersection along the ray. 
-                sorted = np.argsort(intersectionMus)
-                intDs = startPoint[dim] + (intersectionMus[sorted])
-
-                # Assignment. All voxels before the first point of intersection
-                # are outside. The mask is already zeroed for these. All voxels
-                # between point 1 and n could be in or out depending on parity
-                for i in range(1, len(sorted)+1):
-
-                    # Starting from infinity, all points between an odd numbered
-                    # intersection and the next even one are inside the mask 
-                    # Points beyond the last intersection are outside the mask
-                    if ((i % 2) & ((i+1) <= len(sorted))):
-                        indices = ((rayIJK[:,dim] > intDs[i-1]) 
-                            & (rayIJK[:,dim] < intDs[i]))
-                        mask[voxRange[indices]] = 1
-
-            assert mask.any(), 'no voxels filled'
-            self.voxelised = mask 
-
-        except Exception as e:
-            print("Error voxelising surface.")
-            raise e 
-
-
+    
 
 class Patch(Surface):
     """
