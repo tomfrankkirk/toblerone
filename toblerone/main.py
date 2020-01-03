@@ -5,6 +5,7 @@ import functools
 import copy
 import time 
 import glob
+import subprocess
 
 import nibabel
 import numpy as np
