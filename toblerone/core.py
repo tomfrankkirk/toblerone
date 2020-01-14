@@ -848,14 +848,13 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
     mask_size[other_dims[0]] = len(dim_range)
     mask = np.zeros(mask_size.prod(), dtype=bool)
 
-    shift = np.zeros(3, np.int32)
-    shift[other_dims[0]] = dim_range.start
-
     if not raysd1d2.size: 
-        return mask 
+        return mask.reshape(mask_size) 
 
     else: 
 
+        shift = np.zeros(3, np.int32)
+        shift[other_dims[0]] = dim_range.start
         rayIJK = np.zeros((size[dim], 3), dtype=np.int32)
         rayIJK[:,dim] = np.arange(0, size[dim])
         start_point = np.zeros(3, dtype=np.float32)
