@@ -1,7 +1,7 @@
 """
 Toblerone surface-volume projection functions
 """
-
+from pdb import set_trace
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 import numpy as np 
@@ -9,7 +9,6 @@ import functools
 import itertools
 import multiprocessing as mp 
 from scipy import sparse 
-
 import copy 
 
 from . import utils 
@@ -64,7 +63,7 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     # Two step projection: from volume to prisms, then prisms to vertices
     voxprism_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores).tocsc()
-    vtxtri_mat = _vtxtri_mat(in_surf, cores)
+    vtxtri_mat = _vtxtri_area_mat(in_surf, cores)
 
     n_vtx = in_surf.points.shape[0]
     worker = functools.partial(__vol2surf_worker, 
@@ -93,7 +92,7 @@ def __vol2surf_worker(vertices, voxprism_mat, vtxtri_mat):
     Args: 
         vertices: iterable of vertex numbers to process 
         voxprism_mat: produced by _voxprism_mat() 
-        vtxtri_mat: produced by _vtxtri_mat()
+        vtxtri_mat: produced by _vtxtri_area_mat()
 
     Returns: 
         CSR matrix of size (n_vertices x n_voxs)
@@ -160,7 +159,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
 
     voxprism_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores)
-    vtxtri_mat = _vtxtri_mat(in_surf, cores).tocsc()
+    vtxtri_mat = _vtxtri_area_mat(in_surf, cores).tocsc()
     voxs_nonzero = np.flatnonzero(voxprism_mat.sum(1) > 0)
 
     if cores > 1: 
@@ -292,70 +291,6 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
     return vox_tri_samps.tocsr()
 
 
-def _vtxtri_mat(surf, cores=mp.cpu_count()):
-    """
-    Form matrix of (n_vertices x n_tris) in which element (I,J) is the 
-    area of triangle J that belongs to vertex I. WARNING: this is not 
-    normalised (the areas associated with any vertex or triangle do not
-    sum to 1). 
-
-    Args: 
-        surf: Surface object
-        cores: number of cores to use 
-
-    Returns:
-        sparse CSR matrix of shape (n_verts x n_tris)
-    """
-
-    n_vtx = surf.points.shape[0]
-    tri_areas = _triangle_areas(surf.points, surf.tris) / 3
-    vtx_tri_areas = np.tile(tri_areas, (3,1)).T
-    worker = functools.partial(__vtxtri_mat_worker, 
-                surf=surf, vtx_tri_areas=vtx_tri_areas)
-
-    if cores > 1: 
-        vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
-
-
-        with mp.Pool(cores) as p: 
-            vtx_tri_mats = p.map(worker, vtx_ranges)
-
-        vtx_tri_mat = vtx_tri_mats[0]
-        for vtmat in vtx_tri_mats[1:]:
-            vtx_tri_mat += vtmat 
-
-    else:
-        vtx_tri_mat = worker(range(n_vtx))
-
-    return vtx_tri_mat 
-
-
-def __vtxtri_mat_worker(vtx_range, surf, vtx_tri_areas):
-    """
-    Worker function for multiprocessing with _vtxtri_mat()
-
-    Args: 
-        vtx_range: Range object of vertices within the surface to process
-        surf: Surface object 
-        vtx_tri_areas: matrix of size (n_tris, 3), representing area of
-            each triangle belonging to each of its vertices
-
-    Returns: 
-        sparse CSR matrix of shape (n_vertices, n_tris)
-    """
-
-    n_vtx = surf.points.shape[0]
-    n_tris = surf.tris.shape[0]
-    vtx_tri_mat = sparse.dok_matrix((n_vtx,n_tris), dtype=np.float32)
-
-    for vtx in vtx_range:
-        inds = (surf.tris == vtx)
-        tris = np.flatnonzero((inds.any(1)))
-        vtx_tri_mat[vtx,tris] = vtx_tri_areas[inds]
-
-    return vtx_tri_mat.tocsr()
-
-
 def _triangle_areas(ps, ts):
     """Areas of triangles, vector of length n_tris"""
     return 0.5 * np.linalg.norm(np.cross(
@@ -363,15 +298,131 @@ def _triangle_areas(ps, ts):
         ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
 
 
-def _vertex_areas(ps, ts):
+def _simple_vertex_areas(ps, ts):
     """Areas surrounding each vertex in surface, default 1/3 of each tri"""
-
      
     tri_areas = _triangle_areas(ps,ts)  
     vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
     return vtx_areas
 
 
+def __meyer_worker(points, tris, edges, edge_lengths, worklist):
+    """
+    Woker function for _meyer_areas()
+
+    Args: 
+        points: Px3 array
+        tris: Tx3 array of triangle indices into points 
+        edges: Tx3x3 array of triangle edges 
+        edge_lengths: Tx3 array of edge lengths 
+        worklist: iterable object, point indices to process (indexing
+            into the tris array)
+
+    Returns: 
+        PxT sparse CSR matrix, where element I,J is the area of triangle J
+            belonging to vertx I 
+    """
+
+    # We pre-compute all triangle edges, in the following order:
+    # e1-0, then e2-0, then e2-1
+    EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
+    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]), 
+        dtype=np.float32)
+
+    # Iterate through each triangle containing each point 
+    for pidx in worklist:
+        tris_touched = (tris == pidx)
+
+        for tidx in np.flatnonzero(tris_touched.any(1)):
+            # We need to work out at which index within the triangle
+            # this point sits: could be {0,1,2}, call it the cent_pidx
+            # Edge pairs e1 and e2 are defined as including cent_pidx (order
+            # irrelevant), then e3 is the remaining edge pair
+            cent_pidx = np.flatnonzero(tris_touched[tidx,:]).tolist()
+            other_pidx = np.flatnonzero(~tris_touched[tidx,:]).tolist()
+            e1 = set(cent_pidx + [other_pidx[0]])
+            e2 = set(cent_pidx + [other_pidx[1]])
+            e3 = set(other_pidx)
+
+            # Match the edge pairs to the order in which edges were calculated 
+            # earlier 
+            e1_idx, e2_idx, e3_idx = [ np.flatnonzero(
+                [ e == ei for ei in EDGE_INDEXING ]
+                ) for e in [e1, e2, e3] ] 
+
+            # And finally load the edges in the correct order 
+            L12 = edge_lengths[tidx,e3_idx]
+            L01 = edge_lengths[tidx,e1_idx]
+            L02 = edge_lengths[tidx,e2_idx]
+
+            # Angles 
+            alpha = (np.arccos((np.square(L01) + np.square(L02) - np.square(L12)) 
+                        / (2*L01*L02)))
+            beta  = (np.arccos((np.square(L01) + np.square(L12) - np.square(L02)) 
+                        / (2*L01*L12)))
+            gamma = (np.arccos((np.square(L02) + np.square(L12) - np.square(L01))
+                        / (2*L02*L12)))
+            angles = np.array([alpha, beta, gamma])
+
+            # Area if not obtuse
+            if not np.any((angles > np.pi/2)): # Voronoi
+                a = ((np.square(L01)/np.tan(gamma)) + (np.square(L02)/np.tan(beta))) / 8
+            else: 
+                # If obtuse, heuristic 
+                area_t = 0.5 * np.linalg.norm(np.cross(edges[tidx,0,:], edges[tidx,1,:]))
+                if alpha > np.pi/2:
+                    a = area_t / 2
+                else:
+                    a = area_t / 4
+
+            vtx_tri_areas[pidx,tidx] = a 
+
+    return vtx_tri_areas.tocsr()
+
+
+def _vtxtri_area_mat(surf, cores=mp.cpu_count()):
+    """
+    Calculate area associated with each point's triangle in a surface mesh, 
+    according to the definition of A_mixed in "Discrete Differential-Geometry 
+    Operators for Triangulated 2-Manifolds", M. Meyer, M. Desbrun, P. Schroder,
+    A.H. Barr.
+
+    With thanks to Jack Toner for the original implementation from which this is 
+    adapted. 
+
+    Args: 
+        surf: Surface object 
+        cores: number of CPU cores to use, default max 
+
+    Returns: 
+        PxT sparse CSR matrix, where element I,J is the area of triangle J
+            belonging to vertx I 
+    """
+
+    points = surf.points 
+    tris = surf.tris 
+    edges = np.stack([points[tris[:,1],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,1],:]], axis=1)
+    edge_lengths = np.linalg.norm(edges, axis=2)
+    worker_func = functools.partial(__meyer_worker, points, tris, 
+                                    edges, edge_lengths)
+
+    if cores > 1: 
+        worker_lists = utils._distributeObjects(range(points.shape[0]), cores)
+        with mp.Pool(cores) as p: 
+            results = p.map(worker_func, worker_lists)
+
+        # Flatten results back down 
+        areas = results[0]
+        for r in results[1:]:
+            areas += r 
+
+    else: 
+        areas = worker_func(range(points.shape[0]))
+
+    assert (areas.data > 0).all(), 'zero areas returned'
+    return areas 
 
 # def vol2prism_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
 

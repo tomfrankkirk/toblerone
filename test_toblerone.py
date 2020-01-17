@@ -17,52 +17,57 @@ cores = multiprocessing.cpu_count()
 def get_testdir():
     return op.join(op.dirname(op.realpath(__file__)), 'testdata')
 
-def test_indexing():
-    td = get_testdir()
-    surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
-    spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
-    surf.index_on(spc, np.identity(4))
-    truth = pickle.load(gzip.open(op.join(td,'sph_indexed.gz')))
-    truthspace = truth._index_space
-    space = surf._index_space
-    for k in surf.assocs_keys:
-        assert np.array_equal(surf.assocs[k,:].indices, truth.assocs[k])
+# def test_indexing():
+#     td = get_testdir()
+#     surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
+#     spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
+#     surf.index_on(spc, np.identity(4))
+#     truth = pickle.load(gzip.open(op.join(td,'sph_indexed.gz')))
+#     truthspace = truth._index_space
+#     space = surf._index_space
+#     for k in surf.assocs_keys:
+#         assert np.array_equal(surf.assocs[k,:].indices, truth.assocs[k])
 
-    assert np.all(space.bbox_origin == truthspace.bbox_origin)
-    assert np.all(space.size == truthspace.size)
-    assert np.all(space.offset == truthspace.offset)
-    assert np.array_equal(surf.voxelised, truth.voxelised)
+#     assert np.all(space.bbox_origin == truthspace.bbox_origin)
+#     assert np.all(space.size == truthspace.size)
+#     assert np.all(space.offset == truthspace.offset)
+#     assert np.array_equal(surf.voxelised, truth.voxelised)
 
-def test_sph():
-    td = get_testdir()
-    surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
-    spc = toblerone.ImageSpace(op.join(td, 'sph_fractions.nii.gz'))
-    s2r = np.identity(4)
-    supersampler = np.ceil(spc.vox_size / 0.75)
+# def test_sph():
+#     td = get_testdir()
+#     surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
+#     spc = toblerone.ImageSpace(op.join(td, 'sph_fractions.nii.gz'))
+#     s2r = np.identity(4)
+#     supersampler = np.ceil(spc.vox_size / 0.75)
 
-    fracs = estimators._structure(surf, spc, 
-        s2r, supersampler, False, multiprocessing.cpu_count())
+#     fracs = estimators._structure(surf, spc, 
+#         s2r, supersampler, False, multiprocessing.cpu_count())
 
-    truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
-    np.testing.assert_array_almost_equal(fracs, truth, 1)
+#     truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
+#     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
-def test_struct():
-    td = get_testdir()
-    fracs = toblerone.estimate_structure(surf=op.join(td, 'L_Puta.surf.gii'), 
-        ref=op.join(td, 'sph_fractions.nii.gz'), struct2ref='I')
+# def test_struct():
+#     td = get_testdir()
+#     fracs = toblerone.estimate_structure(surf=op.join(td, 'L_Puta.surf.gii'), 
+#         ref=op.join(td, 'sph_fractions.nii.gz'), struct2ref='I')
     
-    truth = np.squeeze(nibabel.load(
-        op.join(td, 'L_Puta_fracs.nii.gz')).get_fdata())
-    np.testing.assert_array_almost_equal(fracs, truth, 1)
+#     truth = np.squeeze(nibabel.load(
+#         op.join(td, 'L_Puta_fracs.nii.gz')).get_fdata())
+#     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
-def test_imagespace():
+# def test_imagespace():
+#     td = get_testdir()
+#     spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
+#     sspc = spc.supersample([2,2,2])
+
+#     assert np.all(spc.bbox_origin == sspc.bbox_origin)
+#     assert np.all(spc.FoV_size == sspc.FoV_size)
+
+def test_projection():
     td = get_testdir()
-    spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
-    sspc = spc.supersample([2,2,2])
-
-    assert np.all(spc.bbox_origin == sspc.bbox_origin)
-    assert np.all(spc.FoV_size == sspc.FoV_size)
+    surf = toblerone.Surface(op.join(td, 'sph.surf.gii'))
+    vt_mat = toblerone.projection._vtxtri_area_mat(surf)
 
 
 if __name__ == "__main__":
-    test_indexing()
+    test_projection()
