@@ -366,11 +366,97 @@ def _triangle_areas(ps, ts):
 def _vertex_areas(ps, ts):
     """Areas surrounding each vertex in surface, default 1/3 of each tri"""
 
+    areas = meyer_areas(0, ps, ts)
      
-    tri_areas = _triangle_areas(ps,ts)  
-    vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
-    return vtx_areas
+    # tri_areas = _triangle_areas(ps,ts)  
+    # vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
+    # return vtx_areas
 
+
+def meyer_areas(pidx, points, tris):
+    """
+    This function calculates the area of a vertex in a triangular mesh according
+    to the definition of A_mixed in "Discrete Differential-Geometry Operators for
+    Triangulated 2-Manifolds", M. Meyer, M. Desbrun, P. Schroder, A.H. Barr.
+    ----------
+    Parameters
+    ----------
+    vertex_index : index of vertex for which you wish to find the associated area
+    vertices     : numpy array of shape n_v*d where n_v is the number of vertices and
+                   d is the number of dimensions
+    tris        : numpy array of shape n_f*3 where n_f is the number of tris. This
+                   lists the 3 points which makes up each face on the surface
+    
+    -------
+    Returns
+    -------
+    A_mix : area associated with this vertex according to the Meyer paper in the
+            description
+    """
+
+    # edges is defined as e1-0, then e2-0, then e2-1
+    EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
+    edges = np.stack([points[tris[:,1],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,1],:]], axis=1)
+    edge_lengths = np.linalg.norm(edges, axis=2)
+
+    full_set = set(range(3))
+    areas = np.zeros(tris.shape[0], dtype=np.float32)
+    for pidx in range(points.shape[0]):
+        tris_touched = (tris == pidx)
+        t_area = 0.0 
+        for tidx in np.flatnonzero(tris_touched.any(1)):
+            cent_pidx = np.flatnonzero(tris_touched[tidx]).tolist()
+            other_pidx = np.flatnonzero(~tris_touched[tidx]).tolist()
+
+            e1 = set(cent_pidx + [other_pidx[0]])
+            e2 = set(cent_pidx + [other_pidx[1]])
+            e3 = set(other_pidx)
+
+            e1_idx, e2_idx, e3_idx = [ 
+                np.flatnonzero([ e == ei for ei in EDGE_INDEXING ]) for e in [e1, e2, e3] ] 
+
+            L12 = edge_lengths[tidx,e3_idx]
+            L01 = edge_lengths[tidx,e1_idx]
+            L02 = edge_lengths[tidx,e2_idx]
+
+            indexing = [0,1,2]
+            face = tris[tidx]
+            vinface = np.flatnonzero(tris_touched[tidx])
+            p1 = points[tris[tidx,vinface],:]
+            indexing.remove(vinface)
+            p2,p3 = points[tris[tidx,indexing],:]
+
+            # calculate distances
+            l12 = np.linalg.norm(p1-p2)
+            l13 = np.linalg.norm(p1-p3)
+            l23 = np.linalg.norm(p2-p3)
+
+            print(L12 - l23)
+            print(L01 - l12)
+            print(L02 - l13)
+
+            # calculate angles
+            alpha = np.arccos((np.square(l12) + np.square(l13) - np.square(l23)) / (2*l12*l13))
+            beta  = np.arccos((np.square(l12) + np.square(l23) - np.square(l13)) / (2*l12*l23))
+            gamma = np.arccos((np.square(l13) + np.square(l23) - np.square(l12)) / (2*l13*l23))
+            angles = np.array([alpha, beta, gamma])
+
+            # calculate area contribution
+            if not np.any((angles > np.pi/2)): # Voronoi
+                a = ((np.square(l12)/np.tan(gamma)) + (np.square(l13)/np.tan(beta))) / 8
+            else: 
+                # calculate area of triangle
+                area_t = 0.5 * np.linalg.norm(np.cross(p1-p2, p1-p3))
+                if alpha > np.pi/2:
+                    a = area_t / 2
+                else:
+                    a = area_t / 4
+
+            t_area += a
+
+        areas[tidx] = t_area 
 
 
 # def vol2prism_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
