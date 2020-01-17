@@ -2,6 +2,7 @@
 
 from .main import estimate_all, estimate_cortex, estimate_structure, fsl_fs_anat
 from .classes import ImageSpace, Surface
+from . import projection
 
 __all__ = ['core', 'classes']
 __author__ = 'Tom Kirk'

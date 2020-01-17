@@ -523,11 +523,13 @@ def stack_images(images):
         smask = (s.flatten() > 0)
         out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
         out[smask,2] = np.minimum(out[smask,2], 1 - out[smask,0])
-        out[smask,1] = 1 - (out[smask,0] + out[smask,2])
+        out[smask,1] = np.maximum(1 - (out[smask,0] + out[smask,2]), 0)
 
     # Final sanity check, then rescaling so all voxels sum to unity. 
+    assert (out > -1e-6).all()
+    out[out < 0] = 0 
     sums = out.sum(1)
-    assert np.all(np.abs(sums - 1) < 1e-6)
+    assert (np.abs(sums - 1) < 1e-6).all()
     out = out / sums[:,None]
 
     return out.reshape(shape)
