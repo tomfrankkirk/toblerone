@@ -13,8 +13,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
 
     Args: 
-        hemispheres: a list of Hemisphere objects (one or two), each 
-            containing the appropriate surface objects (in voxel coords)
+        hemispheres: either a single, or iterable list of, Hemisphere objects 
         refSpace: an ImageSpace within which PVs are required
         supersampler: supersampling factor (3-vector) to use for estimation
         cores: number of processor cores to use
@@ -26,6 +25,9 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
             mask is boolean mask denoting intersection with any cortical surf
     """
 
+    if not isinstance(hemispheres, list):
+        hemispheres = [hemispheres]
+        
     surfs = [ s for h in hemispheres for s in h.surfs() ]
 
     for s in surfs: 
