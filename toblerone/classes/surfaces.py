@@ -135,6 +135,9 @@ class Surface(object):
         if (ps.shape[1] != 3) or (ts.shape[1] != 3):
             raise RuntimeError("ps, ts arrays must have N x 3 dimensions")
 
+        if ts.min() > 0: 
+            raise RuntimeError("ts array should be 0-indexed")
+
         s = cls.__new__(cls)
         s.points = ps.astype(np.float32)
         s.tris = ts.astype(np.int32)
