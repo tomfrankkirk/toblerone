@@ -62,12 +62,12 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
 
     # Two step projection: from volume to prisms, then prisms to vertices
-    voxprism_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores).tocsc()
-    vtxtri_mat = _vtxtri_area_mat(in_surf, cores)
+    vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores).tocsc()
+    vtx2tri_mat = _vtx2tri_mat(in_surf, cores)
 
     n_vtx = in_surf.points.shape[0]
     worker = functools.partial(__vol2surf_worker, 
-            voxprism_mat=voxprism_mat, vtxtri_mat=vtxtri_mat)
+            vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
 
     if cores > 1: 
         vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
@@ -85,25 +85,25 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return weights
 
 
-def __vol2surf_worker(vertices, voxprism_mat, vtxtri_mat):
+def __vol2surf_worker(vertices, vox2tri_mat, vtx2tri_mat):
     """
     Worker function for vol2surf_weights(). 
 
     Args: 
         vertices: iterable of vertex numbers to process 
-        voxprism_mat: produced by _voxprism_mat() 
-        vtxtri_mat: produced by _vtxtri_area_mat()
+        vox2tri_mat: produced by _vox2tri_mat() 
+        vtx2tri_mat: produced by _vtx2tri_area_mat()
 
     Returns: 
         CSR matrix of size (n_vertices x n_voxs)
     """
 
-    weights = sparse.dok_matrix((vtxtri_mat.shape[0], voxprism_mat.shape[0]), 
+    weights = sparse.dok_matrix((vtx2tri_mat.shape[0], vox2tri_mat.shape[0]), 
                 dtype=np.float32)  
 
     for vtx in vertices: 
-        tw = vtxtri_mat[vtx,:]
-        voxw = voxprism_mat[:,tw.indices]
+        tw = vtx2tri_mat[vtx,:]
+        voxw = vox2tri_mat[:,tw.indices]
         uniq_voxs, at_inds = np.unique(voxw.indices, return_inverse=True)
         vtxw = np.bincount(at_inds, weights=voxw.data)
         weights[vtx,uniq_voxs] = (vtxw / vtxw.sum())
@@ -158,15 +158,15 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     out_surf = copy.deepcopy(out_surf)
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
 
-    voxprism_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores)
-    vtxtri_mat = _vtxtri_area_mat(in_surf, cores).tocsc()
-    voxs_nonzero = np.flatnonzero(voxprism_mat.sum(1) > 0)
+    vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores)
+    vtx2tri_mat = _vtx2tri_area_mat(in_surf, cores).tocsc()
+    voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
 
     if cores > 1: 
         vox_ranges = [ voxs_nonzero[c] for c in 
             utils._distributeObjects(range(voxs_nonzero.size), cores) ]
         worker = functools.partial(__surf2vol_worker, 
-            voxprism_mat=voxprism_mat, vtxtri_mat=vtxtri_mat)
+            vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
 
         with mp.Pool(cores) as p: 
             ws = p.map(worker, vox_ranges)
@@ -181,7 +181,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return weights
 
 
-def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
+def __surf2vol_worker(voxs, vox2tri_mat, vtx2tri_mat):
     """
     Returns CSR matrix of size (n_vertices x n_verts)
     """
@@ -189,12 +189,12 @@ def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
     # Weights matrix is sized (n_voxs x n_vertices)
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
-    weights = sparse.dok_matrix((voxprism_mat.shape[0], vtxtri_mat.shape[0]), 
+    weights = sparse.dok_matrix((vox2tri_mat.shape[0], vtx2tri_mat.shape[0]), 
                 dtype=np.float32)  
 
     for vox in voxs:
-        tw = voxprism_mat[vox,:]
-        vtw = vtxtri_mat[:,tw.indices]
+        tw = vox2tri_mat[vox,:]
+        vtw = vtx2tri_mat[:,tw.indices]
         uniq_vtx, at_inds = np.unique(vtw.indices, return_inverse=True)
         voxw = np.bincount(at_inds, weights=vtw.data)
         weights[vox,uniq_vtx] = (voxw / voxw.sum())   
@@ -202,7 +202,7 @@ def __surf2vol_worker(voxs, voxprism_mat, vtxtri_mat):
     return weights.tocsr()     
 
 
-def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):     
+def _vox2tri_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -215,14 +215,14 @@ def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
         cores: number of cpu cores
         
     Returns: 
-        vox_prism_mat: a scipy.sparse CSR matrix (compressed rows), of shape
+        vox2tri_mat: a scipy.sparse CSR matrix (compressed rows), of shape
             (n_voxs, n_tris), in which each entry at index [I,J] gives the 
             number of samples from triangle prism J that are in voxel I. 
             NB this matrix is not normalised in any way!
     """
 
     n_tris = in_surf.tris.shape[0]
-    worker = functools.partial(__voxprism_mat_worker, in_surf=in_surf, 
+    worker = functools.partial(__vox2tri_mat_worker, in_surf=in_surf, 
         out_surf=out_surf, spc=spc, factor=factor)
     
     if cores > 1: 
@@ -240,9 +240,9 @@ def _voxprism_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
     return vpmat / (factor ** 3)
 
 
-def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
+def __vox2tri_mat_worker(t_range, in_surf, out_surf, spc, factor):
     """
-    Helper method for _voxprism_mat(). 
+    Helper method for _vox2tri_mat(). 
 
     Args: 
         t_range: iterable of triangle numbers to process
@@ -291,19 +291,19 @@ def __voxprism_mat_worker(t_range, in_surf, out_surf, spc, factor):
     return vox_tri_samps.tocsr()
 
 
-def _triangle_areas(ps, ts):
-    """Areas of triangles, vector of length n_tris"""
-    return 0.5 * np.linalg.norm(np.cross(
-        ps[ts[:,1],:] - ps[ts[:,0],:], 
-        ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
+# def _triangle_areas(ps, ts):
+#     """Areas of triangles, vector of length n_tris"""
+#     return 0.5 * np.linalg.norm(np.cross(
+#         ps[ts[:,1],:] - ps[ts[:,0],:], 
+#         ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
 
 
-def _simple_vertex_areas(ps, ts):
-    """Areas surrounding each vertex in surface, default 1/3 of each tri"""
+# def _simple_vertex_areas(ps, ts):
+#     """Areas surrounding each vertex in surface, default 1/3 of each tri"""
      
-    tri_areas = _triangle_areas(ps,ts)  
-    vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
-    return vtx_areas
+#     tri_areas = _triangle_areas(ps,ts)  
+#     vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
+#     return vtx_areas
 
 
 def __meyer_worker(points, tris, edges, edge_lengths, worklist):
@@ -380,7 +380,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     return vtx_tri_areas.tocsr()
 
 
-def _vtxtri_area_mat(surf, cores=mp.cpu_count()):
+def _vtx2tri_mat(surf, cores=mp.cpu_count()):
     """
     Calculate area associated with each point's triangle in a surface mesh, 
     according to the definition of A_mixed in "Discrete Differential-Geometry 
@@ -395,8 +395,8 @@ def _vtxtri_area_mat(surf, cores=mp.cpu_count()):
         cores: number of CPU cores to use, default max 
 
     Returns: 
-        PxT sparse CSR matrix, where element I,J is the area of triangle J
-            belonging to vertx I 
+        sparse CSR matrix, size (n_points, n_tris) where element I,J is the 
+            area of triangle J belonging to vertx I 
     """
 
     points = surf.points 
@@ -414,28 +414,12 @@ def _vtxtri_area_mat(surf, cores=mp.cpu_count()):
             results = p.map(worker_func, worker_lists)
 
         # Flatten results back down 
-        areas = results[0]
+        vtx2tri_mat = results[0]
         for r in results[1:]:
-            areas += r 
+            vtx2tri_mat += r 
 
     else: 
-        areas = worker_func(range(points.shape[0]))
+        vtx2tri_mat = worker_func(range(points.shape[0]))
 
-    assert (areas.data > 0).all(), 'zero areas returned'
-    return areas 
-
-# def vol2prism_weights(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):
-
-#     voxtri_mat = _voxprism_mat(in_surf, out_surf, spc, factor, cores)
-#     sums = voxtri_mat.sum(0).A.reshape(-1)
-#     for abv in np.flatnonzero(sums):
-#         voxtri_mat[abv,:] /= voxtri_mat[abv,:].sum()
-
-#     set_trace()
-#     fltr = (sums > 0)
-#     voxtri_mat[fltr,:] /= sums[fltr][:,None]
-#     set_trace()
-#     return voxtri_mat
-
-# def prism2vol_weights(): 
-#     pass 
+    assert (vtx2tri_mat.data > 0).all(), 'zero areas returned'
+    return vtx2tri_mat 
