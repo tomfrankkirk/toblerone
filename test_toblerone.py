@@ -10,8 +10,7 @@ import multiprocessing
 from pdb import set_trace
 
 import toblerone
-from toblerone import estimators
-from toblerone import classes
+from toblerone import estimators, classes, projection
 
 cores = multiprocessing.cpu_count()
 
@@ -60,7 +59,10 @@ def test_projection():
     td = get_testdir()
     ins = toblerone.Surface(op.join(td, 'in.surf.gii'))
     outs = toblerone.Surface(op.join(td, 'out.surf.gii'))
-    vt_mat = toblerone.projection._vtxtri_area_mat(ins)
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    sdata = np.ones(ins.points.shape[0], dtype=np.float32)
+    vdata = projection.surf2vol(sdata, ins, outs, spc)
+    assert (np.abs(1 - vdata[vdata > 0]) < 1e-6).all(), 'surf did not map to ones'
 
 
 if __name__ == "__main__":

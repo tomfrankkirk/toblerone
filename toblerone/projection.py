@@ -92,7 +92,7 @@ def __vol2surf_worker(vertices, vox2tri_mat, vtx2tri_mat):
     Args: 
         vertices: iterable of vertex numbers to process 
         vox2tri_mat: produced by _vox2tri_mat() 
-        vtx2tri_mat: produced by _vtx2tri_area_mat()
+        vtx2tri_mat: produced by _vtx2tri_mat()
 
     Returns: 
         CSR matrix of size (n_vertices x n_voxs)
@@ -159,7 +159,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
 
     vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores)
-    vtx2tri_mat = _vtx2tri_area_mat(in_surf, cores).tocsc()
+    vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsc()
     voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
 
     if cores > 1: 
