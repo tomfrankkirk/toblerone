@@ -241,16 +241,6 @@ class Surface(object):
                 supersampler, desc, cores)
 
 
-    @property
-    def coordsys(self): 
-        if isinstance(self._index_space, ImageSpace):
-            return "voxel"
-        elif self._index_space is None: 
-            return "world"
-        else: 
-            raise RuntimeError("Unexpected _index_space on surface")
-
-
     def index_on(self, space, struct2ref, cores=multiprocessing.cpu_count()):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
@@ -293,93 +283,6 @@ class Surface(object):
         self.form_associations(cores)
         self.calculateXprods()
         self.voxelise(cores)
-
-
-    def deindex(self, struct2ref):
-        """
-        Undo the changes made by index_on(). The original struct2ref 
-        transformation used for indexing must be provided. Converts the
-        surface back to original world coords and removes associations and
-        voxelisation data.
-
-        Returns: 
-            the current ImageSpace used for indexing 
-        """
-
-        if self.coordsys != "voxel":
-            raise RuntimeError("Surface is not indexed")
-
-        else: 
-            spc = copy.copy(self._index_space)
-            self.applyTransform(spc.vox2world)
-            self.applyTransform(np.linalg.inv(struct2ref))
-            self.voxelised = None 
-            self.xProds = None 
-            self.assocs = None 
-            self.assocs_keys = None 
-            self._index_space = None 
-            return spc 
-
-    # @ensure_derived_space
-    # def reindex_for(self, dest_space):
-    #     """ 
-    #     Re-index a surface for a space that derives from the space for which
-    #     the space is currently indexed. For example, if the current index 
-    #     space was produced using ImageSpace.minimal_enclosing(), then it cannot
-    #     be assumed to cover the same FoV as the space of the reference image
-    #     that was used to generate it. This function can be used to update the 
-    #     properties of that surface to match this original reference space. 
-
-    #     Args: 
-    #         dest_space: ImageSpace from which the current index_space derives
-
-    #     Updates: 
-    #         points, LUT, assocs, xProds
-    #     """
-
-    #     # Get the offset and size of the current index space 
-    #     ref_space = self._index_space
-    #     FoVoffset = ref_space.offset 
-    #     size = self._index_space.size 
-
-    #     # Get a filter for voxel of the current index space that are still 
-    #     # present in the dest_space 
-    #     ref_inds = np.arange(np.prod(size))
-    #     ref_voxs_in_dest = np.array(np.unravel_index(ref_inds, size)).T
-    #     ref_voxs_in_dest -= FoVoffset
-    #     ref2dest_fltr = self.reindexing_filter(dest_space)
-
-    #     # Update LUT: produce filter of ref voxel inds within the current LUT
-    #     # Combine this filter with the ref2dest_fltr. Finally, map the voxel 
-    #     # coords corresponding to accepted voxels in the LUT into dest_space 
-    #     LUTfltr = np.isin(ref_inds, self.LUT)
-    #     LUTfltr = np.logical_and(LUTfltr, ref2dest_fltr)
-    #     newLUT = np.ravel_multi_index(ref_voxs_in_dest[LUTfltr,:].T, 
-    #         dest_space.size)
-
-    #     # Update associations table. Accept all those that correspond to 
-    #     # accepted LUT entries 
-    #     newassocs = self.assocs[np.isin(self.LUT, ref_inds[LUTfltr])]
-
-    #     # Update the voxelisation mask. Convert accepted voxel coordinates 
-    #     # into voxel indices within destination space. These correspond to
-    #     # the values in the new voxelisation mask that should be updated
-    #     # using the extracted values from the existing voxelisation mask 
-    #     ref_inds_subspace = np.ravel_multi_index(
-    #         ref_voxs_in_dest[ref2dest_fltr,:].T, dest_space.size)
-    #     newvoxelised = np.zeros(dest_space.size, dtype=bool).flatten()
-    #     newvoxelised[ref_inds_subspace] = self.voxelised[ref2dest_fltr]
-
-    #     # Lastly update the points: map them back to world mm coordinates 
-    #     # and use the world2vox of the dest space 
-    #     self.applyTransform(ref_space.vox2world)
-    #     self.applyTransform(dest_space.world2vox)
-
-    #     self.LUT = newLUT
-    #     self.assocs = newassocs
-    #     self.voxelised = newvoxelised
-    #     self._index_space = dest_space
-    #     self.offset = None
 
 
     @ensure_derived_space
@@ -439,32 +342,20 @@ class Surface(object):
         return dest_inds[fltr]
 
 
-    def find_bridges(self, space, struct2ref=None): 
+    @ensure_derived_space
+    def find_bridges(self, space): 
         """
         Find voxels within space that are intersected by this surface 
         multiple times
 
         Args: 
             space: ImageSpace, or path to image, in which to find bridge voxels
-            struct2ref: (optional) 4x4 affine world-world transformation from 
-                surface coords to the target ImageSpace (NOT VOXEL COORDS). 
-                Required if surface is not already indexed. 
+                NB the surface must have been indexed in this space already
+                (see Surface.index_on)
+
+        Returns: 
+            array of linear voxel indices 
         """
-
-        # If surface not indexed, then do so now 
-        if self.coordsys == "world": 
-            if struct2ref is None:
-                raise RuntimeError("struct2ref arg reqd. for indexing surface")
-            self.index_on(space, struct2ref)
-
-        # Sanity checks to ensure compatability of index space 
-        else: 
-            assert isinstance(self._index_space, ImageSpace)
-            if not self._index_space.derives_from(space):
-                warnings.warn("Surface will be re-indexed to find bridges")
-                raise RuntimeError("fix me")
-                # self.deindex()
-                # self.index_on(space)
 
         group_counts = np.array([len(core._separatePointClouds(
             self.tris[self.assocs[v,:].indices,:])) 
@@ -669,8 +560,6 @@ class Surface(object):
         assert mask.any(), 'no voxels filled'
         self.voxelised = mask.reshape(-1)
 
-    
-    
 
 class Patch(Surface):
     """
@@ -719,6 +608,7 @@ class Hemisphere(object):
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
         return [self.inSurf, self.outSurf]
+
 
     def surf_dict(self):
         """Return surfs as dict with appropriate keys (eg LPS)"""
