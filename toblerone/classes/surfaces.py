@@ -604,6 +604,22 @@ class Hemisphere(object):
         self.PVs = None 
         return
 
+    @classmethod
+    def manual(cls, insurf, outsurf, side):
+        """
+        Manual hemisphere constructor
+        """
+
+        if not (isinstance(insurf, Surface) and isinstance(outsurf, Surface)):
+            raise RuntimeError("Initialise with surface objects")
+
+        h = cls.__new__(cls)
+        h.inSurf = insurf
+        h.outSurf = outsurf
+        h.PVs = None 
+        h.side = side 
+        return h 
+
 
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
