@@ -102,11 +102,12 @@ def __vol2surf_worker(vertices, vox2tri_mat, vtx2tri_mat):
                 dtype=np.float32)  
 
     for vtx in vertices: 
-        tw = vtx2tri_mat[vtx,:]
-        voxw = vox2tri_mat[:,tw.indices]
-        uniq_voxs, at_inds = np.unique(voxw.indices, return_inverse=True)
-        vtxw = np.bincount(at_inds, weights=voxw.data)
-        weights[vtx,uniq_voxs] = (vtxw / vtxw.sum())
+        tri_weights = vtx2tri_mat[vtx,:]
+        vox_weights = vox2tri_mat[:,tri_weights.indices]
+        vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
+        u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
+        vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
+        weights[vtx,u_voxs] = (vtx_vox_weights / vtx_vox_weights.sum())
 
     return weights.tocsr()
 
@@ -162,11 +163,12 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsc()
     voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
 
+    worker = functools.partial(__surf2vol_worker, 
+        vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
+
     if cores > 1: 
         vox_ranges = [ voxs_nonzero[c] for c in 
             utils._distributeObjects(range(voxs_nonzero.size), cores) ]
-        worker = functools.partial(__surf2vol_worker, 
-            vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
 
         with mp.Pool(cores) as p: 
             ws = p.map(worker, vox_ranges)
@@ -177,7 +179,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     else:
         weights = worker(voxs_nonzero)
-
+    
     return weights
 
 
@@ -193,16 +195,17 @@ def __surf2vol_worker(voxs, vox2tri_mat, vtx2tri_mat):
                 dtype=np.float32)  
 
     for vox in voxs:
-        tw = vox2tri_mat[vox,:]
-        vtw = vtx2tri_mat[:,tw.indices]
-        uniq_vtx, at_inds = np.unique(vtw.indices, return_inverse=True)
-        voxw = np.bincount(at_inds, weights=vtw.data)
-        weights[vox,uniq_vtx] = (voxw / voxw.sum())   
+        tri_weights = vox2tri_mat[vox,:]
+        vtx_weights = vtx2tri_mat[:,tri_weights.indices]
+        vtx_weights.data *= tri_weights.data[vtx_weights.tocsr().indices]
+        u_vtx, at_inds = np.unique(vtx_weights.indices, return_inverse=True)
+        vox_vtx_weights = np.bincount(at_inds, weights=vtx_weights.data)
+        weights[vox,u_vtx] = vox_vtx_weights    
 
     return weights.tocsr()     
 
 
-def _vox2tri_mat(in_surf, out_surf, spc, factor, cores=mp.cpu_count()):     
+def _vox2tri_mat(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -382,10 +385,12 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
 
 def _vtx2tri_mat(surf, cores=mp.cpu_count()):
     """
-    Calculate area associated with each point's triangle in a surface mesh, 
-    according to the definition of A_mixed in "Discrete Differential-Geometry 
-    Operators for Triangulated 2-Manifolds", M. Meyer, M. Desbrun, P. Schroder,
-    A.H. Barr.
+    Form a matrix of size (n_vertices x n_tris) where element (I,J) corresponds
+    to the area of triangle J belonging to vertex I. 
+
+    Areas are calculated according to the definition of A_mixed in "Discrete 
+    Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
+    M. Desbrun, P. Schroder, A.H. Barr.
 
     With thanks to Jack Toner for the original implementation from which this is 
     adapted. 
