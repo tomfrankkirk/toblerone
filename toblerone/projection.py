@@ -63,7 +63,13 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     # Two step projection: from volume to prisms, then prisms to vertices
     vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores).tocsc()
-    vtx2tri_mat = _vtx2tri_mat(in_surf, cores)
+    vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsr()
+
+    # Normalise vtx2tri matrix so that per-triangle vertex areas sum to 1 
+    norm = vtx2tri_mat.sum(0).A.flatten()
+    fltr = (norm < 1e-3)
+    norm[fltr] = 1
+    vtx2tri_mat.data /= np.take(norm, vtx2tri_mat.indices)
 
     n_vtx = in_surf.points.shape[0]
     worker = functools.partial(__vol2surf_worker, 
@@ -161,8 +167,14 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores)
     vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsc()
-    voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
 
+    # Normalise vtx2tri matrix so that per-vertex tri weights sum to 1
+    norm = vtx2tri_mat.sum(1).A.flatten()
+    fltr = (norm < 1e-3)
+    norm[fltr] = 1 
+    vtx2tri_mat.data /= np.take(norm, vtx2tri_mat.indices)
+
+    voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
     worker = functools.partial(__surf2vol_worker, 
         vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
 
