@@ -15,6 +15,11 @@ from . import utils
 from .classes import  ImageSpace, Surface
 
 
+def calc_midsurf(in_surf, out_surf):
+    vec = out_surf.points - in_surf.points 
+    points =  in_surf.points + (0.5 * vec)
+    return Surface.manual(points, in_surf.tris)
+
 def vol2surf(vdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     """
     Project volumetric data to the cortical ribbon defined by inner/outer 
@@ -60,10 +65,11 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     in_surf = copy.deepcopy(in_surf)
     out_surf = copy.deepcopy(out_surf)
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
+    mid_surf = calc_midsurf(in_surf, out_surf)
 
     # Two step projection: from volume to prisms, then prisms to vertices
     vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores).tocsc()
-    vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsr()
+    vtx2tri_mat = _vtx2tri_mat(mid_surf, cores).tocsr()
 
     # Normalise vtx2tri matrix so that per-triangle vertex areas sum to 1 
     norm = vtx2tri_mat.sum(0).A.flatten()
@@ -164,9 +170,10 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     in_surf = copy.deepcopy(in_surf)
     out_surf = copy.deepcopy(out_surf)
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
+    mid_surf = calc_midsurf(in_surf, out_surf)
 
     vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores)
-    vtx2tri_mat = _vtx2tri_mat(in_surf, cores).tocsc()
+    vtx2tri_mat = _vtx2tri_mat(mid_surf, cores).tocsc()
 
     # Normalise vtx2tri matrix so that per-vertex tri weights sum to 1
     norm = vtx2tri_mat.sum(1).A.flatten()
