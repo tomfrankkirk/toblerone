@@ -61,9 +61,10 @@ def test_projection():
     outs = toblerone.Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     sdata = np.ones(ins.points.shape[0], dtype=np.float32)
-    vdata = projection.surf2vol(sdata, ins, outs, spc)
-    assert (np.abs(1 - vdata[vdata > 0]) < 1e-6).all(), 'surf did not map to ones'
+    vdata = np.ones(spc.size.prod(), dtype=np.float32)
+    sproj = projection.surf2vol_weights(ins, outs, spc, 5, 1)
+    # assert (np.abs(1 - vdata[vdata > 0]) < 1e-6).all(), 'surf did not map to ones'
 
 
 if __name__ == "__main__":
-    test_indexing()
+    test_projection()
