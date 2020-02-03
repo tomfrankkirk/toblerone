@@ -170,14 +170,15 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
     mid_surf = calc_midsurf(in_surf, out_surf)
 
-    # Mapping from voxels to triangles
-    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
-    vox_tri_weights = sparse_normalise(vox_tri_weights, 1)
+    # Mapping from vertices to triangles - ensure each triangle's vertex 
+    # weights sum to 1 
+    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores)
+    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0).tocsc()
 
-    # Mapping from vertices to triangles - ensure triangle weights per vertex
-    # sum to unity 
-    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsc()
-    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 1)
+    # Mapping from triangles to voxels - ensure each voxel's triangle
+    # weights sum to 1
+    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
+    vox_tri_weights = sparse_normalise(vox_tri_weights, 1).tocsr()
 
     voxs_nonzero = np.flatnonzero(vox_tri_weights.sum(1) > 0)
     worker = functools.partial(__surf2vol_worker, 
@@ -196,7 +197,9 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     else:
         weights = worker(voxs_nonzero)
-    
+
+    # Final round of normalisation, each voxel's vertex weights sum to 1
+    weights = sparse_normalise(weights, 1)
     return weights
 
 
@@ -208,18 +211,19 @@ def __surf2vol_worker(voxs, vox_tri_weights, vtx_tri_weights):
     # Weights matrix is sized (n_voxs x n_vertices)
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
-    weights = sparse.dok_matrix((vox_tri_weights.shape[0], vtx_tri_weights.shape[0]), 
-                dtype=np.float32)  
+    weights = sparse.dok_matrix(
+        (vox_tri_weights.shape[0], vtx_tri_weights.shape[0]), dtype=np.float32)
 
     for vox in voxs:
         tri_weights = vox_tri_weights[vox,:]
         vtx_weights = vtx_tri_weights[:,tri_weights.indices]
-        vtx_weights.data *= tri_weights.data[vtx_weights.tocsr().indices]
+        vtx_weights.data *= np.take(tri_weights.data, 
+                                    vtx_weights.tocsr().indices)
         u_vtx, at_inds = np.unique(vtx_weights.indices, return_inverse=True)
         vox_vtx_weights = np.bincount(at_inds, weights=vtx_weights.data)
         weights[vox,u_vtx] = vox_vtx_weights    
 
-    return weights.tocsr()     
+    return weights.tocsr()
 
 
 def sparse_normalise(mat, axis): 
@@ -233,19 +237,15 @@ def sparse_normalise(mat, axis):
         axis: dimension along which sums should equal 1 (0 for col, 1 for row)
 
     Returns: 
-        sparse matrix of same type as mat 
+        sparse matrix. either CSR (axis 0) or CSC (axis 1)
     """
-
-    mat_type = type(mat)
 
     if axis == 0:
         matrix = mat.tocsr()
         norm = mat.sum(0).A.flatten()
-        constructor = sparse.csr_matrix
     elif axis == 1: 
         matrix = mat.tocsc()
         norm = mat.sum(1).A.flatten()
-        constructor = sparse.csc_matrix 
     else: 
         raise RuntimeError("Axis must be 0 or 1")
 
@@ -253,14 +253,14 @@ def sparse_normalise(mat, axis):
     # this to zeros 
     threshold = 1e-2 * norm.max()
     fltr = (norm > threshold)
-    normalise = np.zeros(norm.size)
+    normalise = np.zeros(norm.size, dtype=np.float32)
     normalise[fltr] = 1 / norm[fltr]
     matrix.data *= np.take(normalise, matrix.indices)
 
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
     assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'did not normalise to 1'
-    return mat_type(matrix) 
+    return matrix
 
 
 def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
@@ -276,7 +276,7 @@ def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
         cores: number of cpu cores
         
     Returns: 
-        vox_tri_weights: a scipy.sparse CSR matrix (compressed rows), of shape
+        vox_tri_weights: a scipy.sparse CSR matrix of shape
             (n_voxs, n_tris), in which each entry at index [I,J] gives the 
             number of samples from triangle prism J that are in voxel I. 
             NB this matrix is not normalised in any way!
@@ -297,7 +297,7 @@ def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
             
     else: 
         vpmat = worker(range(n_tris))
-        
+         
     return vpmat / (factor ** 3)
 
 
@@ -317,7 +317,7 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     """
 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]), dtype=np.int16)
+        in_surf.tris.shape[0]), dtype=np.float32)
     sampler = np.linspace(0,1, 2*factor + 1)[1:-1:2]
     sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
     samples = np.vstack((sx.flatten(),sy.flatten(),sz.flatten())).T - 0.5
