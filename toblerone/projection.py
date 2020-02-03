@@ -67,19 +67,17 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
     mid_surf = calc_midsurf(in_surf, out_surf)
 
-    # Two step projection: from volume to prisms, then prisms to vertices
-    vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores).tocsc()
-    vtx2tri_mat = _vtx2tri_mat(mid_surf, cores).tocsr()
+    # Mapping between voxels and triangles
+    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores).tocsc()
 
-    # Normalise vtx2tri matrix so that per-triangle vertex areas sum to 1 
-    norm = vtx2tri_mat.sum(0).A.flatten()
-    fltr = (norm < 1e-3)
-    norm[fltr] = 1
-    vtx2tri_mat.data /= np.take(norm, vtx2tri_mat.indices)
+    # Mapping between vertices and triangles
+    # Normalise vtx_tri_weights matrix so that per-triangle vertex areas sum to 1 
+    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsr()
+    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0)
 
     n_vtx = in_surf.points.shape[0]
     worker = functools.partial(__vol2surf_worker, 
-            vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
+            vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
 
     if cores > 1: 
         vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
@@ -97,25 +95,25 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return weights
 
 
-def __vol2surf_worker(vertices, vox2tri_mat, vtx2tri_mat):
+def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
     """
     Worker function for vol2surf_weights(). 
 
     Args: 
         vertices: iterable of vertex numbers to process 
-        vox2tri_mat: produced by _vox2tri_mat() 
-        vtx2tri_mat: produced by _vtx2tri_mat()
+        vox_tri_weights: produced by _vox_tri_weights() 
+        vtx_tri_weights: produced by _vtx_tri_weights()
 
     Returns: 
         CSR matrix of size (n_vertices x n_voxs)
     """
 
-    weights = sparse.dok_matrix((vtx2tri_mat.shape[0], vox2tri_mat.shape[0]), 
+    weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
                 dtype=np.float32)  
 
     for vtx in vertices: 
-        tri_weights = vtx2tri_mat[vtx,:]
-        vox_weights = vox2tri_mat[:,tri_weights.indices]
+        tri_weights = vtx_tri_weights[vtx,:]
+        vox_weights = vox_tri_weights[:,tri_weights.indices]
         vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
         u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
         vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
@@ -172,18 +170,17 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
     mid_surf = calc_midsurf(in_surf, out_surf)
 
-    vox2tri_mat = _vox2tri_mat(in_surf, out_surf, spc, factor, cores)
-    vtx2tri_mat = _vtx2tri_mat(mid_surf, cores).tocsc()
+    # Mapping from voxels to triangles
+    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
 
-    # Normalise vtx2tri matrix so that per-vertex tri weights sum to 1
-    norm = vtx2tri_mat.sum(1).A.flatten()
-    fltr = (norm < 1e-3)
-    norm[fltr] = 1 
-    vtx2tri_mat.data /= np.take(norm, vtx2tri_mat.indices)
+    # Mapping from vertices to triangles - ensure triangle weights per vertex
+    # sum to unity 
+    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsc()
+    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 1)
 
-    voxs_nonzero = np.flatnonzero(vox2tri_mat.sum(1) > 0)
+    voxs_nonzero = np.flatnonzero(vox_tri_weights.sum(1) > 0)
     worker = functools.partial(__surf2vol_worker, 
-        vox2tri_mat=vox2tri_mat, vtx2tri_mat=vtx2tri_mat)
+        vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
 
     if cores > 1: 
         vox_ranges = [ voxs_nonzero[c] for c in 
@@ -202,7 +199,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return weights
 
 
-def __surf2vol_worker(voxs, vox2tri_mat, vtx2tri_mat):
+def __surf2vol_worker(voxs, vox_tri_weights, vtx_tri_weights):
     """
     Returns CSR matrix of size (n_vertices x n_verts)
     """
@@ -210,12 +207,12 @@ def __surf2vol_worker(voxs, vox2tri_mat, vtx2tri_mat):
     # Weights matrix is sized (n_voxs x n_vertices)
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
-    weights = sparse.dok_matrix((vox2tri_mat.shape[0], vtx2tri_mat.shape[0]), 
+    weights = sparse.dok_matrix((vox_tri_weights.shape[0], vtx_tri_weights.shape[0]), 
                 dtype=np.float32)  
 
     for vox in voxs:
-        tri_weights = vox2tri_mat[vox,:]
-        vtx_weights = vtx2tri_mat[:,tri_weights.indices]
+        tri_weights = vox_tri_weights[vox,:]
+        vtx_weights = vtx_tri_weights[:,tri_weights.indices]
         vtx_weights.data *= tri_weights.data[vtx_weights.tocsr().indices]
         u_vtx, at_inds = np.unique(vtx_weights.indices, return_inverse=True)
         vox_vtx_weights = np.bincount(at_inds, weights=vtx_weights.data)
@@ -224,7 +221,49 @@ def __surf2vol_worker(voxs, vox2tri_mat, vtx2tri_mat):
     return weights.tocsr()     
 
 
-def _vox2tri_mat(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
+def sparse_normalise(mat, axis): 
+    """
+    Normalise a sparse matrix so that all rows (axis=1) or columns (axis=0)
+    sum to either 1 or zero. NB any rows or columns that sum to less than 
+    1/100 of the maximum row/column sum will be rounded to zeros.
+
+    Args: 
+        mat: sparse matrix to normalise 
+        axis: dimension along which sums should equal 1 (0 for col, 1 for row)
+
+    Returns: 
+        sparse matrix of same type as mat 
+    """
+
+    if axis == 0:
+        matrix = mat.tocsr()
+        norm = mat.sum(0).A.flatten()
+    elif axis == 1: 
+        matrix = mat.tocsc()
+        norm = mat.sum(1).A.flatten()
+    else: 
+        raise RuntimeError("Axis must be 0 or 1")
+        
+    mat_type = type(mat)
+
+    # Set threshold at 1% of max row or col sum. Round any row/col below
+    # this to zeros 
+    threshold = 1e-2 * norm.max()
+    fltr = (norm < threshold)
+    matrix.data /= np.take(norm, matrix.indices)
+
+    if axis == 0:
+        matrix[:,fltr] = 0
+    else: 
+        matrix[fltr,:] = 0 
+        
+    # Sanity check
+    sums = matrix.sum(axis).A.flatten()
+    assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'did not normalise to 1'
+    return mat_type(matrix) 
+
+
+def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -237,14 +276,14 @@ def _vox2tri_mat(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
         cores: number of cpu cores
         
     Returns: 
-        vox2tri_mat: a scipy.sparse CSR matrix (compressed rows), of shape
+        vox_tri_weights: a scipy.sparse CSR matrix (compressed rows), of shape
             (n_voxs, n_tris), in which each entry at index [I,J] gives the 
             number of samples from triangle prism J that are in voxel I. 
             NB this matrix is not normalised in any way!
     """
 
     n_tris = in_surf.tris.shape[0]
-    worker = functools.partial(__vox2tri_mat_worker, in_surf=in_surf, 
+    worker = functools.partial(__vox_tri_weights_worker, in_surf=in_surf, 
         out_surf=out_surf, spc=spc, factor=factor)
     
     if cores > 1: 
@@ -262,9 +301,9 @@ def _vox2tri_mat(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return vpmat / (factor ** 3)
 
 
-def __vox2tri_mat_worker(t_range, in_surf, out_surf, spc, factor):
+def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     """
-    Helper method for _vox2tri_mat(). 
+    Helper method for _vox_tri_weights(). 
 
     Args: 
         t_range: iterable of triangle numbers to process
@@ -402,7 +441,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     return vtx_tri_areas.tocsr()
 
 
-def _vtx2tri_mat(surf, cores=mp.cpu_count()):
+def _vtx_tri_weights(surf, cores=mp.cpu_count()):
     """
     Form a matrix of size (n_vertices x n_tris) where element (I,J) corresponds
     to the area of triangle J belonging to vertex I. 
@@ -438,12 +477,12 @@ def _vtx2tri_mat(surf, cores=mp.cpu_count()):
             results = p.map(worker_func, worker_lists)
 
         # Flatten results back down 
-        vtx2tri_mat = results[0]
+        vtx_tri_weights = results[0]
         for r in results[1:]:
-            vtx2tri_mat += r 
+            vtx_tri_weights += r 
 
     else: 
-        vtx2tri_mat = worker_func(range(points.shape[0]))
+        vtx_tri_weights = worker_func(range(points.shape[0]))
 
-    assert (vtx2tri_mat.data > 0).all(), 'zero areas returned'
-    return vtx2tri_mat 
+    assert (vtx_tri_weights.data > 0).all(), 'zero areas returned'
+    return vtx_tri_weights 
