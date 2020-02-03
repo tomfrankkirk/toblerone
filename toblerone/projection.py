@@ -122,29 +122,29 @@ def calc_midsurf(in_surf, out_surf):
 #     return weights.tocsr()
 
 
-def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-    """
-    Project data defined on surface vertices to a volumetric space. NB any 
-    registration transforms must be applied to the surfaces beforehand, 
-    such that they are in world-mm coordinates for this function. 
+# def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
+#     """
+#     Project data defined on surface vertices to a volumetric space. NB any 
+#     registration transforms must be applied to the surfaces beforehand, 
+#     such that they are in world-mm coordinates for this function. 
 
-    Args: 
-        sdata: np.array of shape equal to surf.n_vertices, data to project
-        in_surf: inner Surface of ribbon, in world mm coordinates 
-        out_surf: outer Surface of ribbon, in world mm coordinates
-        spc: ImageSpace in which to project data
-        factor: voxel subdivision factor (default 10)
-        cores: number of processor cores (default max)
+#     Args: 
+#         sdata: np.array of shape equal to surf.n_vertices, data to project
+#         in_surf: inner Surface of ribbon, in world mm coordinates 
+#         out_surf: outer Surface of ribbon, in world mm coordinates
+#         spc: ImageSpace in which to project data
+#         factor: voxel subdivision factor (default 10)
+#         cores: number of processor cores (default max)
 
-    Returns:   
-        flat np.array of size equal to spc.n_voxels
-    """
+#     Returns:   
+#         flat np.array of size equal to spc.n_voxels
+#     """
 
-    if not sdata.size == in_surf.points.shape[0]:
-        raise RuntimeError("Size of sdata does not match surface")
+#     if not sdata.size == in_surf.points.shape[0]:
+#         raise RuntimeError("Size of sdata does not match surface")
 
-    s2v_weights = surf2vol_weights(in_surf, out_surf, spc, factor, cores)
-    return s2v_weights.dot(sdata.reshape(-1))
+#     s2v_weights = surf2vol_weights(in_surf, out_surf, spc, factor, cores)
+#     return s2v_weights.dot(sdata.reshape(-1))
 
 
 def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
@@ -172,6 +172,7 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     # Mapping from voxels to triangles
     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
+    vox_tri_weights = sparse_normalise(vox_tri_weights, 1)
 
     # Mapping from vertices to triangles - ensure triangle weights per vertex
     # sum to unity 
@@ -235,28 +236,27 @@ def sparse_normalise(mat, axis):
         sparse matrix of same type as mat 
     """
 
+    mat_type = type(mat)
+
     if axis == 0:
         matrix = mat.tocsr()
         norm = mat.sum(0).A.flatten()
+        constructor = sparse.csr_matrix
     elif axis == 1: 
         matrix = mat.tocsc()
         norm = mat.sum(1).A.flatten()
+        constructor = sparse.csc_matrix 
     else: 
         raise RuntimeError("Axis must be 0 or 1")
-        
-    mat_type = type(mat)
 
     # Set threshold at 1% of max row or col sum. Round any row/col below
     # this to zeros 
     threshold = 1e-2 * norm.max()
-    fltr = (norm < threshold)
-    matrix.data /= np.take(norm, matrix.indices)
+    fltr = (norm > threshold)
+    normalise = np.zeros(norm.size)
+    normalise[fltr] = 1 / norm[fltr]
+    matrix.data *= np.take(normalise, matrix.indices)
 
-    if axis == 0:
-        matrix[:,fltr] = 0
-    else: 
-        matrix[fltr,:] = 0 
-        
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
     assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'did not normalise to 1'
