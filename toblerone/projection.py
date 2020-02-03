@@ -20,106 +20,106 @@ def calc_midsurf(in_surf, out_surf):
     points =  in_surf.points + (0.5 * vec)
     return Surface.manual(points, in_surf.tris)
 
-def vol2surf(vdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-    """
-    Project volumetric data to the cortical ribbon defined by inner/outer 
-    surfaces. NB any registration transforms must be applied to the surfaces 
-    beforehand, such that they are in world-mm coordinates for this function. 
+# def vol2surf(vdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
+#     """
+#     Project volumetric data to the cortical ribbon defined by inner/outer 
+#     surfaces. NB any registration transforms must be applied to the surfaces 
+#     beforehand, such that they are in world-mm coordinates for this function. 
 
-    Args: 
-        vdata: np.array of shape equal to spc.size, or flattened, to project
-        in_surf: inner Surface of ribbon, in world mm coordinates 
-        out_surf: outer Surface of ribbon, in world mm coordinates
-        spc: ImageSpace in which data exists 
-        factor: voxel subdivision factor (default 10)
-        cores: number of processor cores (default max)
+#     Args: 
+#         vdata: np.array of shape equal to spc.size, or flattened, to project
+#         in_surf: inner Surface of ribbon, in world mm coordinates 
+#         out_surf: outer Surface of ribbon, in world mm coordinates
+#         spc: ImageSpace in which data exists 
+#         factor: voxel subdivision factor (default 10)
+#         cores: number of processor cores (default max)
 
-    Returns:   
-        flat np.array of size equal to n_vertices
-    """
+#     Returns:   
+#         flat np.array of size equal to n_vertices
+#     """
 
-    if not vdata.size == spc.size.prod(): 
-        raise RuntimeError("Size of vdata does not match size of ImageSpace")
+#     if not vdata.size == spc.size.prod(): 
+#         raise RuntimeError("Size of vdata does not match size of ImageSpace")
 
-    v2s_weights = vol2surf_weights(in_surf, out_surf, spc, factor, cores)
-    return v2s_weights.dot(vdata.reshape(-1))
-
-
-def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-    """
-    Weighting matrix used to project data from volumetric space to surface. 
-    To use this matrix: weights.dot(data_to_project)
-
-    Args: 
-        in_surf: inner Surface of ribbon, in world mm coordinates 
-        out_surf: outer Surface of ribbon, in world mm coordinates
-        spc: ImageSpace in which data exists 
-        factor: voxel subdivision factor (default 10)
-        cores: number of processor cores (default max)
-
-    Returns:   
-        a scipy sparse CSR matrix of size (n_verts x n_voxs)
-    """
-
-    # Create copies of the provided surfaces and convert them into vox coords 
-    in_surf = copy.deepcopy(in_surf)
-    out_surf = copy.deepcopy(out_surf)
-    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
-    mid_surf = calc_midsurf(in_surf, out_surf)
-
-    # Mapping between voxels and triangles
-    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores).tocsc()
-
-    # Mapping between vertices and triangles
-    # Normalise vtx_tri_weights matrix so that per-triangle vertex areas sum to 1 
-    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsr()
-    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0)
-
-    n_vtx = in_surf.points.shape[0]
-    worker = functools.partial(__vol2surf_worker, 
-            vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
-
-    if cores > 1: 
-        vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
-
-        with mp.Pool(cores) as p: 
-            ws = p.map(worker, vtx_ranges)
-
-        weights = ws[0]
-        for w in ws[1:]:
-            weights += w 
-
-    else:
-        weights = worker(range(n_vtx))
-
-    return weights
+#     v2s_weights = vol2surf_weights(in_surf, out_surf, spc, factor, cores)
+#     return v2s_weights.dot(vdata.reshape(-1))
 
 
-def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
-    """
-    Worker function for vol2surf_weights(). 
+# def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
+#     """
+#     Weighting matrix used to project data from volumetric space to surface. 
+#     To use this matrix: weights.dot(data_to_project)
 
-    Args: 
-        vertices: iterable of vertex numbers to process 
-        vox_tri_weights: produced by _vox_tri_weights() 
-        vtx_tri_weights: produced by _vtx_tri_weights()
+#     Args: 
+#         in_surf: inner Surface of ribbon, in world mm coordinates 
+#         out_surf: outer Surface of ribbon, in world mm coordinates
+#         spc: ImageSpace in which data exists 
+#         factor: voxel subdivision factor (default 10)
+#         cores: number of processor cores (default max)
 
-    Returns: 
-        CSR matrix of size (n_vertices x n_voxs)
-    """
+#     Returns:   
+#         a scipy sparse CSR matrix of size (n_verts x n_voxs)
+#     """
 
-    weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
-                dtype=np.float32)  
+#     # Create copies of the provided surfaces and convert them into vox coords 
+#     in_surf = copy.deepcopy(in_surf)
+#     out_surf = copy.deepcopy(out_surf)
+#     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
+#     mid_surf = calc_midsurf(in_surf, out_surf)
 
-    for vtx in vertices: 
-        tri_weights = vtx_tri_weights[vtx,:]
-        vox_weights = vox_tri_weights[:,tri_weights.indices]
-        vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
-        u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
-        vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
-        weights[vtx,u_voxs] = (vtx_vox_weights / vtx_vox_weights.sum())
+#     # Mapping between voxels and triangles
+#     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores).tocsc()
 
-    return weights.tocsr()
+#     # Mapping between vertices and triangles
+#     # Normalise vtx_tri_weights matrix so that per-triangle vertex areas sum to 1 
+#     vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsr()
+#     vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0)
+
+#     n_vtx = in_surf.points.shape[0]
+#     worker = functools.partial(__vol2surf_worker, 
+#             vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
+
+#     if cores > 1: 
+#         vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
+
+#         with mp.Pool(cores) as p: 
+#             ws = p.map(worker, vtx_ranges)
+
+#         weights = ws[0]
+#         for w in ws[1:]:
+#             weights += w 
+
+#     else:
+#         weights = worker(range(n_vtx))
+
+#     return weights
+
+
+# def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
+#     """
+#     Worker function for vol2surf_weights(). 
+
+#     Args: 
+#         vertices: iterable of vertex numbers to process 
+#         vox_tri_weights: produced by _vox_tri_weights() 
+#         vtx_tri_weights: produced by _vtx_tri_weights()
+
+#     Returns: 
+#         CSR matrix of size (n_vertices x n_voxs)
+#     """
+
+#     weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
+#                 dtype=np.float32)  
+
+#     for vtx in vertices: 
+#         tri_weights = vtx_tri_weights[vtx,:]
+#         vox_weights = vox_tri_weights[:,tri_weights.indices]
+#         vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
+#         u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
+#         vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
+#         weights[vtx,u_voxs] = (vtx_vox_weights / vtx_vox_weights.sum())
+
+#     return weights.tocsr()
 
 
 def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
