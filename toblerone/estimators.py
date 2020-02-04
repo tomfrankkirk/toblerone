@@ -3,6 +3,7 @@
 # that handle the aggregate various pieces of information into overall results
 
 import warnings
+import copy 
 
 import numpy as np
 
@@ -14,7 +15,8 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
 
     Args: 
         hemispheres: either a single, or iterable list of, Hemisphere objects 
-        refSpace: an ImageSpace within which PVs are required
+        space: an ImageSpace within which to operate
+        struct2ref: 4x4 affine transformation from struct to surface space
         supersampler: supersampling factor (3-vector) to use for estimation
         cores: number of processor cores to use
         ones: debug tool, write ones in all voxels containing triangles
@@ -24,6 +26,10 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
             PVs is 4D array with the PVs arranged GM/WM/non-brain in 4th dim
             mask is boolean mask denoting intersection with any cortical surf
     """
+
+    # Create our own local copy of inputs 
+    hemispheres = copy.copy(hemispheres)
+    space = copy.copy(space)
 
     if not isinstance(hemispheres, list):
         hemispheres = [hemispheres]
@@ -112,6 +118,10 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
     Returns: 
         an array of size refSpace.size containing the PVs. 
     """
+
+    # Create our own local copy of inputs 
+    surf = copy.copy(surf)
+    space = copy.copy(space)
 
     surf.index_on(space, struct2ref, cores)
     surf._estimate_fractions(supersampler, cores, ones)
