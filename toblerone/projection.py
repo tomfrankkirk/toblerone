@@ -45,81 +45,85 @@ def calc_midsurf(in_surf, out_surf):
 #     return v2s_weights.dot(vdata.reshape(-1))
 
 
-# def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-#     """
-#     Weighting matrix used to project data from volumetric space to surface. 
-#     To use this matrix: weights.dot(data_to_project)
+def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
+    """
+    Weighting matrix used to project data from volumetric space to surface. 
+    To use this matrix: weights.dot(data_to_project)
 
-#     Args: 
-#         in_surf: inner Surface of ribbon, in world mm coordinates 
-#         out_surf: outer Surface of ribbon, in world mm coordinates
-#         spc: ImageSpace in which data exists 
-#         factor: voxel subdivision factor (default 10)
-#         cores: number of processor cores (default max)
+    Args: 
+        in_surf: inner Surface of ribbon, in world mm coordinates 
+        out_surf: outer Surface of ribbon, in world mm coordinates
+        spc: ImageSpace in which data exists 
+        factor: voxel subdivision factor (default 10)
+        cores: number of processor cores (default max)
 
-#     Returns:   
-#         a scipy sparse CSR matrix of size (n_verts x n_voxs)
-#     """
+    Returns:   
+        a scipy sparse CSR matrix of size (n_verts x n_voxs)
+    """
 
-#     # Create copies of the provided surfaces and convert them into vox coords 
-#     in_surf = copy.deepcopy(in_surf)
-#     out_surf = copy.deepcopy(out_surf)
-#     [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
-#     mid_surf = calc_midsurf(in_surf, out_surf)
+    # Create copies of the provided surfaces and convert them into vox coords 
+    in_surf = copy.deepcopy(in_surf)
+    out_surf = copy.deepcopy(out_surf)
+    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
+    mid_surf = calc_midsurf(in_surf, out_surf)
 
-#     # Mapping between voxels and triangles
-#     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores).tocsc()
+    # Mapping from voxels to triangles
+    # Ensure each triangle's voxel weights sum to 1 
+    vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
+    vox_tri_weights = sparse_normalise(vox_tri_weights, 0).tocsc()
 
-#     # Mapping between vertices and triangles
-#     # Normalise vtx_tri_weights matrix so that per-triangle vertex areas sum to 1 
-#     vtx_tri_weights = _vtx_tri_weights(mid_surf, cores).tocsr()
-#     vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0)
+    # Mapping from triangles to vertices 
+    # Ensure each vertices' triangle weights sum to 1 
+    vtx_tri_weights = _vtx_tri_weights(mid_surf, cores)
+    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 1).tocsr()
 
-#     n_vtx = in_surf.points.shape[0]
-#     worker = functools.partial(__vol2surf_worker, 
-#             vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
+    n_vtx = in_surf.points.shape[0]
+    worker = functools.partial(__vol2surf_worker, 
+            vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
 
-#     if cores > 1: 
-#         vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
+    if cores > 1: 
+        vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
 
-#         with mp.Pool(cores) as p: 
-#             ws = p.map(worker, vtx_ranges)
+        with mp.Pool(cores) as p: 
+            ws = p.map(worker, vtx_ranges)
 
-#         weights = ws[0]
-#         for w in ws[1:]:
-#             weights += w 
+        weights = ws[0]
+        for w in ws[1:]:
+            weights += w 
 
-#     else:
-#         weights = worker(range(n_vtx))
+    else:
+        weights = worker(range(n_vtx))
 
-#     return weights
+    # Final round of normalisation, each voxel's vertex weights sum to 1
+    weights = sparse_normalise(weights, 1)
+    return weights
 
 
-# def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
-#     """
-#     Worker function for vol2surf_weights(). 
+def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
+    """
+    Worker function for vol2surf_weights(). 
 
-#     Args: 
-#         vertices: iterable of vertex numbers to process 
-#         vox_tri_weights: produced by _vox_tri_weights() 
-#         vtx_tri_weights: produced by _vtx_tri_weights()
+    Args: 
+        vertices: iterable of vertex numbers to process 
+        vox_tri_weights: produced by _vox_tri_weights() 
+        vtx_tri_weights: produced by _vtx_tri_weights()
 
-#     Returns: 
-#         CSR matrix of size (n_vertices x n_voxs)
-#     """
+    Returns: 
+        CSR matrix of size (n_vertices x n_voxs)
+    """
 
-#     weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
-#                 dtype=np.float32)  
+    weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
+                dtype=np.float32)  
 
-#     for vtx in vertices: 
-#         tri_weights = vtx_tri_weights[vtx,:]
-#         vox_weights = vox_tri_weights[:,tri_weights.indices]
-#         vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
-#         u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
-#         vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
-#         weights[vtx,u_voxs] = (vtx_vox_weights / vtx_vox_weights.sum())
+    for vtx in vertices: 
+        tri_weights = vtx_tri_weights[vtx,:]
+        vox_weights = vox_tri_weights[:,tri_weights.indices]
+        vox_weights.data *= tri_weights.data[vox_weights.tocsr().indices]
+        u_voxs, at_inds = np.unique(vox_weights.indices, return_inverse=True)
+        vtx_vox_weights = np.bincount(at_inds, weights=vox_weights.data)
+        weights[vtx,u_voxs] = vtx_vox_weights
 
-#     return weights.tocsr()
+    return weights.tocsr()
 
 
 # def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
@@ -240,6 +244,8 @@ def sparse_normalise(mat, axis):
         sparse matrix. either CSR (axis 0) or CSC (axis 1)
     """
 
+    constructor = type(mat)
+
     if axis == 0:
         matrix = mat.tocsr()
         norm = mat.sum(0).A.flatten()
@@ -260,7 +266,7 @@ def sparse_normalise(mat, axis):
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
     assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'did not normalise to 1'
-    return matrix
+    return constructor(matrix)
 
 
 def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
