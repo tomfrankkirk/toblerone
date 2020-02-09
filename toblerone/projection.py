@@ -64,7 +64,6 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     # Create copies of the provided surfaces and convert them into vox coords 
     in_surf = copy.deepcopy(in_surf)
     out_surf = copy.deepcopy(out_surf)
-    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
     mid_surf = calc_midsurf(in_surf, out_surf)
 
     # Mapping from voxels to triangles
@@ -171,7 +170,6 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     # Create copies of the provided surfaces and convert them into vox coords 
     in_surf = copy.deepcopy(in_surf)
     out_surf = copy.deepcopy(out_surf)
-    [ s.applyTransform(spc.world2vox) for s in [in_surf, out_surf] ]
     mid_surf = calc_midsurf(in_surf, out_surf)
 
     # Mapping from vertices to triangles - ensure each triangle's vertex 

@@ -620,7 +620,7 @@ class Hemisphere(object):
         h.side = side 
         return h 
 
-
+    @property
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
         return [self.inSurf, self.outSurf]
@@ -630,3 +630,7 @@ class Hemisphere(object):
         """Return surfs as dict with appropriate keys (eg LPS)"""
         return {self.side + 'WS': self.inSurf, 
             self.side+'PS': self.outSurf}
+
+    
+    def apply_transform(self, mat):
+        [ s.applyTransform(mat) for s in self.surfs ]
