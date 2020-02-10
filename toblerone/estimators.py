@@ -33,7 +33,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     if not isinstance(loc_hemispheres, list):
         loc_hemispheres = [loc_hemispheres]
         
-    surfs = [ s for h in loc_hemispheres for s in h.surfs() ]
+    surfs = [ s for h in loc_hemispheres for s in h.surfs ]
 
     for s in surfs: 
         s.index_on(space, struct2ref, cores)
@@ -46,7 +46,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
                 "from the origin than the outer vertices. Are the surfaces in",\
                 "the correct order?")
         
-        for s, d in zip(h.surfs(), ['in', 'out']):
+        for s, d in zip(h.surfs, ['in', 'out']):
             descriptor = "{} cortex {}".format(h.side, d)
             s._estimate_fractions(supersampler, cores, ones, descriptor)
 
@@ -89,7 +89,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     # intersecting the cortex (these definitions should always be equivalent)
     ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
     for h in loc_hemispheres:
-        for s in h.surfs(): 
+        for s in h.surfs: 
             ctxMask[s.reindex_LUT(space)] = True
     ctxMask[outPVs[:,0] > 0] = True 
 
