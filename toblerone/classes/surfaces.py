@@ -147,6 +147,24 @@ class Surface(object):
         s._index_space = None 
         return s
 
+    
+    def save_metric(self, data, path):
+        """
+        Save vertex-wise data as a .func.gii at path
+        """
+
+        if not self.points.shape[0] == data.size:
+            raise RuntimeError("Incorrect data shape")
+
+        if not path.endswith('.func.gii'):
+            print("appending .func.gii extension")
+            path += '.func.gii'
+
+        gii = nibabel.GiftiImage()
+        gii.add_gifti_data_array(
+            nibabel.gifti.GiftiDataArray(data.astype(np.float32)))
+        nibabel.save(gii, path)
+
 
     def save(self, path):
         """Save surface as GIFTI file at path"""
