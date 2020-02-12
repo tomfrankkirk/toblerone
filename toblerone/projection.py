@@ -253,9 +253,8 @@ def sparse_normalise(mat, axis):
     else: 
         raise RuntimeError("Axis must be 0 or 1")
 
-    # Set threshold at 1% of max row or col sum. Round any row/col below
-    # this to zeros 
-    threshold = 1e-2 * norm.max()
+    # Set threshold. Round any row/col below this to zeros 
+    threshold = 1e-9
     fltr = (norm > threshold)
     normalise = np.zeros(norm.size, dtype=np.float32)
     normalise[fltr] = 1 / norm[fltr]
