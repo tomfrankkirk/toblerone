@@ -76,24 +76,8 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     vtx_tri_weights = _vtx_tri_weights(mid_surf, cores)
     vtx_tri_weights = sparse_normalise(vtx_tri_weights, 1).tocsr()
 
-    n_vtx = in_surf.points.shape[0]
-    worker = functools.partial(__vol2surf_worker, 
-            vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
-
-    if cores > 1: 
-        vtx_ranges = utils._distributeObjects(range(n_vtx), cores)
-
-        with mp.Pool(cores) as p: 
-            ws = p.map(worker, vtx_ranges)
-
-        weights = ws[0]
-        for w in ws[1:]:
-            weights += w 
-
-    else:
-        weights = worker(range(n_vtx))
-
-    # Final round of normalisation, each voxel's vertex weights sum to 1
+    # Combine and re-normalise
+    weights = vtx_tri_weights @ vox_tri_weights.T
     weights = sparse_normalise(weights, 1)
     return weights
 
@@ -111,8 +95,7 @@ def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
         CSR matrix of size (n_vertices x n_voxs)
     """
 
-    weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]), 
-                dtype=np.float32)  
+    weights = sparse.dok_matrix((vtx_tri_weights.shape[0], vox_tri_weights.shape[0]))  
 
     for vtx in vertices: 
         tri_weights = vtx_tri_weights[vtx,:]
@@ -182,25 +165,8 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
     vox_tri_weights = sparse_normalise(vox_tri_weights, 1).tocsr()
 
-    voxs_nonzero = np.flatnonzero(vox_tri_weights.sum(1) > 0)
-    worker = functools.partial(__surf2vol_worker, 
-        vox_tri_weights=vox_tri_weights, vtx_tri_weights=vtx_tri_weights)
-
-    if cores > 1: 
-        vox_ranges = [ voxs_nonzero[c] for c in 
-            utils._distributeObjects(range(voxs_nonzero.size), cores) ]
-
-        with mp.Pool(cores) as p: 
-            ws = p.map(worker, vox_ranges)
-
-        weights = ws[0]
-        for w in ws[1:]:
-            weights += w 
-
-    else:
-        weights = worker(voxs_nonzero)
-
-    # Final round of normalisation, each voxel's vertex weights sum to 1
+    # Combine and re-normalise
+    weights = vox_tri_weights @ vtx_tri_weights.T
     weights = sparse_normalise(weights, 1)
     return weights
 
@@ -214,7 +180,7 @@ def __surf2vol_worker(voxs, vox_tri_weights, vtx_tri_weights):
     # On each row, the weights will be stored at the column indices of 
     # the relevant vertex numbers 
     weights = sparse.dok_matrix(
-        (vox_tri_weights.shape[0], vtx_tri_weights.shape[0]), dtype=np.float32)
+        (vox_tri_weights.shape[0], vtx_tri_weights.shape[0]))
 
     for vox in voxs:
         tri_weights = vox_tri_weights[vox,:]
@@ -257,7 +223,7 @@ def sparse_normalise(mat, axis):
     # this to zeros 
     threshold = 1e-2 * norm.max()
     fltr = (norm > threshold)
-    normalise = np.zeros(norm.size, dtype=np.float32)
+    normalise = np.zeros(norm.size)
     normalise[fltr] = 1 / norm[fltr]
     matrix.data *= np.take(normalise, matrix.indices)
 
@@ -321,7 +287,7 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     """
 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]), dtype=np.float32)
+        in_surf.tris.shape[0]))
     sampler = np.linspace(0,1, 2*factor + 1)[1:-1:2]
     sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
     samples = np.vstack((sx.flatten(),sy.flatten(),sz.flatten())).T - 0.5
@@ -391,8 +357,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     # We pre-compute all triangle edges, in the following order:
     # e1-0, then e2-0, then e2-1
     EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
-    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]), 
-        dtype=np.float32)
+    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]))
 
     # Iterate through each triangle containing each point 
     for pidx in worklist:
@@ -454,8 +419,7 @@ def _vtx_tri_weights(surf, cores=mp.cpu_count()):
     Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
     M. Desbrun, P. Schroder, A.H. Barr.
 
-    With thanks to Jack Toner for the original implementation from which this is 
-    adapted. 
+    With thanks to Jack Toner for the original code from which this is adapted.
 
     Args: 
         surf: Surface object 
