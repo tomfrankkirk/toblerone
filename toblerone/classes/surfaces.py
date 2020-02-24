@@ -579,6 +579,14 @@ class Surface(object):
         self.voxelised = mask.reshape(-1)
 
 
+    def to_polydata(self):
+        """Return pyvista polydata object for this surface"""
+
+        tris = 3 * np.ones((self.tris.shape[0], self.tris.shape[1]+1), np.int32)
+        tris[:,1:] = self.tris 
+        return pyvista.PolyData(self.points, tris)
+
+
 class Patch(Surface):
     """
     Subclass of Surface that represents a small patch of surface. 
