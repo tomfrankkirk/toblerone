@@ -622,7 +622,7 @@ class Hemisphere(object):
         side: 'L' or 'R' 
     """
 
-    def __init__(self, inpath, outpath, side):
+    def __init__(self, inpath, outpath, side=''):
 
         self.side = side 
         self.inSurf = Surface(inpath, name=side+'WS') 

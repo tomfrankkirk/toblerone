@@ -1,48 +1,175 @@
 """
 Toblerone surface-volume projection functions
 """
-from pdb import set_trace
-from scipy.spatial import Delaunay
-from scipy.spatial.qhull import QhullError 
-import numpy as np 
+
 import functools 
 import itertools
 import multiprocessing as mp 
-from scipy import sparse 
 import copy 
+import warnings
+from pdb import set_trace
 
-from . import utils 
-from .classes import  ImageSpace, Surface
+from scipy import sparse 
+import numpy as np 
+from scipy.spatial import Delaunay
+from scipy.spatial.qhull import QhullError 
+
+from . import utils, estimators
+from .classes import ImageSpace, Surface, Hemisphere
 
 
+class Projector(object):
+
+    def __init__(self, hemispheres, spc, factor=10, cores=mp.cpu_count()):
+
+        if not isinstance(hemispheres, Hemisphere):
+            if not len(hemispheres) == 2: 
+                raise RuntimeError("Either provide a single or iterable of 2 Hemisphere objects")
+        else: 
+            hemispheres = [hemispheres]
+            
+        self.hemis = hemispheres
+        self.spc = spc 
+        self.pvs = [] 
+        self.__vox_tri_mats = [] 
+        self.__vtx_tri_mats = []
+
+        for hemi in hemispheres: 
+
+            if hasattr(hemi, 'pvs'): 
+                self.pvs.append(hemi.pvs.reshape(-1,3))
+            else: 
+                supersample = np.ceil(spc.vox_size).astype(np.int8)
+                pvs, _ = estimators._cortex(hemi, spc, np.eye(4), supersample, 
+                    cores, False)
+                self.pvs.append(pvs.reshape(-1,3))
+
+            # Transform into voxel coordinates, check for partial coverage
+            hemi.apply_transform(spc.world2vox)
+            if ((hemi.outSurf.points.min(0) < -1).any() or
+                (hemi.outSurf.points.max(0) > spc.size).any()): 
+                warnings.warn("Surfaces not fully containined within reference" +
+                    " space. Ensure they are in world-mm coordinates.")
+
+            midsurf = calc_midsurf(hemi.inSurf, hemi.outSurf)
+            vox_tri = _vox_tri_weights(hemi.inSurf, hemi.outSurf, spc, factor, cores)
+            vtx_tri = _vtx_tri_weights(midsurf, cores)
+            self.__vox_tri_mats.append(vox_tri)
+            self.__vtx_tri_mats.append(vtx_tri)
+
+    @property
+    def vox_tri_mats(self): 
+        return copy.deepcopy(self.__vox_tri_mats)
+
+    @property
+    def vtx_tri_mats(self): 
+        return copy.deepcopy(self.__vtx_tri_mats)
+
+    def flat_pvs(self):
+        if len(self.pvs) > 1:
+            # Combine PV estimates from each hemisphere into single map 
+            pvs = np.zeros((self.spc.size.prod(), 3))
+            pvs[:,0] = np.minimum(1.0, self.pvs[0][:,0] + self.pvs[1][:,0])
+            pvs[:,1] = np.minimum(1.0 - pvs[:,0], self.pvs[0][:,1] + self.pvs[1][:,1])
+            pvs[:,2] = 1.0 - np.sum(pvs[:,0:2], axis=1)
+            return pvs 
+        else: 
+            return self.pvs[0]
+
+    def vol2surf_matrix(self, edge_correction=False):
+        proj_mats = [ assemble_vol2surf(vox_tri, vtx_tri) 
+            for vox_tri, vtx_tri in zip(self.vox_tri_mats, self.vtx_tri_mats) ]
+        v2s_mat = sparse.vstack(proj_mats, format="csr")
+
+        if edge_correction: 
+            brain_pv = self.flat_pvs()[:,:2].sum(1)
+            brain = (brain_pv > 1e-3)
+            upweight = np.zeros(brain_pv.shape)
+            upweight[brain] = 1 / brain_pv[brain]
+            v2s_mat.data *= np.take(upweight, v2s_mat.indices)
+
+        return v2s_mat 
+
+    def vol2node_matrix(self, edge_correction=True): 
+        v2s_mat = self.vol2surf_matrix(edge_correction)
+        v2v_mat = sparse.eye(self.spc.size.prod())
+        v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
+        return v2n_mat
+
+    def surf2vol_matrix(self):
+        gm_weights = []
+        if len(self.hemis) == 1: 
+            gm_weights.append(np.ones(self.spc.size.prod()))
+        else: 
+            # GM PV can be shared between both hemispheres, so rescale each row of
+            # the s2v matrices by the proportion of all voxel-wise GM that belongs
+            # to that hemisphere (eg, the GM could be shared 80:20 between the two)
+            GM = self.pvs[0][:,0] + self.pvs[1][:,0]
+            GM[GM == 0] = 1 
+            gm_weights.append(self.pvs[0][:,0] / GM)
+            gm_weights.append(self.pvs[1][:,0] / GM)
+
+        proj_mats = []
+        for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, self.vtx_tri_mats, gm_weights): 
+            s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
+            s2v_mat.data *= np.take(weights, s2v_mat.indices)
+            proj_mats.append(s2v_mat)
+
+        pvs = self.flat_pvs()
+        s2v_mat = sparse.hstack(proj_mats, format="csc")
+        s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+        return s2v_mat  
+
+    def node2vol_matrix(self): 
+        pvs = self.flat_pvs()
+        s2v_mat = self.surf2vol_matrix()
+        v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
+            shape=2*[self.spc.size.prod()])
+        n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
+        return n2v_mat
+
+    def vol2surf(self, vdata, edge_correction=False):
+        if vdata.shape[0] != self.spc.size.prod(): 
+            raise RuntimeError("vdata must have the same number of rows as" +
+                " voxels in the reference ImageSpace")
+        v2s_mat = self.vol2surf_matrix(edge_correction)
+        return v2s_mat.dot(vdata)
+
+    def surf2vol(self, sdata): 
+        s2v_mat = self.surf2vol_matrix()
+        if sdata.shape[0] != s2v_mat.shape[1]: 
+            raise RuntimeError("sdata must have the same number of rows as" +
+                " total surface nodes (were one or two hemispheres used?)")
+        return s2v_mat.dot(sdata)
+
+    def vol2node(self, vdata, edge_correction=True):
+        v2n_mat = self.vol2node_matrix(edge_correction)
+        if vdata.shape[0] != v2n_mat.shape[1]: 
+            raise RuntimeError("vdata must have the same number of rows as" +
+                " nodes (voxels+vertices) in the reference ImageSpace")
+        return v2n_mat.dot(vdata)
+
+    def node2vol(self, ndata):
+        n2v_mat = self.node2vol_matrix()
+        if ndata.shape[0] != n2v_mat.shape[1]: 
+            raise RuntimeError("ndata must have the same number of rows as" +
+                " total nodes in ImageSpace (voxels+vertices)")
+        return n2v_mat.dot(ndata)
+        
 def calc_midsurf(in_surf, out_surf):
     vec = out_surf.points - in_surf.points 
     points =  in_surf.points + (0.5 * vec)
     return Surface.manual(points, in_surf.tris)
 
-# def vol2surf(vdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-#     """
-#     Project volumetric data to the cortical ribbon defined by inner/outer 
-#     surfaces. NB any registration transforms must be applied to the surfaces 
-#     beforehand, such that they are in world-mm coordinates for this function. 
 
-#     Args: 
-#         vdata: np.array of shape equal to spc.size, or flattened, to project
-#         in_surf: inner Surface of ribbon, in world mm coordinates 
-#         out_surf: outer Surface of ribbon, in world mm coordinates
-#         spc: ImageSpace in which data exists 
-#         factor: voxel subdivision factor (default 10)
-#         cores: number of processor cores (default max)
+def assemble_vol2surf(vox_tri, vtx_tri):
+    # Ensure each triangle's voxel weights sum to 1 
+    # Ensure each vertices' triangle weights sum to 1 
+    vox2tri = sparse_normalise(vox_tri, 0).T
+    tri2vtx = sparse_normalise(vtx_tri, 1)
+    vol2vtx = tri2vtx @ vox2tri
+    return sparse_normalise(vol2vtx, 1)
 
-#     Returns:   
-#         flat np.array of size equal to n_vertices
-#     """
-
-#     if not vdata.size == spc.size.prod(): 
-#         raise RuntimeError("Size of vdata does not match size of ImageSpace")
-
-#     v2s_weights = vol2surf_weights(in_surf, out_surf, spc, factor, cores)
-#     return v2s_weights.dot(vdata.reshape(-1))
 
 
 def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
@@ -69,19 +196,13 @@ def vol2surf_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     # Mapping from voxels to triangles
     # Ensure each triangle's voxel weights sum to 1 
     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
-    vox_tri_weights = sparse_normalise(vox_tri_weights, 0).tocsc()
 
     # Mapping from triangles to vertices 
     # Ensure each vertices' triangle weights sum to 1 
     vtx_tri_weights = _vtx_tri_weights(mid_surf, cores)
-    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 1).tocsr()
+    return assemble_vol2surf(vox_tri_weights, vtx_tri_weights)
 
-    # Combine and re-normalise
-    weights = vtx_tri_weights @ vox_tri_weights.T
-    weights = sparse_normalise(weights, 1)
-    return weights
-
-
+       
 def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
     """
     Worker function for vol2surf_weights(). 
@@ -108,29 +229,14 @@ def __vol2surf_worker(vertices, vox_tri_weights, vtx_tri_weights):
     return weights.tocsr()
 
 
-# def surf2vol(sdata, in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
-#     """
-#     Project data defined on surface vertices to a volumetric space. NB any 
-#     registration transforms must be applied to the surfaces beforehand, 
-#     such that they are in world-mm coordinates for this function. 
 
-#     Args: 
-#         sdata: np.array of shape equal to surf.n_vertices, data to project
-#         in_surf: inner Surface of ribbon, in world mm coordinates 
-#         out_surf: outer Surface of ribbon, in world mm coordinates
-#         spc: ImageSpace in which to project data
-#         factor: voxel subdivision factor (default 10)
-#         cores: number of processor cores (default max)
-
-#     Returns:   
-#         flat np.array of size equal to spc.n_voxels
-#     """
-
-#     if not sdata.size == in_surf.points.shape[0]:
-#         raise RuntimeError("Size of sdata does not match surface")
-
-#     s2v_weights = surf2vol_weights(in_surf, out_surf, spc, factor, cores)
-#     return s2v_weights.dot(sdata.reshape(-1))
+def assemble_surf2vol(vox_tri, vtx_tri):
+    # Ensure each triangle's vertex weights sum to 1 
+    # Ensure each voxel's triangle weights sum to 1
+    vtx2tri = sparse_normalise(vtx_tri, 0).T
+    tri2vox = sparse_normalise(vox_tri, 1)
+    vtx2vox = tri2vox @ vtx2tri
+    return sparse_normalise(vtx2vox, 1)
 
 
 def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
@@ -158,18 +264,11 @@ def surf2vol_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     # Mapping from vertices to triangles - ensure each triangle's vertex 
     # weights sum to 1 
     vtx_tri_weights = _vtx_tri_weights(mid_surf, cores)
-    vtx_tri_weights = sparse_normalise(vtx_tri_weights, 0).tocsc()
 
     # Mapping from triangles to voxels - ensure each voxel's triangle
     # weights sum to 1
     vox_tri_weights = _vox_tri_weights(in_surf, out_surf, spc, factor, cores)
-    vox_tri_weights = sparse_normalise(vox_tri_weights, 1).tocsr()
-
-    # Combine and re-normalise
-    weights = vox_tri_weights @ vtx_tri_weights.T
-    weights = sparse_normalise(weights, 1)
-    return weights
-
+    return assemble_surf2vol(_vox_tri_weights, vtx_tri_weights)
 
 def __surf2vol_worker(voxs, vox_tri_weights, vtx_tri_weights):
     """
@@ -194,11 +293,11 @@ def __surf2vol_worker(voxs, vox_tri_weights, vtx_tri_weights):
     return weights.tocsr()
 
 
-def sparse_normalise(mat, axis): 
+def sparse_normalise(mat, axis, threshold=1e-6): 
     """
     Normalise a sparse matrix so that all rows (axis=1) or columns (axis=0)
     sum to either 1 or zero. NB any rows or columns that sum to less than 
-    1/100 of the maximum row/column sum will be rounded to zeros.
+    threshold will be rounded to zeros.
 
     Args: 
         mat: sparse matrix to normalise 
@@ -209,6 +308,7 @@ def sparse_normalise(mat, axis):
     """
 
     constructor = type(mat)
+    mat = copy.deepcopy(mat)
 
     if axis == 0:
         matrix = mat.tocsr()
@@ -220,7 +320,6 @@ def sparse_normalise(mat, axis):
         raise RuntimeError("Axis must be 0 or 1")
 
     # Set threshold. Round any row/col below this to zeros 
-    threshold = 1e-9
     fltr = (norm > threshold)
     normalise = np.zeros(norm.size)
     normalise[fltr] = 1 / norm[fltr]
@@ -320,20 +419,6 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
                         
     return vox_tri_samps.tocsr()
 
-
-# def _triangle_areas(ps, ts):
-#     """Areas of triangles, vector of length n_tris"""
-#     return 0.5 * np.linalg.norm(np.cross(
-#         ps[ts[:,1],:] - ps[ts[:,0],:], 
-#         ps[ts[:,2],:] - ps[ts[:,0],:], axis=-1), axis=-1, ord=2)
-
-
-# def _simple_vertex_areas(ps, ts):
-#     """Areas surrounding each vertex in surface, default 1/3 of each tri"""
-     
-#     tri_areas = _triangle_areas(ps,ts)  
-#     vtx_areas = np.bincount(ts.flat, np.repeat(tri_areas, 3)) / 3 
-#     return vtx_areas
 
 
 def __meyer_worker(points, tris, edges, edge_lengths, worklist):
