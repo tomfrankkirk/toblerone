@@ -1,5 +1,7 @@
-"""Toblerone's classes"""
+"""
+Toblerone classes
+"""
 
 from .image_space import ImageSpace
-from .surfaces import Surface, Hemisphere, Patch
+from .surfaces import Surface, Hemisphere
 from .common_parser import CommonParser

@@ -8,6 +8,35 @@ import scipy.ndimage
 import nibabel
 
 from .classes import ImageSpace
+from . import utils
+
+
+def resample(src, ref, src2ref=None, flirt=False):
+    """
+    Resample an image via upsampling to an intermediate space followed
+    by summation back down to reference space. Wrapper for superResampleImage()
+    
+    Args:
+        src: path to source image 
+        ref: path to reference image, onto which src will be resampled 
+        src2ref: 4x4 affine transformation between src and ref, default
+            is None, to represent identity transform 
+        flirt: bool, if affine is a FLIRT matrix 
+    """
+   
+    if flirt:
+        assert src2ref is not None, 'Default src2ref cannot be FLIRT'
+        src2ref = utils._FLIRT_to_world(src, ref, src2ref)
+
+    if src2ref is None: 
+        src2ref = np.identity(4)
+
+    ref_space = ImageSpace(ref)
+    src_space = ImageSpace(src)
+    factor = np.ceil(ref_space.vox_size).astype(np.int8)
+    data = nibabel.load(src).get_fdata().astype(np.float32)
+
+    return _superResampleImage(data, src_space, ref_space, src2ref, factor)
 
 def _resampleImage(data, srcSpace, destSpace, src2dest):
     """Resample array data onto destination space, applying affine transformation

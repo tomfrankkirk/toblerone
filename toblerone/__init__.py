@@ -1,9 +1,8 @@
 """Surface-based partial volume estimation tools"""
 
-from .main import estimate_all, estimate_cortex, estimate_structure, fsl_fs_anat
+from . import projection, pvestimation
 from .classes import ImageSpace, Surface, Hemisphere
-from . import projection
 
-__all__ = ['core', 'classes']
+__all__ = ['core', 'classes', 'utils']
 __author__ = 'Tom Kirk'
 __version__ = '0.3'

@@ -2,9 +2,10 @@ import numpy as np
 cimport numpy as np
 import cython
 
-
+# External function imports from ../src directory
 cdef extern from "tribox.h":
     char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
+
 
 cdef extern from "ctoblerone.h":
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
@@ -13,8 +14,12 @@ cdef extern from "ctoblerone.h":
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
-    """WARNING: this function expects voxel half size, not full size, 
-    as is the case for _cyfilterTriangles()"""
+    """
+    Test if triangle intersects voxel. 
+
+    WARNING: this function expects voxel half size, not full size, 
+    as is the case for _cyfilterTriangles()
+    """
 
     cdef float[:] vC = voxCent.flatten()
     cdef float[:] hS = halfSize.flatten()
@@ -30,6 +35,10 @@ def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def _cyfilterTriangles(tris, points, vC, vS):
+    """
+    Test if multiple triangles intersect voxel defined
+    by centre vC and full size vS
+    """
     
     cdef Py_ssize_t t, a, b, c, i 
     cdef np.ndarray[char, ndim=1, cast=True] fltr = \
@@ -59,13 +68,14 @@ def _cyfilterTriangles(tris, points, vC, vS):
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start, int ax1, int ax2):
+    """
+    Test if a ray intersects triangles. The ray originates from the point 
+    defined by start and travels along the dimension NOT specified by ax1 
+    and ax2 (e.g 0 corresponds to X)
+    """
 
-    # cdef np.ndarray[int, ndim=1] ts = tris.flatten()
-    # cdef np.ndarray[float, ndim=1] ps = points.flatten()
     cdef np.ndarray[float, ndim=1] st = start.flatten()
-
     cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
-
     cdef Py_ssize_t t, a, b, c
     cdef float tri[3][3]
 

@@ -14,14 +14,14 @@ import os.path as op
 import functools
 import copy 
 import warnings 
-import multiprocessing
+import multiprocessing as mp 
 
 import numpy as np 
 import nibabel 
 import pyvista 
 
-from toblerone import utils, core 
 from .image_space import ImageSpace
+from .. import utils, core
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -259,7 +259,7 @@ class Surface(object):
                 supersampler, desc, cores)
 
 
-    def index_on(self, space, struct2ref, cores=multiprocessing.cpu_count()):
+    def index_on(self, space, struct2ref, cores=mp.cpu_count()):
         """
         Index a surface to an ImageSpace. The space must enclose the surface 
         completely (see ImageSpace.minimal_enclosing()). The surface will be 
@@ -405,7 +405,7 @@ class Surface(object):
             self.points, transform).astype(np.float32))
 
 
-    def form_associations(self, cores=multiprocessing.cpu_count()):
+    def form_associations(self, cores=mp.cpu_count()):
         """
         Identify which triangles of a surface intersect each voxel. This 
         reduces the number of operations that need be performed later. The 
@@ -426,13 +426,13 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
-        cores = multiprocessing.cpu_count()
+        cores = mp.cpu_count()
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
 
         if cores > 1:
             chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
-            with multiprocessing.Pool(cores) as p:
+            with mp.Pool(cores) as p:
                 worker_assocs = p.map(workerFunc, chunks, chunksize=1)
 
             assocs = worker_assocs[0]
@@ -519,7 +519,7 @@ class Surface(object):
             return None
 
 
-    def voxelise(self, cores=multiprocessing.cpu_count()):
+    def voxelise(self, cores=mp.cpu_count()):
         """
         Voxelise surface within its current index space. A flat boolean 
         mask will be stored on the calling object as .voxelised. 
@@ -568,7 +568,7 @@ class Surface(object):
             assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
             worker_args = zip(sub_ranges, subD1D2s)
 
-            with multiprocessing.Pool(cores) as p: 
+            with mp.Pool(cores) as p: 
                 submasks = p.starmap(worker, worker_args)
             mask = np.concatenate(submasks, axis=other_dims[0])
 

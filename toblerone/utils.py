@@ -1,5 +1,4 @@
-# Utility functions for Toblerone 
-# Mix of file/path related funcs and numerical tools 
+"""Toblerone utility functions"""
 
 import os.path as op
 import os 
@@ -51,8 +50,7 @@ def check_anat_dir(dir):
     ])
 
 
-
-def _loadFIRSTdir(dir):
+def _loadFIRSTdir(dir_path):
     """Load surface paths from a FIRST directory into a dict, accessed by the
     standard keys used by FIRST (eg 'BrStem'). The function will attempt to 
     load every available surface found in the directory using the standard
@@ -60,20 +58,16 @@ def _loadFIRSTdir(dir):
     if a particular surface is not found
     """
 
-    if not op.isdir(dir):
-        raise RuntimeError("FIRST directory does not exist")
+    files = glob.glob(op.join(dir_path, '*.vtk'))
+    if not files:
+        raise RuntimeError("FIRST directory %s is empty" % dir_path)
 
     surfs = {}
-    files = glob.glob(op.join(dir, '*.vtk'))
-
     for f in files: 
         fname = op.split(f)[1]
         for s in STRUCTURES:
             if s in fname:
                 surfs[s] = f 
-        
-    if not len(surfs):
-        raise RuntimeError("No surfaces were found")
 
     return surfs
 
@@ -382,3 +376,226 @@ def _clipArray(arr, mini=0.0, maxi=1.0):
     arr[arr < mini] = mini 
     arr[arr > maxi] = maxi 
     return arr 
+
+
+def fsl_fs_anat(**kwargs):
+    """
+    Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
+
+    Args: 
+        anat: (optional) path to existing fsl_anat dir to augment
+        struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
+        out: output path (default alongside input, named input.anat)
+    """
+
+    # We are either adding to an existing dir, or we are creating 
+    # a fresh one 
+    if (not bool(kwargs.get('anat'))) and (not bool(kwargs.get('struct'))):
+        raise RuntimeError("Either a structural image or a path to an " + 
+            "existing fsl_anat dir must be given")
+
+    if kwargs.get('struct') and (not op.isfile(kwargs['struct'])):
+        raise RuntimeError("No struct image given, or does not exist")
+
+    if kwargs.get('anat') and (not op.isdir(kwargs['anat'])):
+        raise RuntimeError("fsl_anat dir does not exist")
+
+    debug = bool(kwargs.get('debug'))
+    anat_exists = bool(kwargs.get('anat'))
+    struct = kwargs['struct']
+
+    # Run fsl_anat if needed. Either use user-supplied name or default
+    if not anat_exists:
+        outname = kwargs.get('out')
+        if not outname:
+            outname = _splitExts(kwargs['struct'])[0]
+            outname = op.dirname(kwargs['struct']) + outname
+        print("Preparing an fsl_anat dir at %s" % outname)
+        if outname.endswith('.anat'):
+            outname = outname[:-5]
+        cmd = 'fsl_anat -i {} -o {}'.format(struct, outname)
+        subprocess.run(cmd, shell=True)
+        outname += '.anat'
+
+    else:
+        outname = kwargs['anat']
+    
+    # Run the surface steps if reqd. 
+    # Check the fullfov T1 exists within anat_dir
+    if not op.isdir(op.join(outname, 'fs', 'surf')):
+        fullfov = op.join(outname, 'T1_fullfov.nii.gz')
+
+        if not op.isfile(fullfov):
+            raise RuntimeError("Could not find T1_fullfov.nii.gz within anat_dir %s" 
+                % outname)
+
+        print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
+        _runFreeSurfer(fullfov, outname, debug)
+
+    if not check_anat_dir(outname): 
+        raise RuntimeError("fsl_anat dir should be complete with surfaces") 
+
+    print("fsl_anat dir at %s is now complete with surfaces" % outname)
+    return outname 
+
+
+@cascade_attributes
+def timer(func):
+    """Timing decorator, prints duration in minutes"""
+
+    def timed_function(*args, **kwargs):
+        t1 = time.time()
+        out = func(*args, **kwargs)
+        t2 = time.time()
+        print("Elapsed time: %.1f minutes" % ((t2-t1)/60))
+        return out 
+    
+    return timed_function
+
+
+@cascade_attributes
+def enforce_and_load_common_arguments(func):
+    """
+    Decorator to enforce and pre-processes common arguments in a 
+    kwargs dict that are used across multiple functions. Note
+    some function-specific checking is still required. This intercepts the
+    kwargs dict passed to the caller, does some checking and modification 
+    in place, and then returns to the caller. The following args are handled:
+
+    Required args:
+        ref: path to a reference image in which to operate 
+        struct2ref: path to file or 4x4 array representing transformation
+            between structural space (that of the surfaces) and reference. 
+            If given as 'I', identity matrix will be used. 
+
+    Optional args: 
+        anat: a fsl_anat directory (created/augmented by make_surf_anat_dir)
+        flirt: bool denoting that the struct2ref is a FLIRT transform.
+            This means it requires special treatment. If set, then it will be
+            pre-processed in place by this function, and then the flag will 
+            be set back to false when the kwargs dict is returned to the caller
+        struct: if FLIRT given, then the path to the structural image used
+            for surface generation is required for said special treatment
+        cores: maximum number of cores to parallelise tasks across 
+            (default is N-1)
+
+    Returns: 
+        a modified copy of kwargs dictionary passed to the caller
+    """
+    
+    def enforcer(**kwargs):
+
+        # Reference image path 
+        if not kwargs.get('ref'):
+            raise RuntimeError("Path to reference image must be given")
+
+        if not op.isfile(kwargs['ref']):
+            raise RuntimeError("Reference image %s does not exist" % kwargs['ref'])
+
+        # If given a anat_dir we can load the structural image in 
+        if kwargs.get('anat'):
+            if not check_anat_dir(kwargs['anat']):
+                raise RuntimeError("anat is not complete: it must contain" + 
+                    "fast, fs and first subdirectories")
+
+            kwargs['fastdir'] = kwargs['anat']
+            kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
+            kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
+
+            # If no struct image given, try and pull it out from the anat dir
+            # But, if it has been cropped relative to original T1, then give
+            # warning (as we will not be able to convert FLIRT to world-world)
+            if not kwargs.get('struct'): 
+                if kwargs.get('flirt'):
+                    matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
+                    nonroi2roi = np.loadtxt(matpath)
+                    if np.any(np.abs(nonroi2roi[0:3,3])):
+                        print("Warning: T1 was cropped relative to T1_orig within" + 
+                            " fsl_fs_anat dir.\n Please ensure the struct2ref FLIRT" +
+                            " matrix is referenced to T1, not T1_orig.")
+
+                s = op.join(kwargs['anat'], 'T1.nii.gz')
+                kwargs['struct'] = s
+                if not op.isfile(s):
+                    raise RuntimeError("Could not find T1.nii.gz in the anat dir")
+
+ 
+        # Structural to reference transformation. Either as array or path
+        # to file containing matrix
+        if not any([type(kwargs.get('struct2ref')) is str, 
+            type(kwargs.get('struct2ref')) is np.ndarray]):
+            raise RuntimeError("struct2ref transform must be given (either path", 
+                "or np.array object)")
+
+        else:
+            s2r = kwargs['struct2ref']
+
+            if (type(s2r) is str): 
+                if s2r == 'I':
+                    matrix = np.identity(4)
+                else:
+                    _, matExt = op.splitext(kwargs['struct2ref'])
+
+                    try: 
+                        if matExt in ['.txt', '.mat']:
+                            matrix = np.loadtxt(kwargs['struct2ref'], 
+                                dtype=np.float32)
+                        elif matExt in ['.npy', 'npz', '.pkl']:
+                            matrix = np.load(kwargs['struct2ref'])
+                        else: 
+                            matrix = np.fromfile(kwargs['struct2ref'], 
+                                dtype=np.float32)
+
+                    except Exception as e:
+                        warnings.warn("""Could not load struct2ref matrix. 
+                            File should be any type valid with numpy.load().""")
+                        raise e 
+
+                kwargs['struct2ref'] = matrix
+
+        if not kwargs['struct2ref'].shape == (4,4):
+            raise RuntimeError("struct2ref must be a 4x4 matrix")
+
+        # If FLIRT transform we need to do some clever preprocessing
+        # We then set the flirt flag to false again (otherwise later steps will 
+        # repeat the tricks and end up reverting to the original - those steps don't
+        # need to know what we did here, simply that it is now world-world again)
+        if kwargs.get('flirt'):
+            if not kwargs.get('struct'):
+                raise RuntimeError("If using a FLIRT transform, the path to the \
+                    structural image must also be given")
+            kwargs['struct2ref'] = _FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
+                kwargs['struct2ref'])
+            kwargs['flirt'] = False 
+
+        # Processor cores
+        if not kwargs.get('cores'):
+            kwargs['cores'] = multiprocessing.cpu_count()
+
+        # Supersampling factor
+        sup = kwargs.get('super')
+        if sup is not None: 
+            try: 
+                if (type(sup) is list) and (len(sup) == 3): 
+                    sup = np.array([int(s) for s in sup])
+                else: 
+                    sup = int(sup[0])
+                    sup = np.array([sup for _ in range(3)])
+
+                if type(sup) is not np.ndarray: 
+                    raise RuntimeError() 
+            except:
+                raise RuntimeError("-super must be a value or list of 3" + 
+                    " values of int type")
+        
+            kwargs['super'] = sup.astype(np.int8)
+            print("Using manual supersampling factor", kwargs['super'])
+
+        return kwargs
+
+    def common_args_enforced(**kwargs):
+        kwargs = enforcer(**kwargs)
+        return func(**kwargs)
+
+    return common_args_enforced
+

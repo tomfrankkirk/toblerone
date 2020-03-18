@@ -12,7 +12,7 @@ import warnings
 import nibabel
 import numpy as np 
 
-from toblerone import utils
+from .. import utils
 
 class ImageSpace(object):
     """

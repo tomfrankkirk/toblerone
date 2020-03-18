@@ -97,7 +97,7 @@ def get_extensions():
     extensions.append(
         Extension("toblerone.ctoblerone",
                   sources=[
-                      'toblerone/ctoblerone.pyx', 
+                      'toblerone/ctoblerone/ctoblerone.pyx', 
                       'src/ctoblerone.c',
                       'src/tribox.c'
                   ],
@@ -106,11 +106,11 @@ def get_extensions():
                   extra_compile_args=compile_args, 
                   extra_link_args=link_args)
     )
-    return cythonize(extensions)
+    return cythonize(extensions, compiler_directives={'language_level': 3})
 
 setup(name=PACKAGE_NAME,
       version=get_version(),
-      description="Partial volume estimation",
+      description="Surface-based analysis tools",
       long_description=get_filetext('README.md'),
       long_description_content_type='text/markdown',
       author='Tom Kirk',

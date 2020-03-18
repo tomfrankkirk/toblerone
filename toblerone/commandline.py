@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from . import main, utils
+from . import utils, pvestimation, resampling
 from .classes import CommonParser, ImageSpace
 
 suffix = (
@@ -60,7 +60,7 @@ def estimate_cortex_cmd(*args):
     kwargs = parser.parse(args)
 
     # Estimation
-    PVs, mask = main.estimate_cortex(**kwargs)
+    PVs, mask = pvestimation.cortex(**kwargs)
 
     # Output 
     ext = '.nii.gz'
@@ -119,7 +119,7 @@ def resample_cmd(*args):
         kwargs['src2ref'] = np.loadtxt(src2ref)
 
     outpath = kwargs.pop('out')
-    result = main.resample(**kwargs)
+    result = resampling.resample(**kwargs)
     ImageSpace.save_like(kwargs['ref'], result, outpath)
 
 
@@ -164,7 +164,7 @@ def estimate_structure_cmd(*args):
             kwargs['out'] += ext 
 
     # Estimate
-    PVs = main.estimate_structure(**kwargs)
+    PVs = pvestimation.structure(**kwargs)
 
     # Output
     print('Saving output at', kwargs['out'])
@@ -223,7 +223,7 @@ def estimate_all_cmd(*args):
             raise RuntimeError("Either separate -firstdir, -fsdir and -fastdir"+
                 " must be provided, or an -anat dir must be provided")
 
-    output = main.estimate_all(**kwargs)
+    output = pvestimation.all(**kwargs)
 
     # Output paths. If given -out then use that as output, otherwise
     # save alongside reference image 
@@ -266,5 +266,5 @@ def fsl_fs_anat_cmd(*args):
     parser.add_argument('-struct', type=str, required=False)
     parser.add_argument('-out', type=str, required=False)
     kwargs = vars(parser.parse_args(args))
-    main.fsl_fs_anat(**kwargs)
+    utils.fsl_fs_anat(**kwargs)
 

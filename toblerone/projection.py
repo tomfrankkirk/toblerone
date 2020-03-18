@@ -7,15 +7,14 @@ import itertools
 import multiprocessing as mp 
 import copy 
 import warnings
-from pdb import set_trace
 
-from scipy import sparse 
 import numpy as np 
+from scipy import sparse 
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 
-from . import utils, estimators
-from .classes import ImageSpace, Surface, Hemisphere
+from . import utils, pvestimation
+from .classes import ImageSpace, Hemisphere, Surface
 
 
 class Projector(object):
@@ -40,7 +39,7 @@ class Projector(object):
                 self.pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersample = np.ceil(spc.vox_size).astype(np.int8)
-                pvs, _ = estimators._cortex(hemi, spc, np.eye(4), supersample, 
+                pvs, _ = pvestimation.cortex(hemi, spc, np.eye(4), supersample, 
                     cores, False)
                 self.pvs.append(pvs.reshape(-1,3))
 
