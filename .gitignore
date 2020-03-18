@@ -9,11 +9,9 @@ surf_transform
 *.pyc
 *.dot
 .DS_Store
-/testdata/FS/*tob*
 *.png 
 toblerone/ctoblerone.c
 scratch.py
-/testdata/pvtools
 *.pkl
 dist
 toblerone.egg-info
@@ -23,3 +21,4 @@ rebuild.sh
 *.code-workspace
 toblerone-*
 scratch.py
+testdata

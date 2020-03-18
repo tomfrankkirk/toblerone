@@ -57,14 +57,20 @@ def test_imagespace():
 
 def test_projection():
     td = get_testdir()
-    ins = toblerone.Surface(op.join(td, 'in.surf.gii'))
-    outs = toblerone.Surface(op.join(td, 'out.surf.gii'))
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    sdata = np.ones(ins.points.shape[0], dtype=np.float32)
+    sdata = np.ones(hemi.inSurf.points.shape[0], dtype=np.float32)
     vdata = np.ones(spc.size.prod(), dtype=np.float32)
-    # sproj = projection.surf2vol_weights(ins, outs, spc, 3, 1)
-    vproj = projection.vol2surf_weights(ins, outs, spc, 3, 1)
-    assert (np.abs(1 - vdata[vdata > 0]) < 1e-6).all(), 'surf did not map to ones'
+
+    projector = toblerone.projection.Projector(hemi, spc, 10, 1)
+    v2s = projector.vol2surf(vdata)
+    v2s_edge = projector.vol2surf(vdata, True)
+    assert (v2s <= v2s_edge).all(), "edge correction did not increase signal"
+    s2v = projector.surf2vol(sdata)
+    v2n = projector.vol2node(vdata)
+    n2v = projector.node2vol(v2n)
 
 
 if __name__ == "__main__":
