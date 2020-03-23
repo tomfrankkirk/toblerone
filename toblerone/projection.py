@@ -13,7 +13,8 @@ from scipy import sparse
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 
-from . import utils, pvestimation
+from . import utils
+from .pvestimation import estimators
 from .classes import ImageSpace, Hemisphere, Surface
 
 
@@ -53,7 +54,7 @@ class Projector(object):
                 self.pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersample = np.ceil(spc.vox_size).astype(np.int8) 
-                pvs, _ = pvestimation.cortex(hemi, spc, np.eye(4), supersample, 
+                pvs, _ = estimators._cortex(hemi, spc, np.eye(4), supersample, 
                     cores, False)
                 self.pvs.append(pvs.reshape(-1,3))
 
@@ -403,19 +404,19 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     for t in t_range: 
 
         # Load the triangle vertices around which to form the hull 
-        hull = np.vstack((in_surf.points[in_surf.tris[t,:],:], 
+        hull_ps = np.vstack((in_surf.points[in_surf.tris[t,:],:], 
                         out_surf.points[out_surf.tris[t,:],:]))
 
         # Hull formation can fail (due to triangles not being far enough 
         # apart). So try and do it first, if successful continue with 
         # the rest of the maths 
         try: 
-            hull = Delaunay(hull)  
+            hull = Delaunay(hull_ps)  
 
             # Get the neighbourhood of voxels that contains this hull 
-            hood = hull_lims.astype(np.int16)
-            hood = np.array(list(itertools.product(
-                    range(*hood[:,0]), range(*hood[:,1]), range(*hood[:,2]))))
+            bbox = np.vstack((hull_ps.min(0), hull_ps.max(0)+1)).astype(np.int32)
+            hood = np.array(list(
+                itertools.product(*[ range(*bbox[:,d]) for d in range(3) ])))
             fltr = np.all((hood > -1) & (hood < spc.size), 1)
             hood = hood[fltr,:]
             hood_vidx = np.ravel_multi_index(hood.T, spc.size)
@@ -473,8 +474,8 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
             cent_pidx = np.flatnonzero(tris_touched[tidx,:]).tolist()
             e3 = FULL_SET.difference(cent_pidx)
             other_idx = list(e3)
-            e1 = set(cent_pidx + [other_pidx[0]])
-            e2 = set(cent_pidx + [other_pidx[1]])
+            e1 = set(cent_pidx + [other_idx[0]])
+            e2 = set(cent_pidx + [other_idx[1]])
 
             # Match the edge pairs to the order in which edges were calculated 
             # earlier 
