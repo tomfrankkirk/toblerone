@@ -426,7 +426,6 @@ class Surface(object):
         if np.any(np.round(np.max(self.points, axis=0)) >= size): 
             raise RuntimeError("formAssociations: coordinate outside FoV")
 
-        cores = mp.cpu_count()
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
 

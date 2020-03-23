@@ -32,7 +32,8 @@ class Projector(object):
         cores: number of processor cores to use (default max)
     """
 
-    def __init__(self, hemispheres, spc, factor=10, cores=mp.cpu_count()):
+    def __init__(self, hemispheres, spc, factor=10, cores=mp.cpu_count(), 
+        ones=False):
 
         print("Initialising projector (will take some time)")
         if not isinstance(hemispheres, Hemisphere):
@@ -55,7 +56,7 @@ class Projector(object):
             else: 
                 supersample = np.ceil(spc.vox_size).astype(np.int8) 
                 pvs, _ = estimators._cortex(hemi, spc, np.eye(4), supersample, 
-                    cores, False)
+                    cores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
             # Transform surfaces voxel coordinates, check for partial coverage
@@ -178,6 +179,7 @@ class Projector(object):
         s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
         return s2v_mat  
 
+
     def node2vol_matrix(self): 
         """
         Node space to volume projection matrix. 
@@ -192,6 +194,7 @@ class Projector(object):
             shape=2*[self.spc.size.prod()])
         n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
         return n2v_mat
+
 
     def vol2surf(self, vdata, edge_correction=False):
         """
@@ -211,6 +214,7 @@ class Projector(object):
         v2s_mat = self.vol2surf_matrix(edge_correction)
         return v2s_mat.dot(vdata)
 
+
     def surf2vol(self, sdata): 
         """
         Project data from surface to volume. 
@@ -227,6 +231,7 @@ class Projector(object):
             raise RuntimeError("sdata must have the same number of rows as" +
                 " total surface nodes (were one or two hemispheres used?)")
         return s2v_mat.dot(sdata)
+
 
     def vol2node(self, vdata, edge_correction=True):
         """
@@ -245,6 +250,7 @@ class Projector(object):
             raise RuntimeError("vdata must have the same number of rows as" +
                 " nodes (voxels+vertices) in the reference ImageSpace")
         return v2n_mat.dot(vdata)
+
 
     def node2vol(self, ndata):
         """
