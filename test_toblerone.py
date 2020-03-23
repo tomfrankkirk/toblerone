@@ -10,7 +10,8 @@ import multiprocessing
 from pdb import set_trace
 
 import toblerone
-from toblerone import estimators, classes, projection
+from toblerone import classes, projection
+from toblerone.pvestimation import estimators
 
 cores = multiprocessing.cpu_count()
 
