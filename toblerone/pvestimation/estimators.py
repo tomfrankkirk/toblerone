@@ -42,9 +42,9 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     for h in loc_hemispheres:
         if np.any(np.max(np.abs(h.inSurf.points)) > 
             np.max(np.abs(h.outSurf.points))):
-            warnings.warn("Inner surface vertices appear to be further",\
-                "from the origin than the outer vertices. Are the surfaces in",\
-                "the correct order?")
+            warnings.warn("Inner surface vertices appear to be further" + 
+                " from the origin than the outer vertices. Are the surfaces in" + 
+                " the correct order?")
         
         for s, d in zip(h.surfs, ['in', 'out']):
             descriptor = "{} cortex {}".format(h.side, d)

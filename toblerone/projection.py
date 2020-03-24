@@ -420,9 +420,10 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
             hull = Delaunay(hull_ps)  
 
             # Get the neighbourhood of voxels that contains this hull 
-            bbox = np.vstack((hull_ps.min(0), hull_ps.max(0)+1)).astype(np.int32)
-            hood = np.array(list(
-                itertools.product(*[ range(*bbox[:,d]) for d in range(3) ])))
+            bbox = (np.vstack((hull_ps.min(0), hull_ps.max(0)+1))
+                .round().astype(np.int32))
+            hood = np.array(list(itertools.product(
+                *[ range(*bbox[:,d]) for d in range(3) ])))
             fltr = np.all((hood > -1) & (hood < spc.size), 1)
             hood = hood[fltr,:]
             hood_vidx = np.ravel_multi_index(hood.T, spc.size)
