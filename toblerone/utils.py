@@ -2,19 +2,20 @@
 
 import os.path as op
 import os 
-import copy
 import glob
 import subprocess 
 import sys
 import shutil
 import warnings 
+import time
 
 import numpy as np 
 import nibabel
+from fsl.wrappers import fsl_anat
 
 STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
-    'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
-    'R_Thal', 'BrStem']
+                'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
+                'R_Thal', 'BrStem']
 
 
 def cascade_attributes(decorator):
@@ -231,8 +232,8 @@ def _runFAST(struct, dir):
 def _getFSLspace(imgPth):
     obj = nibabel.load(imgPth)
     if obj.header['dim'][0] < 3:
-        raise RuntimeError("Volume has less than 3 dimensions" + \
-                "cannot resolve space")
+        raise RuntimeError("Volume has less than 3 dimensions" +
+                                "cannot resolve space")
 
     sform = obj.affine
     det = np.linalg.det(sform[0:4, 0:4])
@@ -242,12 +243,12 @@ def _getFSLspace(imgPth):
         ret[d,d] = pixdim[d]
 
     # Check the xyzt field to find the spatial units. 
-    xyzt =str(obj.header['xyzt_units'])
+    xyzt = str(obj.header['xyzt_units'])
     if xyzt == '01': 
         multi = 1000
     elif xyzt == '10':
         multi = 1 
-    elif xyzt =='11':
+    elif xyzt == '11':
         multi = 1e-3
     else: 
         multi = 1
@@ -413,8 +414,7 @@ def fsl_fs_anat(**kwargs):
         print("Preparing an fsl_anat dir at %s" % outname)
         if outname.endswith('.anat'):
             outname = outname[:-5]
-        cmd = 'fsl_anat -i {} -o {}'.format(struct, outname)
-        subprocess.run(cmd, shell=True)
+        fsl_anat(struct, outname)
         outname += '.anat'
 
     else:
@@ -427,7 +427,7 @@ def fsl_fs_anat(**kwargs):
 
         if not op.isfile(fullfov):
             raise RuntimeError("Could not find T1_fullfov.nii.gz within anat_dir %s" 
-                % outname)
+                    % outname)
 
         print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
         _runFreeSurfer(fullfov, outname, debug)
@@ -447,7 +447,7 @@ def timer(func):
         t1 = time.time()
         out = func(*args, **kwargs)
         t2 = time.time()
-        print("Elapsed time: %.1f minutes" % ((t2-t1)/60))
+        print("Elapsed time: %.1f minutes" % ((t2 - t1) / 60))
         return out 
     
     return timed_function
