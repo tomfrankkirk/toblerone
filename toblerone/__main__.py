@@ -1,7 +1,7 @@
 import sys
 
 from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
-from toblerone.commandline import estimate_structure_cmd, resample_cmd 
+from toblerone.commandline import estimate_structure_cmd, convert_surface_cmd
 from toblerone.commandline import fsl_fs_anat_cmd, suffix
 
 def main():
@@ -21,14 +21,14 @@ Usage:
 -fsl_fs_anat            run fsl_anat and augment output with FreeSurfer (pre-processing
                             step for other Toblerone functions)
 
--resample               resampling via super-resolution method (as in FSL's applywarp)           
+-convert_surface        convert a surface file (.white/.pial/.vtk/.surf.gii)    
 """)
 
 
     funcs = [estimate_all_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, fsl_fs_anat_cmd, resample_cmd]
+        estimate_structure_cmd, fsl_fs_anat_cmd, convert_surface_cmd]
     names = ['-estimate_all', '-estimate_cortex', '-estimate_structure', 
-        '-fsl_fs_anat', '-resample']
+        '-fsl_fs_anat', '-convert_surface']
 
     args = sys.argv
 

@@ -12,13 +12,13 @@ Patch: a subcalss of Surface, representing a smaller portion of a surface,
 import itertools
 import os.path as op 
 import functools
-import copy 
 import warnings 
 import multiprocessing as mp 
 
 import numpy as np 
 import nibabel 
 import pyvista 
+import meshio
 
 from .image_space import ImageSpace
 from .. import utils, core
@@ -47,7 +47,6 @@ def ensure_derived_space(func):
     return ensured 
 
 
-
 class Surface(object):
     """
     Encapsulates a surface's points, triangles and associations data.
@@ -74,16 +73,16 @@ class Surface(object):
         if surfExt == '.gii':
             gft = nibabel.load(path).darrays
             ps, ts = tuple(map(lambda o: o.data, gft))
+
         elif surfExt == '.vtk':
-            obj = pyvista.PolyData(path)
-            err = RuntimeError("Surface cannot be cast to triangle data")
-            if obj.faces.size % 4:
-                raise err
-            ts = obj.faces.reshape(-1, 4)
-            if not np.all(ts[:,0] == 3):
-                raise err
-            ps = obj.points
-            ts = ts[:,1:]
+            try:
+                mesh = meshio.read(path)
+                ps = mesh.points
+                ts = mesh.cells[0].data
+            except Exception as e: 
+                print("Surface cannot be cast to triangle data")
+                raise e 
+
         else: 
             ps, ts, meta = nibabel.freesurfer.io.read_geometry(path, 
                 read_metadata=True)
@@ -146,8 +145,8 @@ class Surface(object):
         s.name = name
         s._index_space = None 
         return s
-
     
+
     def save_metric(self, data, path):
         """
         Save vertex-wise data as a .func.gii at path
@@ -167,60 +166,67 @@ class Surface(object):
 
 
     def save(self, path):
-        """Save surface as GIFTI file at path"""
+        """
+        Save surface as .surf.gii (default), .vtk or .white/.pial at path.
+        """
 
-        if not path.endswith('.surf.gii'):
-            if path.endswith('.gii'):
-                path.replace('.gii', '.surf.gii')
-            else: 
-                path += '.surf.gii'
-        
-        if self.name is None: 
-            warnings.warn("Surface has no name: will save as type 'Other'")
-            self.name = 'Other'
+        if path.endswith('.vtk'):
+            meshio.write_points_cells(path, self.points, 
+                [ ("triangle", self.tris) ])
 
-        common = {'Description': 'Surface has been transformed into' + \
-            'a reference image space for PV estimation'}
+        elif path.endswith(".white") or path.endswith(".pial"):
+            nibabel.freesurfer.write_geometry(path, self.points, self.tris)
 
-        m0 = {
-            'GeometricType': 'Anatomical'
-        }
+        else: 
+            if not path.endswith('.surf.gii'):
+                if path.endswith('.gii'):
+                    path.replace('.gii', '.surf.gii')
+                else: 
+                    path += '.surf.gii'
+            
+            if self.name is None: 
+                self.name = 'Other'
 
-        if self.name in ['LWS', 'LPS', 'RWS', 'RPS']:
-            cortexdict = {
-                side+surf+'S': {
-                    'AnatomicalStructurePrimary': 
-                        'CortexLeft' if side == 'L' else 'CortexRight', 
-                    'AnatomicalStructureSecondary':
-                        'GrayWhite' if surf == 'W' else 'Pial'
+            common = {'Description': 'Surface has been transformed into' +
+                      'a reference image space for PV estimation'}
+
+            m0 = {'GeometricType': 'Anatomical'}
+
+            if self.name in ['LWS', 'LPS', 'RWS', 'RPS']:
+                cortexdict = {
+                    sd + sf + 'S': {
+                        'AnatomicalStructurePrimary': 
+                            'CortexLeft' if sd == 'L' else 'CortexRight', 
+                        'AnatomicalStructureSecondary':
+                            'GrayWhite' if sd == 'W' else 'Pial'
+                    }
+                    for (sd, sf) in itertools.product(['L', 'R'], ['P', 'W'])
                 }
-                for (side,surf) in itertools.product(['L', 'R'], ['P', 'W'])
-            }
-            m0.update(cortexdict[self.name])   
-        
-        else:
-            m0.update({'AnatomicalStructurePrimary': self.name})
-        
-        # Points matrix
-        # 1 corresponds to NIFTI_XFORM_SCANNER_ANAT
-        m0.update(common)
-        ps = nibabel.gifti.GiftiDataArray(self.points, 
-            intent='NIFTI_INTENT_POINTSET', 
-            coordsys=nibabel.gifti.GiftiCoordSystem(1,1),  
-            datatype='NIFTI_TYPE_FLOAT32', 
-            meta=nibabel.gifti.GiftiMetaData.from_dict(m0))
+                m0.update(cortexdict[self.name])   
+            
+            else:
+                m0.update({'AnatomicalStructurePrimary': self.name})
+            
+            # Points matrix
+            # 1 corresponds to NIFTI_XFORM_SCANNER_ANAT
+            m0.update(common)
+            ps = nibabel.gifti.GiftiDataArray(self.points, 
+                intent='NIFTI_INTENT_POINTSET', 
+                coordsys=nibabel.gifti.GiftiCoordSystem(1,1),  
+                datatype='NIFTI_TYPE_FLOAT32', 
+                meta=nibabel.gifti.GiftiMetaData.from_dict(m0))
 
-        # Triangles matrix 
-        m1 = {'TopologicalType': 'Closed'}
-        m1.update(common)
-        ts = nibabel.gifti.GiftiDataArray(self.tris, 
-            intent='NIFTI_INTENT_TRIANGLE', 
-            coordsys=nibabel.gifti.GiftiCoordSystem(0,0), 
-            datatype='NIFTI_TYPE_INT32', 
-            meta=nibabel.gifti.GiftiMetaData.from_dict(m1))
+            # Triangles matrix 
+            m1 = {'TopologicalType': 'Closed'}
+            m1.update(common)
+            ts = nibabel.gifti.GiftiDataArray(self.tris, 
+                intent='NIFTI_INTENT_TRIANGLE', 
+                coordsys=nibabel.gifti.GiftiCoordSystem(0,0), 
+                datatype='NIFTI_TYPE_INT32', 
+                meta=nibabel.gifti.GiftiMetaData.from_dict(m1))
 
-        img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
-        nibabel.save(img, path)
+            img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
+            nibabel.save(img, path)
 
 
     @ensure_derived_space
@@ -255,8 +261,8 @@ class Surface(object):
         if ones: 
             self.fractions = np.ones(self.assocs_keys.size, dtype=bool) 
         else: 
-            self.fractions = core._estimateFractions(self, 
-                supersampler, desc, cores)
+            self.fractions = \
+                core._estimateFractions(self, supersampler, desc, cores)
 
 
     def index_on(self, space, struct2ref, cores=mp.cpu_count()):
@@ -273,7 +279,7 @@ class Surface(object):
             space: ImageSpace object large enough to contain the surface
             affine: 4x4 np.array representing transformation into the reference
                 space, in world-world mm terms (not FLIRT scaled-voxels). See
-                utils._FLIRT_to_world for help. Pass None to represent identity. 
+                utils._FLIRT_to_world for help. Pass None to represent identity.
 
         Updates: 
             self.points: converted into voxel coordinates for the space

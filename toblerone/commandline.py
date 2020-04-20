@@ -10,7 +10,7 @@ import os
 import numpy as np
 
 from . import utils, pvestimation, resampling
-from .classes import CommonParser, ImageSpace
+from .classes import CommonParser, ImageSpace, Surface
 
 suffix = (
 """
@@ -267,4 +267,13 @@ def fsl_fs_anat_cmd(*args):
     parser.add_argument('-out', type=str, required=False)
     kwargs = vars(parser.parse_args(args))
     utils.fsl_fs_anat(**kwargs)
+
+def convert_surface_cmd(*args):
+    """
+    Convert a surface file (.white/.pial/.vtk/.surf.gii). NB FreeSurfer files
+    will have the c_ras offset automatically applied during conversion. 
+    """
+    
+    insurf = Surface(args[0])
+    insurf.save(args[1])
 
