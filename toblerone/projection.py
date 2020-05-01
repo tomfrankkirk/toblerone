@@ -2,7 +2,7 @@
 Toblerone surface-volume projection functions
 """
 
-import functools 
+import functools
 import itertools
 import multiprocessing as mp 
 import copy 
@@ -13,10 +13,22 @@ from scipy import sparse
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 
-from . import utils
+from . import utils 
 from .pvestimation import estimators
 from .classes import ImageSpace, Hemisphere, Surface
 
+
+# See the __vox_tri_weights_worker() function for an explanation of the 
+# naming convention here. 
+__TETRA1__ = np.array([[0,1,2,3],  # abcA
+                       [3,4,5,2],  # ABCc
+                       [1,2,3,4]], # bcAB
+                       dtype=np.int32)  
+
+__TETRA2__ = np.array([[0,1,2,4],  # abcB
+                       [3,4,5,2],  # ABCc
+                       [0,2,3,4]], # acAB
+                       dtype=np.int32) 
 
 class Projector(object):
     """
@@ -403,45 +415,97 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
         in_surf.tris.shape[0]))
-    sampler = np.linspace(0,1, 2*factor + 1)[1:-1:2]
+    sampler = np.linspace(0, 1, 2*factor + 1)[1:-1:2]
     sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
     samples = np.vstack((sx.flatten(),sy.flatten(),sz.flatten())).T - 0.5
 
     for t in t_range: 
 
-        # Load the triangle vertices around which to form the hull 
-        hull_ps = np.vstack((in_surf.points[in_surf.tris[t,:],:], 
-                        out_surf.points[out_surf.tris[t,:],:]))
+        # Stack the vertices of the inner and outer triangles into a 6x3 array.
+        # We will then refer to these points by the indices abc, ABC; lower 
+        # case for the white surface, upper for the pial, and the order of the
+        # letters corresponding to the order the triangle vertices are given 
+        # (which does NOT imply they are in size order, merely that they are
+        # given in a consistent ordering - CW or CCW)
+        tri = in_surf.tris[t,:]
+        hull_ps = np.vstack((in_surf.points[tri,:], 
+                             out_surf.points[tri,:]))
 
-        # Hull formation can fail (due to triangles not being far enough 
-        # apart). So try and do it first, if successful continue with 
-        # the rest of the maths 
-        try: 
-            hull = Delaunay(hull_ps)  
+        # Get the neighbourhood of voxels through which this prism passes
+        # in linear indices
+        bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
+                          np.minimum(spc.size, hull_ps.max(0)+1)))
+                          .round().astype(np.int32))
+        hood = (np.vstack(np.meshgrid(*[ range(*bbox[:,d]) for d in range(3) ]))
+                .reshape(-1,3))             
+        hood_vidx = np.ravel_multi_index(hood.T, spc.size)
 
-            # Get the neighbourhood of voxels that contains this hull 
-            bbox = (np.vstack((hull_ps.min(0), hull_ps.max(0)+1))
-                .round().astype(np.int32))
-            hood = np.array(list(itertools.product(
-                *[ range(*bbox[:,d]) for d in range(3) ])))
-            fltr = np.all((hood > -1) & (hood < spc.size), 1)
-            hood = hood[fltr,:]
-            hood_vidx = np.ravel_multi_index(hood.T, spc.size)
-            for vidx,ijk in zip(hood_vidx, hood):
-                v_samps = ijk + samples
-                samps_in = (hull.find_simplex(v_samps) >= 0).sum()
+        for vidx,ijk in zip(hood_vidx, hood):
+            v_samps = ijk + samples
 
-                # Don't write explicit zero
-                if samps_in:
-                    vox_tri_samps[vidx,t] = samps_in
-                    
-        # Silent fail for geometric degeneracy, raise anything else 
-        except QhullError:
-            continue  
+            # The two triangles form an almost triangular prism in space (like a
+            # toblerone bar...). It has 6 vertices and 8 triangular faces (2 end
+            # caps, 3 almost rectangular side faces that are further split into 2
+            # triangles each). Splitting the quadrilateral faces into triangles is 
+            # the tricky bit as it can be done in two ways, as below. 
+            # 
+            #   pial 
+            # N______N+1
+            #  |\  /|
+            #  | \/ |
+            #  | /\ |
+            # n|/__\|n+1
+            #   white
+            #   
+            # It is important to ensure that neighbouring prisms share the same 
+            # subdivision of their adjacent faces (ie, both of them agree to split
+            # it in the \ or / direction) to avoid double counting regions of space.
+            # This is achieved by enumerating the triangular faces of the prism in 
+            # a specific order according to the index numbers of the triangle 
+            # vertices. For each vertex n, if the index number of vertex n+1 (with
+            # wraparound for the last vertex) is greater, then we split the face
+            # that the edge (n, n+1) belongs to in a "positive" manner. Otherwise, 
+            # we split the face in a "negative" manner. The result of this is that
+            # there will be two face diagonals that ALWAYS meet at the WHITE vertex
+            # with the HIGHEST index number (we don't know which of a,b,c that will
+            # be). Given this, there is a unambiguous way of diving the prism into 
+            # exactly three tetrahedra (http://www.alecjacobson.com/weblog/?p=1888). 
 
-        except Exception as e: 
-            raise e 
-                        
+            # This checks the directions in which we need to divide the faces. 
+            # A True value denotes a "positive" split, "negative" otherwise
+            flags = [ int(v < n) for v,n in zip(tri, tri[[1,2,0]]) ]
+
+            # Two positive divisions and one negative
+            flagsum = sum(flags)
+            if flagsum == 2: 
+                tets = __TETRA1__
+
+            # This MUST be two negatives and one positive. 
+            else:
+                assert flagsum == 1, "inconsistent flags"
+                tets = __TETRA2__
+
+            # Test the sample points against the tetrahedra. We don't care about
+            # double counting within the polyhedra (although in theory this 
+            # shouldn't happen). Hull formation can fail due to geometric 
+            # degeneracy so wrap it up in a try block 
+            samps_in = np.zeros(v_samps.shape[0], dtype=np.bool)
+            for tet in tets: 
+                try: 
+                    hull = Delaunay(hull_ps[tet,:])
+                    samps_in |= (hull.find_simplex(v_samps) >= 0)  
+
+                # Silent fail for geometric degeneracy, raise anything else 
+                except QhullError:
+                    continue  
+
+                except Exception as e: 
+                    raise e 
+
+            # Don't write explicit zero
+            if samps_in.any():
+                vox_tri_samps[vidx,t] = samps_in.sum()
+
     return vox_tri_samps.tocsr()
 
 
