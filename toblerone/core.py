@@ -327,7 +327,7 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
         patch: patch object for surface within the voxel
         rootPoint: 1 x 3 vector for a point to which all rays used for 
             testing will be drawn from point under test
-        flip: bool flag, false if the root point is OUTSIDE the surface
+        flip: bool flag, True if the root point is OUTSIDE the surface
     
     Returns: 
         vector of bools, length p, denoting if the points are INSIDE.
