@@ -2,18 +2,6 @@
 #include <math.h>
 #include "tribox.h"
 
-static void cross(const float* v1, const float* v2, float* out)
-{
-    out[0] = (v1[1] * v2[2]) - (v1[2] * v2[1]);
-    out[1] = (v1[2] * v2[0]) - (v1[0] * v2[2]);
-    out[2] = (v1[0] * v2[1]) - (v1[1] * v2[0]);
-}
-
-static float dot(const float* v1, const float* v2)
-{
-    return (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2]);
-}
-
 char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 {
     char intersection = 0; 
