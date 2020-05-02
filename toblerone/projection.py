@@ -20,15 +20,15 @@ from .classes import ImageSpace, Hemisphere, Surface
 
 # See the __vox_tri_weights_worker() function for an explanation of the 
 # naming convention here. 
-__TETRA1__ = np.array([[0,1,2,3],  # abcA
-                       [3,4,5,2],  # ABCc
-                       [1,2,3,4]], # bcAB
-                       dtype=np.int32)  
+__TETRA1__ = np.array([[0,3,4,5],   # aABC
+                       [0,1,2,4],   # abcB
+                       [0,2,4,5]],  # acBC
+                       dtype=np.int8)  
 
-__TETRA2__ = np.array([[0,1,2,4],  # abcB
-                       [3,4,5,2],  # ABCc
-                       [0,2,3,4]], # acAB
-                       dtype=np.int32) 
+__TETRA2__ = np.array([[0,3,4,5],   # aABC
+                       [0,1,2,5],   # abcC
+                       [0,1,4,5]],  # abBC
+                       dtype=np.int8) 
 
 class Projector(object):
     """
@@ -415,32 +415,36 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
         in_surf.tris.shape[0]))
-    sampler = np.linspace(0, 1, 2*factor + 1)[1:-1:2]
-    sx, sy, sz = np.meshgrid(sampler, sampler, sampler)
-    samples = np.vstack((sx.flatten(),sy.flatten(),sz.flatten())).T - 0.5
+    sampler = np.linspace(0, 1, 2*factor + 1, dtype=np.float32)[1:-1:2]
+    samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
+               .reshape(-1,3) - 0.5)
 
     for t in t_range: 
 
         # Stack the vertices of the inner and outer triangles into a 6x3 array.
         # We will then refer to these points by the indices abc, ABC; lower 
-        # case for the white surface, upper for the pial, and the order of the
-        # letters corresponding to the order the triangle vertices are given 
-        # (which does NOT imply they are in size order, merely that they are
-        # given in a consistent ordering - CW or CCW)
+        # case for the white surface, upper for the pial. We also cycle the 
+        # vertices (note, NOT A SHUFFLE) such that the highest index is first 
+        # (corresponding to A,a). The relative ordering of vertices remains the
+        # same, so we use flagsum to check if B < C or C < B. 
         tri = in_surf.tris[t,:]
-        hull_ps = np.vstack((in_surf.points[tri,:], 
-                             out_surf.points[tri,:]))
+        tri_max = np.argmax(tri)
+        tri_sort = [ tri[(tri_max + i) % 3] for i in range(3) ]
+        flagsum = sum([ int(tri_sort[v] < tri_sort[(v + 1) % 3]) 
+                        for v in range(3) ])
+        hull_ps = np.vstack((in_surf.points[tri_sort,:], 
+                             out_surf.points[tri_sort,:]))
 
         # Get the neighbourhood of voxels through which this prism passes
         # in linear indices
         bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
-                          np.minimum(spc.size, hull_ps.max(0)+1)))
-                          .round().astype(np.int32))
+                           np.minimum(spc.size, hull_ps.max(0)+1)))
+                           .round().astype(np.int32))
         hood = (np.vstack(np.meshgrid(*[ range(*bbox[:,d]) for d in range(3) ]))
-                .reshape(-1,3))             
+                .reshape(-1,3).astype(np.float32))             
         hood_vidx = np.ravel_multi_index(hood.T, spc.size)
 
-        for vidx,ijk in zip(hood_vidx, hood):
+        for vidx, ijk in zip(hood_vidx, hood):
             v_samps = ijk + samples
 
             # The two triangles form an almost triangular prism in space (like a
@@ -465,24 +469,25 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
             # vertices. For each vertex n, if the index number of vertex n+1 (with
             # wraparound for the last vertex) is greater, then we split the face
             # that the edge (n, n+1) belongs to in a "positive" manner. Otherwise, 
-            # we split the face in a "negative" manner. The result of this is that
-            # there will be two face diagonals that ALWAYS meet at the WHITE vertex
-            # with the HIGHEST index number (we don't know which of a,b,c that will
-            # be). Given this, there is a unambiguous way of diving the prism into 
-            # exactly three tetrahedra (http://www.alecjacobson.com/weblog/?p=1888). 
-
-            # This checks the directions in which we need to divide the faces. 
-            # A True value denotes a "positive" split, "negative" otherwise
-            flags = [ int(v < n) for v,n in zip(tri, tri[[1,2,0]]) ]
+            # we split the face in a "negative" manner. A positive split means that 
+            # a diagonal will go from the pial vertex N to white vertex n+1. A
+            # negative split will go from pial vertex N+1 to white vertex n. As a
+            # result, around the complete prism formed by the two triangles, there
+            # will be two face diagonals that ALWAYS meet at the WHITE vertex
+            # with the HIGHEST index number (referred to as 'a'). With these two 
+            # diagonals fixed, the order of the last diagonal depends on the 
+            # condition B < C (+ve) or C < B (-ve). We check this using the 
+            # flagsum variable, which will be 2 for B < C or 1 for C < B. Finally,
+            # knowing how the last diagonal is arranged, there are exactly two 
+            # ways of splitting the prism down, hardcoded at the top of this file. 
+            # See http://www.alecjacobson.com/weblog/?p=1888. 
 
             # Two positive divisions and one negative
-            flagsum = sum(flags)
             if flagsum == 2: 
                 tets = __TETRA1__
 
             # This MUST be two negatives and one positive. 
             else:
-                assert flagsum == 1, "inconsistent flags"
                 tets = __TETRA2__
 
             # Test the sample points against the tetrahedra. We don't care about
