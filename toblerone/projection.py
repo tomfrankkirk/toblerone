@@ -440,11 +440,12 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
         bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
                            np.minimum(spc.size, hull_ps.max(0)+1)))
                            .round().astype(np.int32))
-        hood = (np.vstack(np.meshgrid(*[ range(*bbox[:,d]) for d in range(3) ]))
-                .reshape(-1,3).astype(np.float32))             
+        hood = (np.stack(np.meshgrid(
+                *[ range(*bbox[:,d]) for d in range(3) ]), axis=-1)
+                .reshape(-1,3).astype(np.int32))             
         hood_vidx = np.ravel_multi_index(hood.T, spc.size)
 
-        for vidx, ijk in zip(hood_vidx, hood):
+        for vidx, ijk in zip(hood_vidx, hood.astype(np.float32)):
             v_samps = ijk + samples
 
             # The two triangles form an almost triangular prism in space (like a
