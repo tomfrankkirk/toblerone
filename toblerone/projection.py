@@ -45,7 +45,7 @@ class Projector(object):
     """
 
     def __init__(self, hemispheres, spc, factor=10, cores=mp.cpu_count(), 
-        ones=False):
+                 ones=False):
 
         print("Initialising projector (will take some time)")
         if not isinstance(hemispheres, Hemisphere):
@@ -81,7 +81,7 @@ class Projector(object):
             # Calculate the constituent matrices for projection with each hemi 
             midsurf = calc_midsurf(hemi.inSurf, hemi.outSurf)
             vox_tri = _vox_tri_weights(hemi.inSurf, hemi.outSurf, 
-                spc, factor, cores)
+                spc, factor, cores, ones)
             vtx_tri = _vtx_tri_weights(midsurf, cores)
             self.__vox_tri_mats.append(vox_tri)
             self.__vtx_tri_mats.append(vtx_tri)
@@ -358,7 +358,8 @@ def sparse_normalise(mat, axis, threshold=1e-6):
     return constructor(matrix)
 
 
-def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):     
+def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count(), 
+                     ones=False):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -379,7 +380,7 @@ def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
 
     n_tris = in_surf.tris.shape[0]
     worker = functools.partial(__vox_tri_weights_worker, in_surf=in_surf, 
-        out_surf=out_surf, spc=spc, factor=factor)
+        out_surf=out_surf, spc=spc, factor=factor, ones=ones)
     
     if cores > 1: 
         t_ranges = utils._distributeObjects(range(n_tris), cores)
@@ -396,7 +397,7 @@ def _vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count()):
     return vpmat / (factor ** 3)
 
 
-def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
+def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False):
     """
     Helper method for _vox_tri_weights(). 
 
@@ -443,6 +444,11 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor):
         hood = (np.vstack(np.meshgrid(*[ range(*bbox[:,d]) for d in range(3) ]))
                 .reshape(-1,3).astype(np.float32))             
         hood_vidx = np.ravel_multi_index(hood.T, spc.size)
+
+        # Debug mode: just stick ones in all candidate voxels and continue 
+        if ones: 
+            vox_tri_samps[hood_vidx,t] = 1 
+            continue
 
         for vidx, ijk in zip(hood_vidx, hood):
             v_samps = ijk + samples
