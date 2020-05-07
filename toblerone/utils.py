@@ -8,6 +8,7 @@ import sys
 import shutil
 import warnings 
 import time
+import multiprocessing
 
 import numpy as np 
 import nibabel
@@ -440,20 +441,6 @@ def fsl_fs_anat(**kwargs):
 
 
 @cascade_attributes
-def timer(func):
-    """Timing decorator, prints duration in minutes"""
-
-    def timed_function(*args, **kwargs):
-        t1 = time.time()
-        out = func(*args, **kwargs)
-        t2 = time.time()
-        print("Elapsed time: %.1f minutes" % ((t2 - t1) / 60))
-        return out 
-    
-    return timed_function
-
-
-@cascade_attributes
 def enforce_and_load_common_arguments(func):
     """
     Decorator to enforce and pre-processes common arguments in a 
@@ -489,7 +476,7 @@ def enforce_and_load_common_arguments(func):
         if not kwargs.get('ref'):
             raise RuntimeError("Path to reference image must be given")
 
-        if not op.isfile(kwargs['ref']):
+        if (type(kwargs['ref']) is str) and not op.isfile(kwargs['ref']):
             raise RuntimeError("Reference image %s does not exist" % kwargs['ref'])
 
         # If given a anat_dir we can load the structural image in 
@@ -594,8 +581,8 @@ def enforce_and_load_common_arguments(func):
         return kwargs
 
     def common_args_enforced(**kwargs):
-        kwargs = enforcer(**kwargs)
-        return func(**kwargs)
+        enforced = enforcer(**kwargs)
+        return func(**enforced)
 
     return common_args_enforced
 
