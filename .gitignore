@@ -24,3 +24,5 @@ scratch.py
 testdata
 .git.bfg-report
 toblerone/ctoblerone/ctoblerone.c
+toblerone/ctoblerone/ctoblerone.html
+*.nii.gz
