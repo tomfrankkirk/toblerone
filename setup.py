@@ -32,7 +32,7 @@ def git_version():
         full_version = subprocess.check_output('git describe --dirty', shell=True).decode("utf-8").strip(" \n")
 
         # Python standardized version in form major.minor.patch.post<build>
-        version_regex = re.compile(r"v[0-9]+(\.[0-9]+)./*")
+        version_regex = re.compile(r"v[0-9]+(\.[0-9]+)*-\d*")
         match = version_regex.match(full_version)
         if match:
             std_version = match.group(0).replace("-", ".post")
