@@ -1,7 +1,9 @@
 
 import os.path as op 
+import functools
 
 import numpy as np 
+import tqdm
 
 from . import estimators
 from .. import utils, core
@@ -57,10 +59,10 @@ def cortex(**kwargs):
 
     # What hemispheres are we working with?
     sides = []
-    if all([ kwargs.get(s) is not None for s in ['LPS', 'LWS'] ]): 
+    if np.all([ (kwargs.get(s) is not None) for s in ['LPS', 'LWS'] ]): 
         sides.append('L')
 
-    if all([ kwargs.get(s) is not None for s in ['RPS', 'RWS'] ]): 
+    if np.all([ kwargs.get(s) is not None for s in ['RPS', 'RWS'] ]): 
         sides.append('R')
 
     if not sides:
@@ -77,11 +79,10 @@ def cortex(**kwargs):
     if supersampler is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
 
-    pvs, ctx_mask = estimators._cortex(hemispheres, ref_space, kwargs['struct2ref'],
+    pvs = estimators._cortex(hemispheres, ref_space, kwargs['struct2ref'],
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
 
-    return (pvs, ctx_mask)
-
+    return pvs
 
 @utils.enforce_and_load_common_arguments
 def structure(**kwargs):
@@ -128,7 +129,6 @@ def structure(**kwargs):
     else: 
         surf = kwargs['surf']
         
-    # Load reference space, set supersampler
     ref_space = ImageSpace(kwargs['ref'])
 
     supersampler = kwargs.get('super')
@@ -146,7 +146,6 @@ def __structure_wrapper(surf, **kwargs):
     return structure(surf=surf, **kwargs)
 
 
-@utils.timer
 @utils.enforce_and_load_common_arguments
 def all(**kwargs):
     """
@@ -209,7 +208,7 @@ def all(**kwargs):
     # All the extra stuff (tqdm etc) is used for progress bar
     results = [ pv for _, pv in 
         tqdm.tqdm(enumerate(map(estimator, structures)), 
-        total=len(structures), desc=desc, bar_format=core.__BAR_FORMAT, 
+        total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
         ascii=True) ] 
 
     output.update(dict(zip([s.name for s in structures], results)))

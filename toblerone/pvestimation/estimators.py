@@ -85,19 +85,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     if not np.all(outPVs.sum(1) == 1.0):
         raise RuntimeError("PVs do not sum to 1")
 
-    # Form the surface mask (3D logical) as any voxel containing GM or 
-    # intersecting the cortex (these definitions should always be equivalent)
-    ctxMask = np.zeros((outPVs.shape[0], 1), dtype=bool)
-    for h in loc_hemispheres:
-        for s in h.surfs: 
-            ctxMask[s.reindex_LUT(space)] = True
-    ctxMask[outPVs[:,0] > 0] = True 
-
-    # Reshape images back into 4D or 3D images
-    outPVs = outPVs.reshape((*space.size, 3))
-    ctxMask = ctxMask.reshape(space.size)
-
-    return outPVs, ctxMask
+    return outPVs.reshape((*space.size, 3))
 
 
 def _structure(surf, space, struct2ref, supersampler, ones, cores):
