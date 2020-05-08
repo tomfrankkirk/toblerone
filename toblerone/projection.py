@@ -137,7 +137,7 @@ class Projector(object):
         if edge_correction: 
             brain_pv = self.flat_pvs()[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
-            upweight = np.zeros(brain_pv.shape)
+            upweight = np.ones(brain_pv.shape)
             upweight[brain] = 1 / brain_pv[brain]
             v2s_mat.data *= np.take(upweight, v2s_mat.indices)
 
