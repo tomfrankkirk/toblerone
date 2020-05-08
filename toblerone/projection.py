@@ -67,7 +67,7 @@ class Projector(object):
                 self.pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersample = np.ceil(spc.vox_size).astype(np.int8) 
-                pvs, _ = estimators._cortex(hemi, spc, np.eye(4), supersample, 
+                pvs = estimators._cortex(hemi, spc, np.eye(4), supersample, 
                     cores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
