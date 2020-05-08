@@ -2,6 +2,8 @@ import numpy as np
 cimport numpy as np
 import cython
 
+from libc.math cimport fabs
+
 # External function imports from ../src directory
 cdef extern from "tribox.h":
     char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
@@ -13,7 +15,7 @@ cdef extern from "ctoblerone.h":
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent, 
+cpdef _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent, 
                                     np.ndarray[np.float32_t] halfSize, 
                                     np.ndarray[np.float32_t, ndim=2] tri):
     """
@@ -24,15 +26,13 @@ def _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent,
     """
 
     cdef float verts[3][3]
-    verts[0] = tri[0,:]
-    verts[1] = tri[1,:]
-    verts[2] = tri[2,:]
+    verts = np.ascontiguousarray(tri)
     return bool(triBoxOverlap(&voxCent[0], &halfSize[0], &verts[0]))
 
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris, 
+cpdef _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris, 
                        np.ndarray[np.float32_t, ndim=2] points, 
                        np.ndarray[np.float32_t] vox_cent, 
                        np.ndarray[np.float32_t] half_size):
@@ -63,7 +63,7 @@ def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris,
         verts[2][0] = points[c,0]
         verts[2][1] = points[c,1]
         verts[2][2] = points[c,2]
-        
+
         fltr[t] = triBoxOverlap(&vox_cent[0], &half_size[0], &verts[0])     
 
     return fltr 
@@ -71,11 +71,11 @@ def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris, 
-                                        np.ndarray[np.float32_t, ndim=2] points, 
-                                        np.ndarray[np.float32_t] start, 
-                                        int ax1, 
-                                        int ax2):
+cpdef _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris, 
+                                          np.ndarray[np.float32_t, ndim=2] points, 
+                                          np.ndarray[np.float32_t] start, 
+                                          int ax1, 
+                                          int ax2):
     """
     Test if a ray intersects triangles. The ray originates from the point 
     defined by start and travels along the dimension NOT specified by ax1 
@@ -110,9 +110,9 @@ def _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def quick_cross(np.ndarray[np.float32_t, ndim=1] a, np.ndarray[np.float32_t, ndim=1] b):
+def quick_cross(np.ndarray[np.float32_t] a, np.ndarray[np.float32_t] b):
 
-    cdef out = np.empty(3, dtype=np.float32)
+    out = np.empty(3, dtype=np.float32)
     out[0] = (a[1]*b[2]) - (a[2]*b[1])
     out[1] = (a[2]*b[0]) - (a[0]*b[2])
     out[2] = (a[0]*b[1]) - (a[1]*b[0])
@@ -122,9 +122,9 @@ def quick_cross(np.ndarray[np.float32_t, ndim=1] a, np.ndarray[np.float32_t, ndi
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def normal_to_vector(np.ndarray[np.float32_t, ndim=1] a):
+def normal_to_vector(np.ndarray[np.float32_t] a):
 
-    cdef out = np.zeros(3, dtype=np.float32)    
+    out = np.zeros(3, dtype=np.float32) 
     if np.abs(a[2]) < np.abs(a[0]):
         out[0] = a[1] 
         out[1] = -a[0]
