@@ -8,6 +8,7 @@ import gzip
 import numpy as np 
 import multiprocessing
 from pdb import set_trace
+import os 
 
 import toblerone
 from toblerone import classes, projection
@@ -23,6 +24,7 @@ def test_indexing():
     surf = toblerone.Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     surf.index_on(spc, np.identity(4))
+
     truth = pickle.load(open(op.join(td, 'out_indexed.pkl'), 'rb'))
     truthspace = truth._index_space
     space = surf._index_space
@@ -42,9 +44,10 @@ def test_cortex():
     s2r = np.identity(4)
     supersampler = np.ceil(spc.vox_size / 0.75)
 
-    fracs, _ = estimators._cortex(hemi, spc, s2r, supersampler, 
-        multiprocessing.cpu_count(), False)
+    fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
+        1, False)
 
+    spc.save_image(fracs, 'fracs.nii.gz')
     truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
@@ -74,5 +77,11 @@ def test_projection():
     n2v = projector.node2vol(v2n)
 
 
+def test_convert(): 
+    td = get_testdir()
+    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    s.save('test.vtk')
+    os.remove('test.vtk')
+
 if __name__ == "__main__":
-    test_projection()
+    test_indexing()
