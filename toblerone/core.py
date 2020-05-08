@@ -29,15 +29,21 @@ from . import utils
 
 # Module level constants ------------------------------------------------------
 
-__ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
+ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
     1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int8) - 1
-__ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
+ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
     6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int8) - 1
-__BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
-__DIMS = np.array([0,1,2,0,1,2])
-__VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
-__VOX_HALF_VECS = np.array((__VOX_HALF_CYCLE, -1 * __VOX_HALF_CYCLE)).reshape(6,3)
+BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
+DIMS = np.array([0,1,2,0,1,2])
+VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
+VOX_HALF_VECS = np.array((VOX_HALF_CYCLE, -1 * VOX_HALF_CYCLE)).reshape(6,3)
 
+SUBVOXCORNERS = np.array([ 
+        [0, 0, 0], [1, 0, 0], 
+        [0, 1, 0], [1, 1, 0], 
+        [0, 0, 1], [1, 0, 1], 
+        [0, 1, 1], [1, 1, 1]], 
+        dtype=np.int16) 
 
 # Functions -------------------------------------------------------------------
 
@@ -404,9 +410,9 @@ def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
 
     # Iterate over each dimension, moving +0.5 and -0.5 of the voxel size
     # from the vox centre to define a point on the planar face of the vox
-    face_points = voxCent + (__VOX_HALF_VECS * vox_size)
+    face_points = voxCent + (VOX_HALF_VECS * vox_size)
 
-    for face_point,dim in zip(face_points, __DIMS):
+    for face_point,dim in zip(face_points, DIMS):
 
         # Filter to edge vectors that are non-zero in this dimension 
         fltr = np.flatnonzero(edgeVecs[:,dim])
@@ -451,12 +457,12 @@ def _findVoxelSurfaceIntersections(patch, vertices):
     # 8 vertices correspond to 12 edge vectors along exterior edges and 
     # 4 body diagonals. This function uses a particular numbering convention, 
     # encoded in the module level constants ENDS and ORIGINS 
-    edges = vertices[__ENDS,:] - vertices[__ORIGINS,:]
+    edges = vertices[ENDS,:] - vertices[ORIGINS,:]
 
     # Test each vector against the surface
     for e in range(16):
         edge = edges[e,:]
-        pnt = vertices[__ORIGINS[e],:]
+        pnt = vertices[ORIGINS[e],:]
         intMus = _findRayTriangleIntersections3D(pnt, edge, patch)
 
         if intMus.size:
@@ -526,10 +532,8 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
 
     # Get the IJK coords within the subvoxel grid. 
     # Vertices are then +1/0 from these coords
-    i, j, k = np.unravel_index(linIdx, supersampler)
-    subs = np.array([ [i, j, k], [i+1, j, k], [i, j+1, k], \
-        [i+1, j+1, k], [i, j, k+1], [i+1, j, k+1], [i, j+1, k+1], \
-        [i+1, j+1, k+1] ], dtype=np.int16) 
+    ijk = np.array(np.unravel_index(linIdx, supersampler), dtype=np.int16).T
+    subs = SUBVOXCORNERS + ijk[None,:]
 
     # And map these vertix subscripts to linear indices within the 
     # grid of subvox vertices (which is always + 1 larger than supersamp)
@@ -540,7 +544,7 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
 
 
 
-def _getAllSubVoxCorners(supersampler, voxCent):
+def _getAllSubVoxCorners(supersampler, vox_cent):
     """Produce a grid of subvoxel vertices within a given voxel.
 
     Args: 
@@ -554,13 +558,12 @@ def _getAllSubVoxCorners(supersampler, voxCent):
     """
 
     # Get the origin for the grid of vertices (corner with smallest xyz)
-    root = voxCent - 0.5
 
     # Grid will have s+1 points in each dimension 
     X, Y, Z = np.meshgrid(
-        np.linspace(root[0], root[0] + 1, supersampler[0] + 1),
-        np.linspace(root[1], root[1] + 1, supersampler[1] + 1),
-        np.linspace(root[2], root[2] + 1, supersampler[2] + 1))
+        np.linspace(vox_cent[0] - 0.5, vox_cent[0] + 0.5, supersampler[0] + 1),
+        np.linspace(vox_cent[1] - 0.5, vox_cent[1] + 0.5, supersampler[1] + 1),
+        np.linspace(vox_cent[2] - 0.5, vox_cent[2] + 0.5, supersampler[2] + 1))
 
     return (np.vstack((X.flatten(), Y.flatten(), Z.flatten()))
         .astype(np.float32).T)
@@ -761,7 +764,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     if bool(descriptor):
         iterator = functools.partial(tqdm.tqdm,
             total=len(workerChunks), desc=descriptor, 
-            bar_format=__BAR_FORMAT, ascii=True)
+            bar_format=BAR_FORMAT, ascii=True)
     else: 
         iterator = iter
 
