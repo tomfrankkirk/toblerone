@@ -540,7 +540,7 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
 
 
 
-def _getAllSubVoxCorners(supersampler, voxCent, vox_size):
+def _getAllSubVoxCorners(supersampler, voxCent):
     """Produce a grid of subvoxel vertices within a given voxel.
 
     Args: 
@@ -554,13 +554,13 @@ def _getAllSubVoxCorners(supersampler, voxCent, vox_size):
     """
 
     # Get the origin for the grid of vertices (corner with smallest xyz)
-    root = voxCent - (vox_size/2)
+    root = voxCent - 0.5
 
     # Grid will have s+1 points in each dimension 
     X, Y, Z = np.meshgrid(
-        np.linspace(root[0], root[0] + vox_size[0], supersampler[0] + 1),
-        np.linspace(root[1], root[1] + vox_size[1], supersampler[1] + 1),
-        np.linspace(root[2], root[2] + vox_size[2], supersampler[2] + 1))
+        np.linspace(root[0], root[0] + 1, supersampler[0] + 1),
+        np.linspace(root[1], root[1] + 1, supersampler[1] + 1),
+        np.linspace(root[2], root[2] + 1, supersampler[2] + 1))
 
     return (np.vstack((X.flatten(), Y.flatten(), Z.flatten()))
         .astype(np.float32).T)
@@ -582,21 +582,18 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     # The main function, here we go... ----------------------------------------
 
     verbose = False
-    # print(voxIdx)
-
-    # Hardcode voxel size as we now work in voxel coords. Intialise results
-    vox_size = np.array([1,1,1], dtype=np.int8)
     inFraction = 0.0
 
     # Set up the subvoxel sizes and vols. 
     subvox_size = (1.0 / supersampler).astype(np.float32)
+    subvox_half_size = subvox_size / 2
     subVoxVol = np.prod(subvox_size).astype(np.float32)
 
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
 
     # Test all subvox corners now and store the results for later
-    allCorners = _getAllSubVoxCorners(supersampler, voxIJK, vox_size)
+    allCorners = _getAllSubVoxCorners(supersampler, voxIJK)
     voxCentFlag = surf.voxelised[voxIdx]
     allCornerFlags = _reducedRayIntersectionTest(allCorners, patch,
         voxIJK, ~voxCentFlag)
@@ -623,7 +620,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
         # Do any triangles intersect the subvox?
         triFltr = _cyfilterTriangles(patch.tris, patch.points, 
-            subVoxCent, subvox_size)
+            subVoxCent, subvox_half_size)
 
         # CASE 1 --------------------------------------------------------------
 

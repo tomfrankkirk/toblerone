@@ -32,33 +32,28 @@ def _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _cyfilterTriangles(tris, points, vC, vS):
+def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris, 
+                       np.ndarray[np.float32_t, ndim=2] points, 
+                       np.ndarray[np.float32_t] vox_cent, 
+                       np.ndarray[np.float32_t] half_size):
     """
     Test if multiple triangles intersect voxel defined
     by centre vC and full size vS
     """
     
-    cdef Py_ssize_t t, a, b, c, i 
+    cdef Py_ssize_t t, i 
     cdef np.ndarray[char, ndim=1, cast=True] fltr = \
         np.zeros(tris.shape[0], dtype=bool)
     
-    cdef np.ndarray[float, ndim=1] voxCent = vC.flatten() 
-    cdef np.ndarray[float, ndim=1] halfSize = vS.flatten() 
-    cdef float tri[3][3]
-    for i in range(3):
-        halfSize[i] = halfSize[i]/2 
+    cdef float verts[3][3]
+    cdef int tri[3]
 
     for t in range(tris.shape[0]):
-        a = tris[t,0]
-        b = tris[t,1]
-        c = tris[t,2]
-
-        for i in range(3):
-            tri[0][i] = points[a,i]
-            tri[1][i] = points[b,i]
-            tri[2][i] = points[c,i]
-
-        fltr[t] = triBoxOverlap(&voxCent[0], &halfSize[0], &tri[0])     
+        tri = tris[t,:]
+        verts[0] = points[tri[0],:]
+        verts[1] = points[tri[1],:]
+        verts[2] = points[tri[2],:]
+        fltr[t] = triBoxOverlap(&vox_cent[0], &half_size[0], &verts[0])     
 
     return fltr 
 
