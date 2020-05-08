@@ -20,12 +20,12 @@ from .classes import ImageSpace, Hemisphere, Surface
 
 # See the __vox_tri_weights_worker() function for an explanation of the 
 # naming convention here. 
-__TETRA1__ = np.array([[0,3,4,5],   # aABC
+TETRA1 = np.array([[0,3,4,5],   # aABC
                        [0,1,2,4],   # abcB
                        [0,2,4,5]],  # acBC
                        dtype=np.int8)  
 
-__TETRA2__ = np.array([[0,3,4,5],   # aABC
+TETRA2 = np.array([[0,3,4,5],   # aABC
                        [0,1,2,5],   # abcC
                        [0,1,4,5]],  # abBC
                        dtype=np.int8) 
@@ -491,11 +491,11 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False
 
             # Two positive divisions and one negative
             if flagsum == 2: 
-                tets = __TETRA1__
+                tets = TETRA1
 
             # This MUST be two negatives and one positive. 
             else:
-                tets = __TETRA2__
+                tets = TETRA2
 
             # Test the sample points against the tetrahedra. We don't care about
             # double counting within the polyhedra (although in theory this 
