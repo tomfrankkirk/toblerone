@@ -433,6 +433,15 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False
         tri_sort = [ tri[(tri_max + i) % 3] for i in range(3) ]
         flagsum = sum([ int(tri_sort[v] < tri_sort[(v + 1) % 3]) 
                         for v in range(3) ])
+
+        # Two positive divisions and one negative
+        if flagsum == 2: 
+            tets = TETRA1
+
+        # This MUST be two negatives and one positive. 
+        else:
+            tets = TETRA2
+
         hull_ps = np.vstack((in_surf.points[tri_sort,:], 
                              out_surf.points[tri_sort,:]))
 
@@ -489,13 +498,6 @@ def __vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False
             # ways of splitting the prism down, hardcoded at the top of this file. 
             # See http://www.alecjacobson.com/weblog/?p=1888. 
 
-            # Two positive divisions and one negative
-            if flagsum == 2: 
-                tets = TETRA1
-
-            # This MUST be two negatives and one positive. 
-            else:
-                tets = TETRA2
 
             # Test the sample points against the tetrahedra. We don't care about
             # double counting within the polyhedra (although in theory this 
