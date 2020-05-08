@@ -13,7 +13,9 @@ cdef extern from "ctoblerone.h":
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
+def _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent, 
+                                    np.ndarray[np.float32_t] halfSize, 
+                                    np.ndarray[np.float32_t, ndim=2] tri):
     """
     Test if triangle intersects voxel. 
 
@@ -21,15 +23,11 @@ def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
     as is the case for _cyfilterTriangles()
     """
 
-    cdef float[:] vC = voxCent.flatten()
-    cdef float[:] hS = halfSize.flatten()
     cdef float verts[3][3]
-    for i in range(3):
-        verts[0][i] = tri[0,i]
-        verts[1][i] = tri[1,i]
-        verts[2][i] = tri[2,i]
-
-    return bool(triBoxOverlap(&vC[0], &hS[0], &verts[0]))
+    verts[0] = tri[0,:]
+    verts[1] = tri[1,:]
+    verts[2] = tri[2,:]
+    return bool(triBoxOverlap(&voxCent[0], &halfSize[0], &verts[0]))
 
 
 @cython.boundscheck(False) 
