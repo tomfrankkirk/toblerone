@@ -29,27 +29,3 @@ char testRayTriangleIntersection(const float tri[3][3], const float start[3], in
     return intersection;
 }
 
-
-char ray_wrapper(float s1, float s2, float s3, 
-                   float tv11, float tv12, float tv13,
-                   float tv21, float tv22, float tv23,
-                   float tv31, float tv32, float tv33, 
-                   int ax1, int ax2)
-{
-    float s[3], tv[3][3];
-    s[0] = s1;
-    s[1] = s2;
-    s[2] = s3;
-    tv[0][0] = tv11;
-    tv[0][1] = tv12;
-    tv[0][2] = tv13;
-    tv[1][0] = tv21;
-    tv[1][1] = tv22;
-    tv[1][2] = tv23;
-    tv[2][0] = tv31;
-    tv[2][1] = tv32;
-    tv[2][2] = tv33;
-    return testRayTriangleIntersection(tv, s, ax1, ax2);
-}   
-
-

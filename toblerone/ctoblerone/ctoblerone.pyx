@@ -41,18 +41,29 @@ def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris,
     by centre vC and full size vS
     """
     
-    cdef Py_ssize_t t, i 
+    cdef Py_ssize_t t, i, a, b, c
     cdef np.ndarray[char, ndim=1, cast=True] fltr = \
         np.zeros(tris.shape[0], dtype=bool)
     
     cdef float verts[3][3]
-    cdef int tri[3]
 
     for t in range(tris.shape[0]):
-        tri = tris[t,:]
-        verts[0] = points[tri[0],:]
-        verts[1] = points[tri[1],:]
-        verts[2] = points[tri[2],:]
+        a = tris[t,0]
+        b = tris[t,1]
+        c = tris[t,2]
+
+        verts[0][0] = points[a,0]
+        verts[0][1] = points[a,1]
+        verts[0][2] = points[a,2]
+
+        verts[1][0] = points[b,0]
+        verts[1][1] = points[b,1]
+        verts[1][2] = points[b,2]
+
+        verts[2][0] = points[c,0]
+        verts[2][1] = points[c,1]
+        verts[2][2] = points[c,2]
+        
         fltr[t] = triBoxOverlap(&vox_cent[0], &half_size[0], &verts[0])     
 
     return fltr 
@@ -60,29 +71,39 @@ def _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start, int ax1, int ax2):
+def _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris, 
+                                        np.ndarray[np.float32_t, ndim=2] points, 
+                                        np.ndarray[np.float32_t] start, 
+                                        int ax1, 
+                                        int ax2):
     """
     Test if a ray intersects triangles. The ray originates from the point 
     defined by start and travels along the dimension NOT specified by ax1 
     and ax2 (e.g 0 corresponds to X)
     """
 
-    cdef np.ndarray[float, ndim=1] st = start.flatten()
     cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef Py_ssize_t t, a, b, c
-    cdef float tri[3][3]
+    cdef float verts[3][3]
 
     for t in range(tris.shape[0]):
         a = tris[t,0]
         b = tris[t,1]
         c = tris[t,2]
 
-        for i in range(3):
-            tri[0][i] = points[a,i]
-            tri[1][i] = points[b,i]
-            tri[2][i] = points[c,i]
+        verts[0][0] = points[a,0]
+        verts[0][1] = points[a,1]
+        verts[0][2] = points[a,2]
 
-        fltr[t] = testRayTriangleIntersection(tri, &st[0], ax1, ax2)     
+        verts[1][0] = points[b,0]
+        verts[1][1] = points[b,1]
+        verts[1][2] = points[b,2]
+
+        verts[2][0] = points[c,0]
+        verts[2][1] = points[c,1]
+        verts[2][2] = points[c,2]
+
+        fltr[t] = testRayTriangleIntersection(verts, &start[0], ax1, ax2)     
 
     return fltr 
 
