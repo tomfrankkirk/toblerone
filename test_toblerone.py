@@ -23,7 +23,7 @@ def test_indexing():
     td = get_testdir()
     surf = toblerone.Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    surf.index_on(spc, np.identity(4))
+    surf.index_on(spc, np.identity(4), 1)
 
     truth = pickle.load(open(op.join(td, 'out_indexed.pkl'), 'rb'))
     truthspace = truth._index_space
@@ -54,7 +54,7 @@ def test_cortex():
 def test_imagespace():
     td = get_testdir()
     spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
-    sspc = spc.supersample([2,2,2])
+    sspc = spc.resize_voxels(0.5)
 
     assert np.all(spc.bbox_origin == sspc.bbox_origin)
     assert np.all(spc.FoV_size == sspc.FoV_size)
