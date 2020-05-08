@@ -22,7 +22,8 @@ from scipy.spatial.qhull import QhullError
 
 from .ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
     _cytestManyRayTriangleIntersections
-from .ctoblerone import quick_cross, normal_to_vector
+from .ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
+from .ctoblerone import separate_point_clouds
 from . import utils 
 
 
@@ -47,75 +48,75 @@ def _filterPoints(points, voxCent, vox_size):
     return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
 
 
-def _pointGroupsIntersect(grps, tris): 
-    """For _separatePointClouds. Break as soon as overlap is found"""
-    for g in range(len(grps)):
-        for h in range(g + 1, len(grps)): 
-            if np.any(np.intersect1d(tris[grps[g],:], 
-                tris[grps[h],:])):
-                return True 
+# def _pointGroupsIntersect(grps, tris): 
+#     """For _separatePointClouds. Break as soon as overlap is found"""
+#     for g in range(len(grps)):
+#         for h in range(g + 1, len(grps)): 
+#             if np.any(np.intersect1d(tris[grps[g],:], 
+#                 tris[grps[h],:])):
+#                 return True 
 
-    return False 
+#     return False 
 
 
-def _separatePointClouds(tris):
-    """Separate patches of a surface that intersect a voxel into disconnected
-    groups, ie, point clouds. If the patch is cointguous within the voxel
-    a single group will be returned.
+# def _separatePointClouds(tris):
+#     """Separate patches of a surface that intersect a voxel into disconnected
+#     groups, ie, point clouds. If the patch is cointguous within the voxel
+#     a single group will be returned.
     
-    Args: 
-        tris: n x 3 matrix of triangle indices into a points matrix
+#     Args: 
+#         tris: n x 3 matrix of triangle indices into a points matrix
 
-    Returns: 
-        list of m arrays representing the point clouds, each of which is 
-            list of row numbers into the given tris matrix 
-    """
+#     Returns: 
+#         list of m arrays representing the point clouds, each of which is 
+#             list of row numbers into the given tris matrix 
+#     """
 
-    if not tris.shape[0]:
-        return [] 
+#     if not tris.shape[0]:
+#         return [] 
 
-    groups = [] 
+#     groups = [] 
 
-    for t in range(tris.shape[0]):
+#     for t in range(tris.shape[0]):
 
-        # If any node of the triangle is contained within the existing
-        # groups, then append to that group. Assume new group needed
-        # until proven otherwise
-        newGroupNeeded = True 
-        for g in range(len(groups)):
-            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
-                newGroupNeeded = False
-                break 
+#         # If any node of the triangle is contained within the existing
+#         # groups, then append to that group. Assume new group needed
+#         # until proven otherwise
+#         newGroupNeeded = True 
+#         for g in range(len(groups)):
+#             if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
+#                 newGroupNeeded = False
+#                 break 
         
-        # Append triangle to existing group, using the break-value of g
-        if not newGroupNeeded:
-            groups[g].append(t)
+#         # Append triangle to existing group, using the break-value of g
+#         if not newGroupNeeded:
+#             groups[g].append(t)
         
-        # New group needed
-        else: 
-            groups.append([t])
+#         # New group needed
+#         else: 
+#             groups.append([t])
 
-    # Merge groups that intersect 
-    if len(groups) > 1: 
-        while _pointGroupsIntersect(groups, tris): 
-            didMerge = False 
+#     # Merge groups that intersect 
+#     if len(groups) > 1: 
+#         while point_groups_intersect(groups, tris): 
+#             didMerge = False 
 
-            for g in range(len(groups)):
-                if didMerge: break 
+#             for g in range(len(groups)):
+#                 if didMerge: break 
 
-                for h in range(g + 1, len(groups)):
-                    if didMerge: break
+#                 for h in range(g + 1, len(groups)):
+#                     if didMerge: break
 
-                    if np.any(np.intersect1d(tris[groups[g],:], 
-                        tris[groups[h],:])):
-                        groups[g] = groups[g] + groups[h]
-                        groups.pop(h)
-                        didMerge = True  
+#                     if np.any(np.intersect1d(tris[groups[g],:], 
+#                         tris[groups[h],:])):
+#                         groups[g] = groups[g] + groups[h]
+#                         groups.pop(h)
+#                         didMerge = True  
 
-    # Check for empty groups 
-    assert all(map(len, groups)), 'Empty group remains after merging'
+#     # Check for empty groups 
+#     assert all(map(len, groups)), 'Empty group remains after merging'
     
-    return groups 
+#     return groups 
 
 
 def _formAssociationsWorker(tris, points, grid_size, triInds):
@@ -651,7 +652,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
             # Separate points within the voxel into distinct clouds, to check
             # for multiple surface intersection
-            groups = _separatePointClouds(smallPatch.tris)
+            groups = separate_point_clouds(smallPatch.tris)
 
             # If neither surface is folded within the subvox and there 
             # are no multiple intersections, we can form hulls. 

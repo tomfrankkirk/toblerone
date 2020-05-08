@@ -93,6 +93,7 @@ def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start,
 
     return fltr 
 
+
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def quick_cross(np.ndarray[np.float32_t, ndim=1] a, np.ndarray[np.float32_t, ndim=1] b):
@@ -103,6 +104,7 @@ def quick_cross(np.ndarray[np.float32_t, ndim=1] a, np.ndarray[np.float32_t, ndi
     out[2] = (a[0]*b[1]) - (a[1]*b[0])
 
     return out 
+
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
@@ -117,3 +119,76 @@ def normal_to_vector(np.ndarray[np.float32_t, ndim=1] a):
         out[2] = a[1]
 
     return out 
+
+
+def point_groups_intersect(list grps, np.ndarray[np.int32_t, ndim=2] tris):
+
+    cdef Py_ssize_t g, h
+    for g in range(len(grps)):
+        for h in range(g + 1, len(grps)): 
+            if np.intersect1d(tris[grps[g],:], tris[grps[h],:]).any(): 
+                return True 
+
+    return False 
+
+
+def separate_point_clouds(np.ndarray[np.int32_t, ndim=2] tris):
+    """Separate patches of a surface that intersect a voxel into disconnected
+    groups, ie, point clouds. If the patch is cointguous within the voxel
+    a single group will be returned.
+    
+    Args: 
+        tris: n x 3 matrix of triangle indices into a points matrix
+
+    Returns: 
+        list of m arrays representing the point clouds, each of which is 
+            list of row numbers into the given tris matrix 
+    """
+
+    if not tris.shape[0]:
+        return [] 
+
+    cdef Py_ssize_t t, g, h
+    cdef list groups = [] 
+    cdef bint newGroupNeeded, didMerge
+
+    for t in range(tris.shape[0]):
+
+        # If any node of the triangle is contained within the existing
+        # groups, then append to that group. Assume new group needed
+        # until proven otherwise
+        newGroupNeeded = True 
+        for g in range(len(groups)):
+            if np.in1d(tris[t,:], tris[groups[g],:]).any():
+                newGroupNeeded = False
+                break 
+        
+        # Append triangle to existing group, using the break-value of g
+        if not newGroupNeeded:
+            groups[g].append(t)
+        
+        # New group needed
+        else: 
+            groups.append([t])
+
+    # Merge groups that intersect 
+    if len(groups) > 1: 
+        while point_groups_intersect(groups, tris): 
+            didMerge = False 
+
+            for g in range(len(groups)):
+                if didMerge: break 
+
+                for h in range(g + 1, len(groups)):
+                    if didMerge: break
+
+                    if np.intersect1d(tris[groups[g],:], tris[groups[h],:]).any():
+                        groups[g] = groups[g] + groups[h]
+                        groups.pop(h)
+                        didMerge = True  
+
+    # Check for empty groups 
+    for g in range(len(groups)):
+        assert len(groups[g]), 'Empty group remains after merging'
+    
+    return groups 
