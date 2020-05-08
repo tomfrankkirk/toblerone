@@ -22,6 +22,7 @@ from scipy.spatial.qhull import QhullError
 
 from .ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
     _cytestManyRayTriangleIntersections
+from .ctoblerone import quick_cross, normal_to_vector
 from . import utils 
 
 
@@ -40,22 +41,10 @@ __VOX_HALF_VECS = np.array((__VOX_HALF_CYCLE, -1 * __VOX_HALF_CYCLE)).reshape(6,
 # Functions -------------------------------------------------------------------
 
 
-
-def _quickCross(a, b):
-    """Quick cross product of 3-element vectors"""
-
-    return np.array([
-        (a[1]*b[2]) - (a[2]*b[1]),
-        (a[2]*b[0]) - (a[0]*b[2]), 
-        (a[0]*b[1]) - (a[1]*b[0])], dtype = np.float32)
-
-
-
 def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""
 
     return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
-
 
 
 def _pointGroupsIntersect(grps, tris): 
@@ -67,7 +56,6 @@ def _pointGroupsIntersect(grps, tris):
                 return True 
 
     return False 
-
 
 
 def _separatePointClouds(tris):
@@ -246,11 +234,8 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # the Z direction in this new projected space) amongst all the triangles in
     # dimensions 1 and 2 (XY). Define a new coordinate system (d unit vectors) 
     # with d3 along the ray, d2 and d1 in plane.
-    if np.abs(ray[2]) < np.abs(ray[0]):
-        d2 = np.array([ray[1], -ray[0], 0])
-    else:
-        d2 = np.array([0, -ray[2], ray[1]])
-    d1 = _quickCross(d2, ray)
+    d2 = normal_to_vector(ray)
+    d1 = quick_cross(d2, ray)
 
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position

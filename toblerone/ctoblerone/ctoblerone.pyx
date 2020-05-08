@@ -92,3 +92,28 @@ def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start,
         fltr[t] = testRayTriangleIntersection(tri, &st[0], ax1, ax2)     
 
     return fltr 
+
+@cython.boundscheck(False) 
+@cython.wraparound(False) 
+def quick_cross(np.ndarray[np.float32_t, ndim=1] a, np.ndarray[np.float32_t, ndim=1] b):
+
+    cdef out = np.empty(3, dtype=np.float32)
+    out[0] = (a[1]*b[2]) - (a[2]*b[1])
+    out[1] = (a[2]*b[0]) - (a[0]*b[2])
+    out[2] = (a[0]*b[1]) - (a[1]*b[0])
+
+    return out 
+
+@cython.boundscheck(False) 
+@cython.wraparound(False) 
+def normal_to_vector(np.ndarray[np.float32_t, ndim=1] a):
+
+    cdef out = np.zeros(3, dtype=np.float32)    
+    if np.abs(a[2]) < np.abs(a[0]):
+        out[0] = a[1] 
+        out[1] = -a[0]
+    else:
+        out[1] = -a[2]
+        out[2] = a[1]
+
+    return out 
