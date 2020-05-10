@@ -46,21 +46,22 @@ cpdef _cyfilterTriangles(int[:,:] tris,
     cdef float verts[3][3]
 
     for t in range(tris.shape[0]):
-        a = tris[t,0]
-        b = tris[t,1]
-        c = tris[t,2]
+        with nogil:
+            a = tris[t,0]
+            b = tris[t,1]
+            c = tris[t,2]
 
-        verts[0][0] = points[a,0]
-        verts[0][1] = points[a,1]
-        verts[0][2] = points[a,2]
+            verts[0][0] = points[a,0]
+            verts[0][1] = points[a,1]
+            verts[0][2] = points[a,2]
 
-        verts[1][0] = points[b,0]
-        verts[1][1] = points[b,1]
-        verts[1][2] = points[b,2]
+            verts[1][0] = points[b,0]
+            verts[1][1] = points[b,1]
+            verts[1][2] = points[b,2]
 
-        verts[2][0] = points[c,0]
-        verts[2][1] = points[c,1]
-        verts[2][2] = points[c,2]
+            verts[2][0] = points[c,0]
+            verts[2][1] = points[c,1]
+            verts[2][2] = points[c,2]
 
         fltr[t] = triBoxOverlap(&vox_cent[0], &half_size[0], &verts[0])     
 
@@ -86,21 +87,22 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
     cdef float verts[3][3]
 
     for t in range(tris.shape[0]):
-        a = tris[t,0]
-        b = tris[t,1]
-        c = tris[t,2]
+        with nogil: 
+            a = tris[t,0]
+            b = tris[t,1]
+            c = tris[t,2]
 
-        verts[0][0] = points[a,0]
-        verts[0][1] = points[a,1]
-        verts[0][2] = points[a,2]
+            verts[0][0] = points[a,0]
+            verts[0][1] = points[a,1]
+            verts[0][2] = points[a,2]
 
-        verts[1][0] = points[b,0]
-        verts[1][1] = points[b,1]
-        verts[1][2] = points[b,2]
+            verts[1][0] = points[b,0]
+            verts[1][1] = points[b,1]
+            verts[1][2] = points[b,2]
 
-        verts[2][0] = points[c,0]
-        verts[2][2] = points[c,2]
-        verts[2][1] = points[c,1]
+            verts[2][0] = points[c,0]
+            verts[2][2] = points[c,2]
+            verts[2][1] = points[c,1]
 
         fltr[t] = testRayTriangleIntersection(verts, &start[0], ax1, ax2)     
 
