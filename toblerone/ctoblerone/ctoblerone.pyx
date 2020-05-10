@@ -15,9 +15,9 @@ cdef extern from "ctoblerone.h":
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent, 
-                                    np.ndarray[np.float32_t] halfSize, 
-                                    np.ndarray[np.float32_t, ndim=2] tri):
+cpdef _ctestTriangleVoxelIntersection(float[:] voxCent, 
+                                      float[:] halfSize, 
+                                      float[:,:] tri):
     """
     Test if triangle intersects voxel. 
 
@@ -32,19 +32,17 @@ cpdef _ctestTriangleVoxelIntersection(np.ndarray[np.float32_t] voxCent,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris, 
-                       np.ndarray[np.float32_t, ndim=2] points, 
-                       np.ndarray[np.float32_t] vox_cent, 
-                       np.ndarray[np.float32_t] half_size):
+cpdef _cyfilterTriangles(int[:,:] tris, 
+                         float[:,:] points, 
+                         float[:] vox_cent, 
+                         float[:] half_size):
     """
     Test if multiple triangles intersect voxel defined
     by centre vC and full size vS
     """
     
     cdef Py_ssize_t t, i, a, b, c
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = \
-        np.zeros(tris.shape[0], dtype=bool)
-    
+    cdef char[::] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef float verts[3][3]
 
     for t in range(tris.shape[0]):
@@ -71,9 +69,9 @@ cpdef _cyfilterTriangles(np.ndarray[np.int32_t, ndim=2] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris, 
-                                          np.ndarray[np.float32_t, ndim=2] points, 
-                                          np.ndarray[np.float32_t] start, 
+cpdef _cytestManyRayTriangleIntersections(int[:,:] tris, 
+                                          float[:,:] points, 
+                                          float[:] start, 
                                           int ax1, 
                                           int ax2):
     """
@@ -82,7 +80,8 @@ cpdef _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris,
     and ax2 (e.g 0 corresponds to X)
     """
 
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
+    #cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
+    cdef char[::] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef Py_ssize_t t, a, b, c
     cdef float verts[3][3]
 
@@ -100,8 +99,8 @@ cpdef _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris,
         verts[1][2] = points[b,2]
 
         verts[2][0] = points[c,0]
-        verts[2][1] = points[c,1]
         verts[2][2] = points[c,2]
+        verts[2][1] = points[c,1]
 
         fltr[t] = testRayTriangleIntersection(verts, &start[0], ax1, ax2)     
 
@@ -110,27 +109,29 @@ cpdef _cytestManyRayTriangleIntersections(np.ndarray[np.int32_t, ndim=2] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def quick_cross(np.ndarray[np.float32_t] a, np.ndarray[np.float32_t] b):
+def quick_cross(float[::] a, float[::] b):
 
-    out = np.empty(3, dtype=np.float32)
-    out[0] = (a[1]*b[2]) - (a[2]*b[1])
-    out[1] = (a[2]*b[0]) - (a[0]*b[2])
-    out[2] = (a[0]*b[1]) - (a[1]*b[0])
+    cdef float[::] out = np.empty(3, dtype=np.float32)
+    with nogil: 
+        out[0] = (a[1]*b[2]) - (a[2]*b[1])
+        out[1] = (a[2]*b[0]) - (a[0]*b[2])
+        out[2] = (a[0]*b[1]) - (a[1]*b[0])
 
     return out 
 
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def normal_to_vector(np.ndarray[np.float32_t] a):
+def normal_to_vector(float[::] a):
 
-    out = np.zeros(3, dtype=np.float32) 
-    if np.abs(a[2]) < np.abs(a[0]):
-        out[0] = a[1] 
-        out[1] = -a[0]
-    else:
-        out[1] = -a[2]
-        out[2] = a[1]
+    cdef float[::] out = np.zeros(3, dtype=np.float32) 
+    with nogil:
+        if fabs(a[2]) < fabs(a[0]):
+            out[0] = a[1] 
+            out[1] = -a[0]
+        else:
+            out[1] = -a[2]
+            out[2] = a[1]
 
     return out 
 
