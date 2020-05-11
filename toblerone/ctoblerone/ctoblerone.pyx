@@ -4,6 +4,7 @@ import cython
 
 from libc.math cimport fabs
 
+
 # External function imports from ../src directory
 cdef extern from "tribox.h":
     char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
@@ -42,7 +43,7 @@ cpdef _cyfilterTriangles(int[:,:] tris,
     """
     
     cdef Py_ssize_t t, i, a, b, c
-    cdef char[::] fltr = np.zeros(tris.shape[0], dtype=np.bool)
+    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef float verts[3][3]
 
     for t in range(tris.shape[0]):
@@ -81,8 +82,7 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
     and ax2 (e.g 0 corresponds to X)
     """
 
-    #cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
-    cdef char[::] fltr = np.zeros(tris.shape[0], dtype=np.bool)
+    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef Py_ssize_t t, a, b, c
     cdef float verts[3][3]
 
