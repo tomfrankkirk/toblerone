@@ -5,3 +5,4 @@ scipy
 tqdm
 pyvista
 meshio
+fslpy 
