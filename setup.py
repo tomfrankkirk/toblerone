@@ -35,7 +35,7 @@ def git_version():
         version_regex = re.compile(r"v[0-9]+(\.[0-9]+)*-\d*")
         match = version_regex.match(full_version)
         if match:
-            std_version = match.group(0).replace("-", ".post")
+            std_version = match.group(0).replace("-", ".")
         else:
             raise RuntimeError("Failed to parse version string %s" % full_version)
         return full_version, std_version

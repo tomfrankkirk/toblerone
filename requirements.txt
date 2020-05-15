@@ -1,8 +1,10 @@
-cython
+Cython
 nibabel
 numpy
 scipy
 tqdm
 pyvista
+vtk
 meshio
-fslpy 
+fslpy
+regtools

@@ -9,15 +9,19 @@
 ## Installation
 
 #### From source
-Clone this git repository. 
 
-Build the python package `python3 setup.py sdist`
+#### From pip: 
+`pip install toblerone`
 
-Install the package built in `dist/` via pip (activate environment first if desired) `pip3 install dist/*`
+#### From source 
+Requires cython and numpy. 
 
-Pip may display a warning about the main script not being on your `$PATH`. If you would like to run Toblerone as a command-line tool then follow the instructions given in the warning. Alternatively, you can access the command-line via `python3 -m toblerone [args]`
+Clone the git repository (https://github.com/tomfrankkirk/toblerone) and cd into it.
+Install the python package: `pip install .` (cython will run automatically). 
+Pip may display a warning about the main script not being on your `$PATH`. If you would like to run Toblerone as a command-line tool then follow the instructions given in the warning. 
 
-To check the installation you can run `toblerone -tests`
+To check the installation, type `toblerone` at the command line. 
+
 ## Usage
 
 #### Python scripting
@@ -32,6 +36,7 @@ The python interface provides more control over the individual functions and als
 
 #### Command line 
 
+Docs to come. 
 
 ## Acknowledgements
 The ray-triangle intersection test is based upon Tim Coalson's code (https://github.com/Washington-University/workbench/blob/master/src/Files/SignedDistanceHelper.cxx#L510), itself an adaptation of the PNPOLY test (https://wrf.ecse.rpi.edu//Research/Short_Notes/pnpoly.html).
