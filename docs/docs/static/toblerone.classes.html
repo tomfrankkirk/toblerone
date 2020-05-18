@@ -4,32 +4,31 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>toblerone.classes package &#8212; Toblerone 0.6 documentation</title>
-    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <script src="../_static/language_data.js"></script>
-    <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" />
-   
-  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
-
+    <title>toblerone.classes package &#8212; Toblerone v0.6.5 documentation</title>
+    <link rel="stylesheet" href="../../_static/haiku.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
   </head><body>
-  
+      <div class="header" role="banner"><h1 class="heading"><a href="../../index.html">
+          <span>Toblerone v0.6.5 documentation</span></a></h1>
+        <h2 class="heading"><span>toblerone.classes package</span></h2>
+      </div>
+      <div class="topnav" role="navigation" aria-label="top navigation">
+      
+        <p>
+        <a class="uplink" href="../../index.html">Contents</a>
+        </p>
 
-    <div class="document">
-      <div class="documentwrapper">
-        <div class="bodywrapper">
-          
-
-          <div class="body" role="main">
-            
+      </div>
+      <div class="content" role="main">
+        
+        
   <div class="section" id="toblerone-classes-package">
 <h1>toblerone.classes package<a class="headerlink" href="#toblerone-classes-package" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="submodules">
@@ -44,9 +43,9 @@ to parse arguments that are common to many pvtools functions</p>
 <em class="property">class </em><code class="sig-prename descclassname">toblerone.classes.common_parser.</code><code class="sig-name descname">CommonParser</code><a class="headerlink" href="#toblerone.classes.common_parser.CommonParser" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">argparse.ArgumentParser</span></code></p>
 <p>Preconfigured subclass of ArgumentParser to parse arguments that
-are common across pvtools functions. To use, instantiate an object, 
+are common across pvtools functions. To use, instantiate an object,
 then call add_argument to add in the arguments unique to the particular
-function in which it is being used, then finally call parse_args as 
+function in which it is being used, then finally call parse_args as
 normal.</p>
 <dl class="py method">
 <dt id="toblerone.classes.common_parser.CommonParser.parse">
@@ -59,28 +58,53 @@ normal.</p>
 <div class="section" id="module-toblerone.classes.image_space">
 <span id="toblerone-classes-image-space-module"></span><h2>toblerone.classes.image_space module<a class="headerlink" href="#module-toblerone.classes.image_space" title="Permalink to this headline">¶</a></h2>
 <p>ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and
-inverse, of an image. Used for resampling operations between different 
-spaces and also for saving images into said space (eg, save PV estimates 
+inverse, of an image. Used for resampling operations between different
+spaces and also for saving images into said space (eg, save PV estimates
 into the space of an image)</p>
 <dl class="py class">
 <dt id="toblerone.classes.image_space.ImageSpace">
 <em class="property">class </em><code class="sig-prename descclassname">toblerone.classes.image_space.</code><code class="sig-name descname">ImageSpace</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">path</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">regtricks.image_space.ImageSpace</span></code></p>
 <p>Voxel grid of an image, ignoring actual image data.</p>
-<dl class="simple">
-<dt>Args: </dt><dd><p>path: path to image file</p>
-</dd>
-<dt>Attributes: </dt><dd><p>size: array of voxel counts in each dimension 
-vox_size: array of voxel size in each dimension 
-vox2world: 4x4 affine to transform voxel coords -&gt; world
-world2vox: inverse of above 
-self.offset: private variable used for derived spaces</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>path</strong> – path to image file</p>
 </dd>
 </dl>
+<dl class="py attribute">
+<dt id="toblerone.classes.image_space.ImageSpace.size">
+<code class="sig-name descname">size</code><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.size" title="Permalink to this definition">¶</a></dt>
+<dd><p>array of voxel counts in each dimension</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="toblerone.classes.image_space.ImageSpace.vox_size">
+<code class="sig-name descname">vox_size</code><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.vox_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>array of voxel size in each dimension</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="toblerone.classes.image_space.ImageSpace.vox2world">
+<code class="sig-name descname">vox2world</code><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.vox2world" title="Permalink to this definition">¶</a></dt>
+<dd><p>4x4 affine to transform voxel coords -&gt; world</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="toblerone.classes.image_space.ImageSpace.world2vox">
+<code class="sig-name descname">world2vox</code><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.world2vox" title="Permalink to this definition">¶</a></dt>
+<dd><p>inverse of above</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="toblerone.classes.image_space.ImageSpace.self.offset">
+<code class="sig-prename descclassname">self.</code><code class="sig-name descname">offset</code><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.self.offset" title="Permalink to this definition">¶</a></dt>
+<dd><p>private variable used for derived spaces</p>
+</dd></dl>
+
 <dl class="py method">
 <dt id="toblerone.classes.image_space.ImageSpace.derives_from">
 <code class="sig-name descname">derives_from</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">parent</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.derives_from" title="Permalink to this definition">¶</a></dt>
-<dd><p>Logical test whether this ImageSpace was derived from another. 
+<dd><p>Logical test whether this ImageSpace was derived from another.
 “Derived” means sharing i,j,k unit vectors and having their origins
 shifted by an integer multiple of voxels relative to each other.</p>
 </dd></dl>
@@ -88,26 +112,29 @@ shifted by an integer multiple of voxels relative to each other.</p>
 <dl class="py method">
 <dt id="toblerone.classes.image_space.ImageSpace.minimal_enclosing">
 <em class="property">classmethod </em><code class="sig-name descname">minimal_enclosing</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">surfs</span></em>, <em class="sig-param"><span class="n">reference</span></em>, <em class="sig-param"><span class="n">affine</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.image_space.ImageSpace.minimal_enclosing" title="Permalink to this definition">¶</a></dt>
-<dd><p>Return the minimal space required to enclose a set of surfaces. 
-This space will be based upon the reference, sharing its voxel 
-size and i,j,k unit vectors from the voxel2world matrix, but 
+<dd><p>Return the minimal space required to enclose a set of surfaces.
+This space will be based upon the reference, sharing its voxel
+size and i,j,k unit vectors from the voxel2world matrix, but
 will may have a different FoV. The offset of the voxel coord system
 relative to reference will be stored as the space.offset attribute</p>
-<dl>
-<dt>Args: </dt><dd><p>surfs: singular or list of surface objects 
-reference: ImageSpace object or path to image to use 
-affine: 4x4 np.array, transformation INTO the reference space,</p>
-<blockquote>
-<div><p>in world-world mm terms (ie, not a FLIRT scaled-voxel 
-matrix). See utils._FLIRT_to_world() for help. Pass None 
-to represent identity</p>
-</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>surfs</strong> – singular or list of surface objects</p></li>
+<li><p><strong>reference</strong> – ImageSpace object or path to image to use</p></li>
+<li><p><strong>affine</strong> – 4x4 np.array, transformation INTO the reference space,
+in world-world mm terms (ie, not a FLIRT scaled-voxel
+matrix). See utils._FLIRT_to_world() for help. Pass None
+to represent identity</p></li>
+</ul>
 </dd>
-<dt>Returns: </dt><dd><dl class="simple">
-<dt>ImageSpace object, with a shifted origin and potentially different</dt><dd><p>FoV relative to the reference. Subtract offset from coords in 
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>ImageSpace object, with a shifted origin and potentially different</dt><dd><p>FoV relative to the reference. Subtract offset from coords in
 this space to return them to original reference coords.</p>
 </dd>
 </dl>
+</p>
 </dd>
 </dl>
 </dd></dl>
@@ -121,7 +148,7 @@ this space to return them to original reference coords.</p>
 <dl class="simple">
 <dt>Surface: the points and triangles of a surface, and various calculated</dt><dd><p>properties that are evaluated ahead of time to speed up later operations</p>
 </dd>
-<dt>Hemisphere: a pair of surfaces, used specifically to represent one half </dt><dd><p>of the cerebral cortex (referred to as inner and outer surfaces)</p>
+<dt>Hemisphere: a pair of surfaces, used specifically to represent one half</dt><dd><p>of the cerebral cortex (referred to as inner and outer surfaces)</p>
 </dd>
 <dt>Patch: a subcalss of Surface, representing a smaller portion of a surface,</dt><dd><p>used to reduce computational complexity of operations</p>
 </dd>
@@ -130,13 +157,16 @@ this space to return them to original reference coords.</p>
 <dt id="toblerone.classes.surfaces.Hemisphere">
 <em class="property">class </em><code class="sig-prename descclassname">toblerone.classes.surfaces.</code><code class="sig-name descname">Hemisphere</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">inpath</span></em>, <em class="sig-param"><span class="n">outpath</span></em>, <em class="sig-param"><span class="n">side</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Hemisphere" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
-<p>The white and pial surfaces of a hemisphere, and a repository to 
+<p>The white and pial surfaces of a hemisphere, and a repository to
 store data when calculating tissue PVs from the fractions of each
 surface</p>
-<dl class="simple">
-<dt>Args: </dt><dd><p>inpath: path to white surface
-outpath: path to pial surface 
-side: ‘L’ or ‘R’</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inpath</strong> – path to white surface</p></li>
+<li><p><strong>outpath</strong> – path to pial surface</p></li>
+<li><p><strong>side</strong> – ‘L’ or ‘R’</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="py method">
@@ -168,14 +198,14 @@ side: ‘L’ or ‘R’</p>
 <dt id="toblerone.classes.surfaces.Patch">
 <em class="property">class </em><code class="sig-prename descclassname">toblerone.classes.surfaces.</code><code class="sig-name descname">Patch</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">points</span></em>, <em class="sig-param"><span class="n">tris</span></em>, <em class="sig-param"><span class="n">xProds</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Patch" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#toblerone.classes.surfaces.Surface" title="toblerone.classes.surfaces.Surface"><code class="xref py py-class docutils literal notranslate"><span class="pre">toblerone.classes.surfaces.Surface</span></code></a></p>
-<p>Subclass of Surface that represents a small patch of surface. 
-Points, triangles and xProds are all inherited from the parent surface. 
+<p>Subclass of Surface that represents a small patch of surface.
+Points, triangles and xProds are all inherited from the parent surface.
 This class should not be directly created but instead instantiated via
 the Surface.to_patch() / to_patches() methods.</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Patch.shrink">
 <code class="sig-name descname">shrink</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fltr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Patch.shrink" title="Permalink to this definition">¶</a></dt>
-<dd><p>Return a shrunk copy of the patch by applying the logical 
+<dd><p>Return a shrunk copy of the patch by applying the logical
 filter fltr to the calling objects tris and xprods matrices</p>
 </dd></dl>
 
@@ -186,13 +216,16 @@ filter fltr to the calling objects tris and xprods matrices</p>
 <em class="property">class </em><code class="sig-prename descclassname">toblerone.classes.surfaces.</code><code class="sig-name descname">Surface</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">path</span></em>, <em class="sig-param"><span class="n">space</span><span class="o">=</span><span class="default_value">'world'</span></em>, <em class="sig-param"><span class="n">struct</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">name</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Encapsulates a surface’s points, triangles and associations data.
-Create either by passing a file path (as below) or use the static class 
+Create either by passing a file path (as below) or use the static class
 method Surface.manual() to directly pass points and triangles.</p>
-<dl class="simple">
-<dt>Args: </dt><dd><p>path:   path to file (.gii/.vtk/.white/.pial)
-space:  ‘world’ (default) or ‘first’; coordinate system of surface
-struct: if in ‘first’ space, then path to structural image used by FIRST
-name: optional, can be useful for progress bars</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – path to file (.gii/.vtk/.white/.pial)</p></li>
+<li><p><strong>space</strong> – ‘world’ (default) or ‘first’; coordinate system of surface</p></li>
+<li><p><strong>struct</strong> – if in ‘first’ space, then path to structural image used by FIRST</p></li>
+<li><p><strong>name</strong> – optional, can be useful for progress bars</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="py method">
@@ -210,16 +243,16 @@ name: optional, can be useful for progress bars</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.find_bridges">
 <code class="sig-name descname">find_bridges</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.find_bridges" title="Permalink to this definition">¶</a></dt>
-<dd><p>Find voxels within space that are intersected by this surface 
+<dd><p>Find voxels within space that are intersected by this surface
 multiple times</p>
-<dl class="simple">
-<dt>Args: </dt><dd><dl class="simple">
-<dt>space: ImageSpace, or path to image, in which to find bridge voxels</dt><dd><p>NB the surface must have been indexed in this space already
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>space</strong> – ImageSpace, or path to image, in which to find bridge voxels
+NB the surface must have been indexed in this space already
 (see Surface.index_on)</p>
 </dd>
-</dl>
-</dd>
-<dt>Returns: </dt><dd><p>array of linear voxel indices</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>array of linear voxel indices</p>
 </dd>
 </dl>
 </dd></dl>
@@ -227,11 +260,12 @@ multiple times</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.form_associations">
 <code class="sig-name descname">form_associations</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">cores</span><span class="o">=</span><span class="default_value">8</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.form_associations" title="Permalink to this definition">¶</a></dt>
-<dd><p>Identify which triangles of a surface intersect each voxel. This 
-reduces the number of operations that need be performed later. The 
+<dd><p>Identify which triangles of a surface intersect each voxel. This
+reduces the number of operations that need be performed later. The
 results will be stored on the surface object (ie, self)</p>
-<dl class="simple">
-<dt>Returns: </dt><dd><p>None, but associations (sparse CSR matrix of size (voxs, tris)
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>None, but associations (sparse CSR matrix of size (voxs, tris)
 and assocs_keys (array of voxel indices containint the surface)
 will be set on the calling object.</p>
 </dd>
@@ -241,24 +275,27 @@ will be set on the calling object.</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.index_on">
 <code class="sig-name descname">index_on</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">space</span></em>, <em class="sig-param"><span class="n">struct2ref</span></em>, <em class="sig-param"><span class="n">cores</span><span class="o">=</span><span class="default_value">8</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.index_on" title="Permalink to this definition">¶</a></dt>
-<dd><p>Index a surface to an ImageSpace. The space must enclose the surface 
-completely (see ImageSpace.minimal_enclosing()). The surface will be 
-transformed into voxel coordinates for the space, triangle/voxel 
-associations calculated and stored on the surface’s assocs 
+<dd><p>Index a surface to an ImageSpace. The space must enclose the surface
+completely (see ImageSpace.minimal_enclosing()). The surface will be
+transformed into voxel coordinates for the space, triangle/voxel
+associations calculated and stored on the surface’s assocs
 attributes, surface normals calculated (triangle cross products) and
-finally voxelised within the space (binary mask of voxels contained in 
+finally voxelised within the space (binary mask of voxels contained in
 the surface). See also Surface.reindex_for() method.</p>
-<dl>
-<dt>Args: </dt><dd><p>space: ImageSpace object large enough to contain the surface
-affine: 4x4 np.array representing transformation into the reference</p>
-<blockquote>
-<div><p>space, in world-world mm terms (not FLIRT scaled-voxels). See
-utils._FLIRT_to_world for help. Pass None to represent identity.</p>
-</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>space</strong> – ImageSpace object large enough to contain the surface</p></li>
+<li><p><strong>affine</strong> – 4x4 np.array representing transformation into the reference
+space, in world-world mm terms (not FLIRT scaled-voxels). See
+utils._FLIRT_to_world for help. Pass None to represent identity.</p></li>
+</ul>
 </dd>
-<dt>Updates: </dt><dd><p>self.points: converted into voxel coordinates for the space
+</dl>
+<dl class="simple">
+<dt>Updates:</dt><dd><p>self.points: converted into voxel coordinates for the space
 self.assocs: sparse CSR bool matrix of size (voxs, tris)
-self.assocs_keys: voxel indices that contain surface 
+self.assocs_keys: voxel indices that contain surface
 self.xProds: triangle cross products, voxel coordinates</p>
 </dd>
 </dl>
@@ -273,7 +310,7 @@ self.xProds: triangle cross products, voxel coordinates</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.output_pvs">
 <code class="sig-name descname">output_pvs</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.output_pvs" title="Permalink to this definition">¶</a></dt>
-<dd><p>Express PVs in the voxel grid of space. Space must derive from the 
+<dd><p>Express PVs in the voxel grid of space. Space must derive from the
 surface’s current index_space.</p>
 </dd></dl>
 
@@ -281,13 +318,15 @@ surface’s current index_space.</p>
 <dt id="toblerone.classes.surfaces.Surface.rebaseTriangles">
 <code class="sig-name descname">rebaseTriangles</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">tri_inds</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.rebaseTriangles" title="Permalink to this definition">¶</a></dt>
 <dd><p>Re-express a patch of a larger surface as a new points and triangle
-matrix pair, indexed from 0. Useful for reducing computational 
-complexity when working with a small patch of a surface where only 
+matrix pair, indexed from 0. Useful for reducing computational
+complexity when working with a small patch of a surface where only
 a few nodes in the points array are required by the triangles matrix.</p>
-<dl class="simple">
-<dt>Args: </dt><dd><p>tri_inds: t x 1 list of triangle numbers to rebase.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>tri_inds</strong> – t x 1 list of triangle numbers to rebase.</p>
 </dd>
-<dt>Returns: </dt><dd><p>(points, tris) tuple of re-indexed points/tris.</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(points, tris) tuple of re-indexed points/tris.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -301,19 +340,21 @@ a few nodes in the points array are required by the triangles matrix.</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.reindexing_filter">
 <code class="sig-name descname">reindexing_filter</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.reindexing_filter" title="Permalink to this definition">¶</a></dt>
-<dd><p>Filter of voxels in the current index space that lie within 
+<dd><p>Filter of voxels in the current index space that lie within
 dest_space. Use for extracting PV estimates from index space back to
-the space from which the index space derives. NB dest_space must 
+the space from which the index space derives. NB dest_space must
 derive from the surface’s current index_space</p>
-<dl>
-<dt>Args: </dt><dd><p>dest_space: ImageSpace from which current index_space derives
-as_bool: output results as logical filters instead of indices</p>
-<blockquote>
-<div><p>(note they will be of different size in this case)</p>
-</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dest_space</strong> – ImageSpace from which current index_space derives</p></li>
+<li><p><strong>as_bool</strong> – output results as logical filters instead of indices
+(note they will be of different size in this case)</p></li>
+</ul>
 </dd>
-<dt>Returns: </dt><dd><p>(src_inds, dest_inds) arrays of equal length, flat indices into 
-arrays of size index_space.size and dest_space.size respectively, 
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(src_inds, dest_inds) arrays of equal length, flat indices into
+arrays of size index_space.size and dest_space.size respectively,
 mapping voxels from source to corresponding destination positions</p>
 </dd>
 </dl>
@@ -342,7 +383,7 @@ the points / surface normals as required.</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.to_patches">
 <code class="sig-name descname">to_patches</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vox_inds</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.to_patches" title="Permalink to this definition">¶</a></dt>
-<dd><p>Return the patches for the voxels in voxel indices, flattened into 
+<dd><p>Return the patches for the voxels in voxel indices, flattened into
 a single set of ps, ts and xprods.</p>
 <p>If no patches exist for this list of voxels return None.</p>
 </dd></dl>
@@ -350,10 +391,11 @@ a single set of ps, ts and xprods.</p>
 <dl class="py method">
 <dt id="toblerone.classes.surfaces.Surface.voxelise">
 <code class="sig-name descname">voxelise</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">cores</span><span class="o">=</span><span class="default_value">8</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.classes.surfaces.Surface.voxelise" title="Permalink to this definition">¶</a></dt>
-<dd><p>Voxelise surface within its current index space. A flat boolean 
+<dd><p>Voxelise surface within its current index space. A flat boolean
 mask will be stored on the calling object as .voxelised.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>cores: number of cores to use</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>cores</strong> – number of cores to use</p>
 </dd>
 </dl>
 </dd></dl>
@@ -368,66 +410,18 @@ mask will be stored on the calling object as .voxelised.</p>
 </div>
 
 
-          </div>
-          
-        </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../index.html">Toblerone</a></h1>
+      <div class="bottomnav" role="navigation" aria-label="bottom navigation">
+      
+        <p>
+        <a class="uplink" href="../../index.html">Contents</a>
+        </p>
 
-
-
-
-
-
-
-
-<h3>Navigation</h3>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="../index.html">Documentation overview</a><ul>
-  </ul></li>
-</ul>
-</div>
-<div id="searchbox" style="display: none" role="search">
-  <h3 id="searchlabel">Quick search</h3>
-    <div class="searchformwrapper">
-    <form class="search" action="../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</div>
-<script>$('#searchbox').show(0);</script>
-
-
-
-
-
-
-
-
-        </div>
       </div>
-      <div class="clearer"></div>
-    </div>
-    <div class="footer">
-      &copy;2020, Tom Kirk, Martin Craig.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.3</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
-      
-      |
-      <a href="../_sources/docs/toblerone.classes.rst.txt"
-          rel="nofollow">Page source</a>
-    </div>
 
-    
-
-    
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020, Tom Kirk, Martin Craig.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 3.0.3.
+    </div>
   </body>
 </html>

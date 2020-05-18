@@ -7,7 +7,7 @@ from toblerone.commandline import fsl_fs_anat_cmd, suffix
 def main():
 
     usage_main = ("""
-TOBLERONE     Surface-based partial volume estimation
+TOBLERONE     Surface-based analysis tools
 
 Usage:
 
@@ -21,7 +21,8 @@ Usage:
 -fsl_fs_anat            run fsl_anat and augment output with FreeSurfer (pre-processing
                             step for other Toblerone functions)
 
--convert_surface        convert a surface file (.white/.pial/.vtk/.surf.gii)    
+-convert_surface        convert a surface file (.white/.pial/.vtk/.surf.gii). Note that FS 
+                            surfaces will have the C_ras shift applied automatically.     
 """)
 
 

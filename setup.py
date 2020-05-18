@@ -108,21 +108,23 @@ def get_extensions():
     )
     return cythonize(extensions, compiler_directives={'language_level': 3})
 
-setup(name=PACKAGE_NAME,
-      version=get_version(),
-      description="Surface-based analysis tools",
-      long_description=get_filetext('README.md'),
-      long_description_content_type='text/markdown',
-      author='Tom Kirk',
-      author_email='thomas.kirk@eng.ox.ac.uk',
-      setup_requires=['numpy', 'cython'],
-      install_requires=get_requirements(),
-      packages=find_packages(),
-      ext_modules=get_extensions(),
-      cmdclass={'build_ext': build_ext},
-      entry_points={
-        'console_scripts' : [
-            'toblerone=toblerone.__main__:main',
-        ],
-    },
-)
+if __name__ == '__main__':
+
+    setup(name=PACKAGE_NAME,
+        version=get_version(),
+        description="Surface-based analysis tools",
+        long_description=get_filetext('README.md'),
+        long_description_content_type='text/markdown',
+        author='Tom Kirk',
+        author_email='thomas.kirk@eng.ox.ac.uk',
+        setup_requires=['numpy', 'cython'],
+        install_requires=get_requirements(),
+        packages=find_packages(),
+        ext_modules=get_extensions(),
+        cmdclass={'build_ext': build_ext},
+        entry_points={
+            'console_scripts' : [
+                'toblerone=toblerone.__main__:main',
+            ],
+        },
+    )
