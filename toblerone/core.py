@@ -815,3 +815,4 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
                     mask[ray_voxs_sub[indices]] = 1
 
         return mask.reshape(mask_size)
+
