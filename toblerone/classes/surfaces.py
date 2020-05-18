@@ -17,7 +17,6 @@ import multiprocessing as mp
 
 import numpy as np 
 import nibabel 
-import pyvista 
 import meshio
 
 from .image_space import ImageSpace
@@ -582,14 +581,6 @@ class Surface(object):
 
         assert mask.any(), 'no voxels filled'
         self.voxelised = mask.reshape(-1)
-
-
-    def to_polydata(self):
-        """Return pyvista polydata object for this surface"""
-
-        tris = 3 * np.ones((self.tris.shape[0], self.tris.shape[1]+1), np.int32)
-        tris[:,1:] = self.tris 
-        return pyvista.PolyData(self.points, tris)
 
 
 class Patch(Surface):
