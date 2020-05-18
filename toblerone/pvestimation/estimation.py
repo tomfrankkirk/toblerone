@@ -161,10 +161,8 @@ def all(**kwargs):
         cores: number of cores to use 
  
     Returns: 
-        (pvs, transformed) both dictionaries. 
-        pvs contains the PVs associated with each individual structure and 
+        dictionary of PVs associated with each individual structure and 
             also the overall combined result ('stacked')
-        transformed contains copies of each surface transformed into ref space
     """
 
     print("Estimating PVs for", kwargs['ref'])
