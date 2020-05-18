@@ -2,14 +2,14 @@
 
 ### Surface-based partial volume estimation 
 
-## Contents
+<!-- ## Contents
 1. [Installation](#installation)
-2. [Usage](#usage)
+2. [Usage](#usage) -->
 
 ## Installation
 
 #### From pip: 
-Both Cython and Numpy are required **prior** to installation via pip (_they will not be installed automatically by pip_). Then: 
+Both Cython and Numpy are required **prior** to installation via pip (_they will not be installed automatically by pip_). FSL is also required (for fslpy). Then: 
 
 ```bash
 pip install toblerone
@@ -69,6 +69,7 @@ The triangle-voxel intersection test is a direct port of Tomas Akenine-Moller's 
 Martin Craig generously did the vast-majority of trouble shooting and setup for this module. 
 
 ## License
+TBC
 
 ## Contact 
 Tom Kirk, 2018. 

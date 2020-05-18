@@ -1,0 +1,221 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>toblerone.pvestimation package &#8212; Toblerone 0.6 documentation</title>
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="toblerone-pvestimation-package">
+<h1>toblerone.pvestimation package<a class="headerlink" href="#toblerone-pvestimation-package" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="module-toblerone.pvestimation.estimation">
+<span id="toblerone-pvestimation-estimation-module"></span><h2>toblerone.pvestimation.estimation module<a class="headerlink" href="#module-toblerone.pvestimation.estimation" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt id="toblerone.pvestimation.estimation.all">
+<code class="sig-prename descclassname">toblerone.pvestimation.estimation.</code><code class="sig-name descname">all</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.pvestimation.estimation.all" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate PVs for cortex and all structures identified by FIRST within 
+a reference image space. Use FAST to fill in non-surface PVs. 
+All arguments are kwargs.</p>
+<dl>
+<dt>Required args: </dt><dd><p>ref: path to reference image for which PVs are required
+struct2ref: path to np or text file, or np.ndarray obj, denoting affine</p>
+<blockquote>
+<div><p>registration between structural (surface) and reference space.
+Use ‘I’ for identity.</p>
+</div></blockquote>
+<p>anat: path to anat dir directory (created by make_surf_anat_dir)</p>
+</dd>
+<dt>Optional args: </dt><dd><p>flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+struct: path to structural image from which surfaces were derived
+cores: number of cores to use</p>
+</dd>
+<dt>Returns: </dt><dd><dl class="simple">
+<dt>dictionary of PVs associated with each individual structure and </dt><dd><p>also the overall combined result (‘stacked’)</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="toblerone.pvestimation.estimation.cortex">
+<code class="sig-prename descclassname">toblerone.pvestimation.estimation.</code><code class="sig-name descname">cortex</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.pvestimation.estimation.cortex" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate PVs for L/R cortex. All arguments are kwargs.</p>
+<dl>
+<dt>Required args: </dt><dd><p>ref: path to reference image for which PVs are required
+struct2ref: path to np or text file, or np.ndarray obj, denoting affine</p>
+<blockquote>
+<div><p>registration between structural (surface) and reference space.
+Use ‘I’ for identity.</p>
+</div></blockquote>
+<p>One of: 
+fsdir: path to a FreeSurfer subject directory, from which L/R</p>
+<blockquote>
+<div><p>white/pial surfaces will be loaded</p>
+</div></blockquote>
+<dl class="simple">
+<dt>LWS/LPS/RWS/RPS: individual paths to the individual surfaces,</dt><dd><p>eg LWS = Left White surface, RPS = Right Pial surace
+To estimate for a single hemisphere, only provide surfaces
+for that side.</p>
+</dd>
+</dl>
+</dd>
+<dt>Optional args: </dt><dd><p>space: space in which surfaces are in (world/first)
+flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
+struct: path to structural image from which surfaces were derived
+cores: number of cores to use</p>
+</dd>
+<dt>Returns: </dt><dd><dl class="simple">
+<dt>4D array, size equal to the reference image, with the PVs arranged </dt><dd><p>GM/WM/non-brain in 4th dim</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="toblerone.pvestimation.estimation.structure">
+<code class="sig-prename descclassname">toblerone.pvestimation.estimation.</code><code class="sig-name descname">structure</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.pvestimation.estimation.structure" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate PVs for a structure defined by a single surface. 
+All arguments are kwargs.</p>
+<dl>
+<dt>Required args: </dt><dd><p>ref: path to reference image for which PVs are required
+struct2ref: path to np or text file, or np.ndarray obj, denoting affine</p>
+<blockquote>
+<div><p>registration between structural (surface) and reference space.
+Use ‘I’ for identity.</p>
+</div></blockquote>
+<p>surf: path to surface (see space argument below)</p>
+</dd>
+<dt>Optional args: </dt><dd><dl class="simple">
+<dt>space: space in which surface is defined: default is ‘world’ (mm coords),</dt><dd><p>for FIRST surfaces set as ‘first’ and provide ‘struct’.</p>
+</dd>
+<dt>struct: path to structural image from which surfaces were derived, reqd</dt><dd><p>for FIRST surfaces.</p>
+</dd>
+</dl>
+<p>cores: number of cores to use</p>
+</dd>
+<dt>Returns: </dt><dd><p>pvs: PV image</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-toblerone.pvestimation.estimators">
+<span id="toblerone-pvestimation-estimators-module"></span><h2>toblerone.pvestimation.estimators module<a class="headerlink" href="#module-toblerone.pvestimation.estimators" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt id="toblerone.pvestimation.estimators.stack_images">
+<code class="sig-prename descclassname">toblerone.pvestimation.estimators.</code><code class="sig-name descname">stack_images</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">images</span></em><span class="sig-paren">)</span><a class="headerlink" href="#toblerone.pvestimation.estimators.stack_images" title="Permalink to this definition">¶</a></dt>
+<dd><p>Combine the results of estimate_all() into overall PV maps
+for each tissue. Note that the below logic is entirely specific 
+to the surfaces produced by FreeSurfer, FIRST and how they may be
+combined with FAST estimates. If you’re going off-piste anywhere else
+then you probably DON’T want to re-use this logic.</p>
+<dl class="simple">
+<dt>Args: </dt><dd><p>dictionary of PV maps, keyed as follows: all FIRST subcortical
+structures named by their FIST convention (eg L_Caud); FAST’s estimates
+named as FAST_CSF/WM/GM; cortex estimates as cortex_GM/WM/non_brain</p>
+</dd>
+<dt>Returns: </dt><dd><p>single 4D array of PVs, arranged GM/WM/non-brain in the 4th dim</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-toblerone.pvestimation">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-toblerone.pvestimation" title="Permalink to this headline">¶</a></h2>
+<p>PV estimation functions</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Toblerone</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2020, Tom Kirk, Martin Craig.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/docs/toblerone.pvestimation.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
