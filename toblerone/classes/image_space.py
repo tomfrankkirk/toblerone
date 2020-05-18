@@ -11,7 +11,7 @@ import warnings
 
 import nibabel
 import numpy as np 
-from regtools import ImageSpace as BaseSpace
+from regtricks import ImageSpace as BaseSpace
 
 from .. import utils
 

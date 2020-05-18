@@ -7,4 +7,4 @@ pyvista
 vtk
 meshio
 fslpy
-regtools
+regtricks
