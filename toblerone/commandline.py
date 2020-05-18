@@ -60,7 +60,7 @@ def estimate_cortex_cmd(*args):
     kwargs = parser.parse(args)
 
     # Estimation
-    PVs, mask = pvestimation.cortex(**kwargs)
+    PVs = pvestimation.cortex(**kwargs)
 
     # Output 
     ext = '.nii.gz'
@@ -72,8 +72,6 @@ def estimate_cortex_cmd(*args):
 
     utils._weak_mkdir(outdir)
     refSpace = ImageSpace(kwargs['ref'])
-    maskPath = op.join(outdir, 'cortexmask' + ext)
-    refSpace.save_image(mask, maskPath)
 
     print('Saving output at', outdir)
     p = op.join(outdir, 'stacked' + ext)

@@ -22,9 +22,8 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         ones: debug tool, write ones in all voxels containing triangles
 
     Returns: 
-        (PVs, mask) 
-            PVs is 4D array with the PVs arranged GM/WM/non-brain in 4th dim
-            mask is boolean mask denoting intersection with any cortical surf
+        4D array, size equal to the reference image, with the PVs arranged 
+            GM/WM/non-brain in 4th dim
     """
 
     # Create our own local copy of inputs 
@@ -156,7 +155,7 @@ def stack_images(images):
     # Copy the dict of images as we are going to make changes and dont want 
     # to play with the caller's copy. Pop unwanted images
     reqd_keys = STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
-        'cortex_GM', 'cortex_WM', 'cortex_nonbrain', 'cortexmask' ]
+        'cortex_GM', 'cortex_WM', 'cortex_nonbrain' ]
     reqd_keys.remove('BrStem')
     if not all([k in reqd_keys for k in images.keys()]):
         raise RuntimeError("Did not find expected keys in images dict")

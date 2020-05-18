@@ -33,15 +33,10 @@ def cortex(**kwargs):
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
         cores: number of cores to use 
-        stack: stack the estimates for GM/WM/non-brain into a 4D NIFTI, 
-            in that order 
  
     Returns: 
-        (pvs, mask, transformed) all dictionaries. 
-        pvs contains the PVs associated with each named structure and 
-            also the overall combined result ('stacked')
-        mask is a binary mask of voxels intersecting the cortex
-        transformed contains copies of each surface transformed into ref space
+        4D array, size equal to the reference image, with the PVs arranged 
+            GM/WM/non-brain in 4th dim
     """
 
     if not any([
@@ -214,13 +209,12 @@ def all(**kwargs):
     output.update(dict(zip([s.name for s in structures], results)))
 
     # Now do the cortex, then stack the whole lot 
-    ctx, ctxmask = cortex(**kwargs)
+    ctx  = cortex(**kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
        output['cortex' + t] = (ctx[:,:,:,i])
 
-    output['cortexmask'] = ctxmask
     stacked = core.stack_images(
-        {k:v for k,v in output.items() if k not in ['BrStem', 'cortexmask']})
+        {k:v for k,v in output.items() if k != 'BrStem'})
     output['GM'] = stacked[:,:,:,0]
     output['WM'] = stacked[:,:,:,1]
     output['nonbrain'] = stacked[:,:,:,2]
