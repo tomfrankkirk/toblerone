@@ -14,6 +14,7 @@ Surface-based analysis tools
    Installation <static/installation> 
    Quickstart <static/quickstart>
    Overview <static/overview>
+   API <static/api>
 
 Citing
 ------- 
@@ -34,11 +35,3 @@ The ray-triangle intersection test is based upon Tim Coalson's code (https://git
 
 The triangle-voxel intersection test is a direct port of Tomas Akenine-Moller's code (http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt).
 
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
