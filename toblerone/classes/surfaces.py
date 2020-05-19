@@ -96,15 +96,12 @@ class Surface(object):
                     ps += meta['cras']
 
             except Exception as e: 
-                pass 
-
-            finally: 
                 try:
                     mesh = meshio.read(path)
                     ps = np.array(mesh.points)
                     ts = mesh.cells[0].data
+                    
                 except Exception as e: 
-
                     try: 
                         poly = pyvista.read(path)
                         ps = np.array(poly.points)
