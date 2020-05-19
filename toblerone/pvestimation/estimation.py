@@ -4,6 +4,7 @@ import functools
 
 import numpy as np 
 import tqdm
+import regtricks as rt 
 
 from . import estimators
 from .. import utils, core
@@ -180,8 +181,9 @@ def all(**kwargs):
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
-    output = { t: core.resample(fasts[t], kwargs['ref'], kwargs['struct2ref'])
-        for t in ['FAST_WM', 'FAST_GM'] } 
+    s2r = rt.Registration(kwargs['struct2ref'], "world")
+    output = { t: s2r.apply_to_image(fasts[t], kwargs['ref'], superlevel=4).get_data()
+        for t in ['FAST_WM', 'FAST_GM'] }
     output['FAST_CSF'] = 1 - (output['FAST_WM'] + output['FAST_GM'])
         
     # Process subcortical structures first. 
