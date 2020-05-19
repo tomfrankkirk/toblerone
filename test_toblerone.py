@@ -81,7 +81,9 @@ def test_convert():
     td = get_testdir()
     s = classes.Surface(op.join(td, 'in.surf.gii'))
     s.save('test.vtk')
+    s2 = classes.Surface('test.vtk')
+    assert np.allclose(s.points, s2.points)
     os.remove('test.vtk')
 
 if __name__ == "__main__":
-    test_cortex()
+    test_convert()
