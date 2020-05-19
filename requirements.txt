@@ -3,6 +3,5 @@ nibabel
 numpy
 scipy
 tqdm
-meshio
 fslpy
 regtricks

@@ -17,7 +17,15 @@ import multiprocessing as mp
 
 import numpy as np 
 import nibabel 
-import meshio
+
+try: 
+    import pyvista
+    import meshio 
+    _VTK_ENABLED = True 
+except ImportError as e: 
+    warnings.warn("Could not import VTK/meshio/pyvista: these are required to"
+        " read/write VTK surfaces. VTK requires Python <=3.7 (as of May 2020)")
+    _VTK_ENABLED = False 
 
 from .image_space import ImageSpace
 from .. import utils, core
@@ -53,7 +61,7 @@ class Surface(object):
     method Surface.manual() to directly pass points and triangles.
     
     Args: 
-        path:   path to file (.gii/.vtk/.white/.pial)
+        path:   path to file (.gii/FS binary/meshio compatible)
         space:  'world' (default) or 'first'; coordinate system of surface
         struct: if in 'first' space, then path to structural image used by FIRST
         name: optional, can be useful for progress bars 
@@ -64,6 +72,10 @@ class Surface(object):
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
 
+        if path.endswith('.vtk') and (not _VTK_ENABLED):
+            raise NotImplementedError("VTK/meshio must be available to "
+                "save VTK surfaces (requires Python <=3.7")    
+
         if (path.count('first')) and (space == 'world'):
             print("Warning: surface seems to be from FIRST but space was set" +
                 " as 'world'. See the docs.")
@@ -71,25 +83,37 @@ class Surface(object):
         surfExt = op.splitext(path)[-1]
         if surfExt == '.gii':
             gft = nibabel.load(path).darrays
-            ps, ts = tuple(map(lambda o: o.data, gft))
-
-        elif surfExt == '.vtk':
-            try:
-                mesh = meshio.read(path)
-                ps = mesh.points
-                ts = mesh.cells[0].data
-            except Exception as e: 
-                print("Surface cannot be cast to triangle data")
-                raise e 
+            ps, ts = gft[0].data, gft[1].data
 
         else: 
-            ps, ts, meta = nibabel.freesurfer.io.read_geometry(path, 
-                read_metadata=True)
-            if not 'cras' in meta:
-                print('Warning: Could not load C_ras from surface', path)
-                print('If true C_ras is non-zero then estimates will be inaccurate')
-            else:
-                ps += meta['cras']
+            try: 
+                ps, ts, meta = nibabel.freesurfer.io.read_geometry(path, 
+                    read_metadata=True)
+                if not 'cras' in meta:
+                    print('Warning: Could not load C_ras from surface', path)
+                    print('If true C_ras is non-zero then estimates will be inaccurate')
+                else:
+                    ps += meta['cras']
+
+            except Exception as e: 
+                pass 
+
+            finally: 
+                try:
+                    mesh = meshio.read(path)
+                    ps = np.array(mesh.points)
+                    ts = mesh.cells[0].data
+                except Exception as e: 
+
+                    try: 
+                        poly = pyvista.read(path)
+                        ps = np.array(poly.points)
+                        ts = poly.faces.reshape(-1,4)[:,1:]
+
+                    except Exception as e: 
+                        print("Could not load surface as GIFTI, FS binary or"
+                            " meshio/pyvista format")
+                        raise e 
 
         if ps.shape[1] != 3: 
             raise RuntimeError("Points matrices should be p x 3")
@@ -170,13 +194,14 @@ class Surface(object):
         """
 
         if path.endswith('.vtk'):
-            meshio.write_points_cells(path, self.points, 
-                [ ("triangle", self.tris) ])
+            if not _VTK_ENABLED:
+                raise NotImplementedError("VTK/meshio must be available to "
+                    "save VTK surfaces (requires Python 3.7")
+            mesh = meshio.Mesh(self.points, [ ("triangle", t[None,:]) 
+                                                for t in self.tris ])
+            mesh.write(path)
 
-        elif path.endswith(".white") or path.endswith(".pial"):
-            nibabel.freesurfer.write_geometry(path, self.points, self.tris)
-
-        else: 
+        elif path.count('.gii'): 
             if not path.endswith('.surf.gii'):
                 if path.endswith('.gii'):
                     path.replace('.gii', '.surf.gii')
@@ -226,6 +251,11 @@ class Surface(object):
 
             img = nibabel.gifti.GiftiImage(darrays=[ps,ts])
             nibabel.save(img, path)
+        
+        else: 
+            if not (path.endswith(".white") or path.endswith(".pial")):
+                warnings.warn("Saving as FreeSurfer binary")
+            nibabel.freesurfer.write_geometry(path, self.points, self.tris)
 
 
     @ensure_derived_space
@@ -581,6 +611,13 @@ class Surface(object):
 
         assert mask.any(), 'no voxels filled'
         self.voxelised = mask.reshape(-1)
+
+    def to_polydata(self):
+        """Return pyvista polydata object for this surface"""
+
+        tris = 3 * np.ones((self.tris.shape[0], self.tris.shape[1]+1), np.int32)
+        tris[:,1:] = self.tris 
+        return pyvista.PolyData(self.points, tris)
 
 
 class Patch(Surface):
