@@ -113,7 +113,25 @@ def _loadSurfsToDict(fsdir):
     for s in ['LWS', 'LPS', 'RWS', 'RPS']:
         snames = {'L': 'lh', 'R': 'rh'}
         exts = {'W': '.white', 'P': '.pial'}
-        surfs[s] = op.join(sdir, snames[s[0]] + exts[s[1]])
+        potentials = glob.glob(op.join(sdir, '*{}*'.format(snames[s[0]] + exts[s[1]])))
+        if len(potentials) > 0:
+            best = None  
+            for p in potentials: 
+                if p.endswith('.H') or p.endswith('.K') or p.endswith('.preparc'):
+                    continue
+                try: 
+                    nibabel.freesurfer.io.read_geometry(p)
+                    best = p 
+                    break 
+                except Exception as e: 
+                    pass 
+            if p is not None: 
+                print("Found multiple potential {}, using: {}".format(s, best))
+                surfs[s] = p 
+            else: 
+                raise RuntimeError("Could not find a suitable surface for", s)
+        else: 
+            surfs[s] = potentials[0]
 
     if not all(map(op.isfile, surfs.values())):
         raise RuntimeError("One of the subject's surfaces does not exist")
