@@ -213,7 +213,7 @@ def all(**kwargs):
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
        output['cortex' + t] = (ctx[:,:,:,i])
 
-    stacked = core.stack_images(
+    stacked = estimators.stack_images(
         {k:v for k,v in output.items() if k != 'BrStem'})
     output['GM'] = stacked[:,:,:,0]
     output['WM'] = stacked[:,:,:,1]
