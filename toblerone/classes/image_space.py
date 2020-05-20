@@ -1,8 +1,7 @@
 """
 ImageSpace: image matrix, inc dimensions, voxel size, vox2world matrix and
-inverse, of an image. Used for resampling operations between different 
-spaces and also for saving images into said space (eg, save PV estimates 
-into the space of an image)
+inverse, of an image. Inherits most methods and properties from 
+regtricks.ImageSpace. 
 """
 
 import os.path as op 

@@ -13,6 +13,7 @@ import multiprocessing
 import numpy as np 
 import nibabel
 from fsl.wrappers import fsl_anat
+import regtricks as rt 
 
 STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
                 'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
@@ -282,57 +283,6 @@ def _getFSLspace(imgPth):
     return ret
 
 
-def _FLIRT_to_world(source, reference, transform):
-    """Adjust a FLIRT transformation matrix into a true world-world 
-    transform. Required as FSL matrices are encoded in a specific form 
-    such that they can only be applied alongside the requisite images (extra
-    information is required from those images). With thanks to Martin Craig
-    and Tim Coalson. See: https://github.com/Washington-University/workbench/blob/9c34187281066519e78841e29dc14bef504776df/src/Nifti/NiftiHeader.cxx#L168 
-    https://github.com/Washington-University/workbench/blob/335ad0c910ca9812907ea92ba0e5563225eee1e6/src/Files/AffineFile.cxx#L144
-
-    Args: 
-        source: path to source image, the image to be deformed 
-        reference: path to reference image, the target of the transform
-        transform: affine matrix produced by FLIRT from src to ref 
-
-    Returns: 
-        complete transformation matrix between the two. 
-    """
-
-    # 'Space' refers to conversion of world -> scaled voxel coordinates, 
-    # with no shift for origin 
-    Ss = _getFSLspace(source)
-    Rs = _getFSLspace(reference)
-
-    # 'Affine' refers to the voxel -> world conversion matrix 
-    Ra = nibabel.load(reference).affine
-    Sa = nibabel.load(source).affine
-
-    # Work backwards (R->L) to interpret these 
-    out = Ra @ np.linalg.inv(Rs) @ transform @ Ss @ np.linalg.inv(Sa)
-    return out
-
-
-def _world_to_FLIRT(source, reference, transform):
-    """
-    Inverse of _FLIRT_to_world: convert a world-world transform to FLIRT matrix
-    """
-
-    # 'Space' refers to conversion of world -> scaled voxel coordinates, 
-    # with no shift for origin 
-    Ss = _getFSLspace(source)
-    Rs = _getFSLspace(reference)
-
-    # 'Affine' refers to the voxel -> world conversion matrix 
-    Ra = nibabel.load(reference).affine
-    Sa = nibabel.load(source).affine
-
-    # Work backwards (R->L) to interpret these 
-    out = Rs @ np.linalg.inv(Ra) @ transform @ Sa @ np.linalg.inv(Ss)
-    return out
-
-
-
 def affineTransformPoints(points, affine):
     """Apply affine transformation to set of points.
 
@@ -569,8 +519,10 @@ def enforce_and_load_common_arguments(func):
             if not kwargs.get('struct'):
                 raise RuntimeError("If using a FLIRT transform, the path to the \
                     structural image must also be given")
-            kwargs['struct2ref'] = _FLIRT_to_world(kwargs['struct'], kwargs['ref'], 
-                kwargs['struct2ref'])
+            
+            kwargs['struct2ref'] = (rt.Registration(kwargs['struct2ref'], 
+                                        kwargs['struct'], kwargs['ref'], "fsl")
+                                        .src2ref_world)
             kwargs['flirt'] = False 
 
         # Processor cores

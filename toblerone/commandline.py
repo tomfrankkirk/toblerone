@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from . import utils, pvestimation, resampling
+from . import utils, pvestimation
 from .classes import CommonParser, ImageSpace, Surface
 
 suffix = (
@@ -79,46 +79,6 @@ def estimate_cortex_cmd(*args):
     for i,t in enumerate(['GM', 'WM', 'nonbrain']):
         p = op.join(outdir, t + ext)
         refSpace.save_image(PVs[:,:,:,i], p)
-
-
-def resample_cmd(*args):
-    """
-    Resample an image via upsampling to intermediate space and summing
-    across blocks. This emulates the behaviour of FSL's applywarp with the
-    -super flag. 
-
-    Args: 
-        -src: path to image to resample
-        -ref: image use as reference, into which src will be resampled
-        -src2ref: path to 4x4 affine transformation between src and ref, 
-            use 'I' to denote identity transform 
-        -flirt: flag to denote that src2ref is a FLIRT transform 
-        -out: path to save output at 
-    """
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-flirt', action='store_true', required=False)
-    parser.add_argument('-src', type=str, required=True)
-    parser.add_argument('-src2ref', type=str, required=True)
-    parser.add_argument('-out', type=str, required=True)
-    parser.add_argument('-ref', type=str, required=True)
-    kwargs = vars(parser.parse_args(args))
-
-    if 'out' not in kwargs:
-        raise RuntimeError("Please specify output path")
-
-    if kwargs['flirt'] and not kwargs.get('src2ref'):
-        raise RuntimeError("Flirt flag set but no src2ref transform supplied")
-
-    src2ref = kwargs.get('src2ref')
-    if src2ref == 'I':
-        kwargs['src2ref'] = np.identity(4)
-    else: 
-        kwargs['src2ref'] = np.loadtxt(src2ref)
-
-    outpath = kwargs.pop('out')
-    result = resampling.resample(**kwargs)
-    ImageSpace.save_like(kwargs['ref'], result, outpath)
 
 
 def estimate_structure_cmd(*args):
