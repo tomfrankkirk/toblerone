@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Welcome to Toblerone’s documentation! &mdash; Toblerone v0.6.18 documentation</title>
+  <title>Toblerone &mdash; Toblerone v0.6.19 documentation</title>
   
 
   
@@ -80,7 +80,11 @@
             
               <!-- Local TOC -->
               <div class="local-toc"><ul>
-<li><a class="reference internal" href="#">Welcome to Toblerone’s documentation!</a></li>
+<li><a class="reference internal" href="#">Toblerone</a><ul>
+<li><a class="reference internal" href="#partial-volume-estimation">Partial volume estimation</a></li>
+<li><a class="reference internal" href="#projection">Projection</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
 </ul>
 </div>
@@ -127,7 +131,7 @@
     
       <li><a href="#">Docs</a> &raquo;</li>
         
-      <li>Welcome to Toblerone’s documentation!</li>
+      <li>Toblerone</li>
     
     
       <li class="wy-breadcrumbs-aside">
@@ -146,9 +150,26 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <div class="section" id="welcome-to-toblerone-s-documentation">
-<h1>Welcome to Toblerone’s documentation!<a class="headerlink" href="#welcome-to-toblerone-s-documentation" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="toblerone">
+<h1>Toblerone<a class="headerlink" href="#toblerone" title="Permalink to this headline">¶</a></h1>
+<p>Surface-based analysis tools</p>
+<div class="section" id="partial-volume-estimation">
+<h2>Partial volume estimation<a class="headerlink" href="#partial-volume-estimation" title="Permalink to this headline">¶</a></h2>
+<p>Toblerone can estimate partial volumes (PVs) across the brain using surface segmentations (for example, those from FreeSurfer and FSL FIRST).
+The following functions are available in <a class="reference internal" href="toblerone.pvestimation.html#module-toblerone.pvestimation" title="toblerone.pvestimation"><code class="xref py py-mod docutils literal notranslate"><span class="pre">toblerone.pvestimation</span></code></a>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><a class="reference internal" href="toblerone.pvestimation.html#toblerone.pvestimation.estimation.cortex" title="toblerone.pvestimation.estimation.cortex"><code class="xref py py-func docutils literal notranslate"><span class="pre">toblerone.pvestimation.estimation.cortex()</span></code></a>: estimate PVs for one/both hemispheres of the cortex</p></li>
+<li><p><a class="reference internal" href="toblerone.pvestimation.html#toblerone.pvestimation.estimation.structure" title="toblerone.pvestimation.estimation.structure"><code class="xref py py-func docutils literal notranslate"><span class="pre">toblerone.pvestimation.estimation.structure()</span></code></a>: estimate PVs for a structure delineated by a single surface, eg thalamus</p></li>
+<li><p><a class="reference internal" href="toblerone.pvestimation.html#toblerone.pvestimation.estimation.all" title="toblerone.pvestimation.estimation.all"><code class="xref py py-func docutils literal notranslate"><span class="pre">toblerone.pvestimation.estimation.all()</span></code></a>: estimate PVs across the whole brain, including subcortical structures identified by FSL FIRST</p></li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="projection">
+<h2>Projection<a class="headerlink" href="#projection" title="Permalink to this headline">¶</a></h2>
+<p>This is work in progress.</p>
 <div class="toctree-wrapper compound">
+</div>
 </div>
 </div>
 <div class="section" id="indices-and-tables">

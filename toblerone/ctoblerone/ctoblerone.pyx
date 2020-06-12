@@ -112,6 +112,16 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def quick_cross(float[::] a, float[::] b):
+    """
+    Unsafe (no bounds check) cross product of a,b
+
+    Args:
+        a (np.array): 3 elements
+        b (np.array): 3 elements
+
+    Returns: 
+        np.array, 3 elements
+    """
 
     cdef float[::] out = np.empty(3, dtype=np.float32)
     with nogil: 
@@ -125,6 +135,15 @@ def quick_cross(float[::] a, float[::] b):
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 def normal_to_vector(float[::] a):
+    """
+    Return a new vector normal to input 
+
+    Args: 
+        a (np.array): 3 elements (no bounds check)
+
+    Returns: 
+        (np.array): 3 elements 
+    """
 
     cdef float[::] out = np.zeros(3, dtype=np.float32) 
     with nogil:
@@ -139,6 +158,9 @@ def normal_to_vector(float[::] a):
 
 
 def point_groups_intersect(list grps, np.ndarray[np.int32_t, ndim=2] tris):
+    """
+    Check if a group 
+    """
 
     cdef Py_ssize_t g, h
     for g in range(len(grps)):
@@ -159,7 +181,7 @@ def separate_point_clouds(np.ndarray[np.int32_t, ndim=2] tris):
 
     Returns: 
         list of m arrays representing the point clouds, each of which is 
-            list of row numbers into the given tris matrix 
+        list of row numbers into the given tris matrix 
     """
 
     if not tris.shape[0]:
