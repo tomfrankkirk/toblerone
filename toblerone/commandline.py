@@ -44,6 +44,7 @@ def estimate_cortex_cmd(*args):
         -cores: number of cores to use 
         -out: directory to save output within (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
+        -supersample: voxel subdision factor 
     """
     
 
@@ -57,6 +58,7 @@ def estimate_cortex_cmd(*args):
     parser.add_argument('-RPS', type=str, required=False)
     parser.add_argument('-ones', action='store_true')
     parser.add_argument('-stack', action='store_true', required=False)
+    parser.add_argument('-supersample', type=int)
     kwargs = parser.parse(args)
 
     # Estimation
@@ -100,6 +102,7 @@ def estimate_structure_cmd(*args):
         -cores: number of cores to use 
         -out: path to save output (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
+        -supersample: voxel subdision factor 
 
     """
 
@@ -109,6 +112,7 @@ def estimate_structure_cmd(*args):
     parser.add_argument('-surf', type=str, required=True)
     parser.add_argument('-space', type=str, default='world', required=True)
     parser.add_argument('-ones', action='store_true')
+    parser.add_argument('-supersample', type=int)
     kwargs = parser.parse(args)
 
     ext = '.nii.gz'
@@ -155,6 +159,8 @@ def estimate_all_cmd(*args):
         -cores: number of cores to use
         -out: directory to save output within (default alongside ref)
         -ones: perform simple segmentation based on voxel centres (debug)
+        -supersample: voxel subdision factor 
+
     """
     
     parser = CommonParser()
@@ -168,6 +174,7 @@ def estimate_all_cmd(*args):
     parser.add_argument('-RWS', type=str, required=False)        
     parser.add_argument('-RPS', type=str, required=False)
     parser.add_argument('-ones', action='store_true')
+    parser.add_argument('-supersample', type=int)
     kwargs = parser.parse(args)
     
     # Unless we have been given prepared anat dir, we will provide the path

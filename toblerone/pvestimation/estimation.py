@@ -34,6 +34,7 @@ def cortex(**kwargs):
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
         cores: number of cores to use 
+        supersample: int or array-like of 3 values, supersampling factor
  
     Returns: 
         4D array, size equal to the reference image, with the PVs arranged 
@@ -71,9 +72,10 @@ def cortex(**kwargs):
     ref_space = ImageSpace(kwargs['ref'])
 
     # Set supersampler and estimate. 
-    supersampler = kwargs.get('super')
-    if supersampler is None:
+    if kwargs.get('supersample') is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
+    else: 
+        supersampler = kwargs.get('supersample') * np.ones(3)
 
     pvs = estimators._cortex(hemispheres, ref_space, kwargs['struct2ref'],
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
@@ -99,6 +101,7 @@ def structure(**kwargs):
         struct: path to structural image from which surfaces were derived, reqd
             for FIRST surfaces. 
         cores: number of cores to use 
+        supersample: int or array-like of 3 values, supersampling factor
  
     Returns: 
         pvs: PV image
@@ -127,10 +130,11 @@ def structure(**kwargs):
         
     ref_space = ImageSpace(kwargs['ref'])
 
-    supersampler = kwargs.get('super')
-    if supersampler is None:
+    if kwargs.get('supersample') is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
- 
+    else: 
+        supersampler = kwargs.get('supersample') * np.ones(3)
+
     pvs = estimators._structure(surf, ref_space, kwargs['struct2ref'], 
         supersampler, bool(kwargs.get('ones')), kwargs['cores'])
 
@@ -160,7 +164,7 @@ def all(**kwargs):
         flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
         struct: path to structural image from which surfaces were derived
         cores: number of cores to use 
- 
+
     Returns: 
         dictionary of PVs associated with each individual structure and 
             also the overall combined result ('stacked')
