@@ -14,9 +14,12 @@ cdef extern from "ctoblerone.h":
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 
 
+# TODO: could re-optimise by passing vx, vy, vz instead of vox_cent
+# - ensure memory integrity? Or re-implement those functions in cython. 
+
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _ctestTriangleVoxelIntersection(float[:] voxCent, 
+cpdef _ctestTriangleVoxelIntersection(float[:] vox_cent, 
                                       float[:] halfSize, 
                                       float[:,:] tri):
     """
@@ -27,8 +30,11 @@ cpdef _ctestTriangleVoxelIntersection(float[:] voxCent,
     """
 
     cdef float verts[3][3]
+    cdef float vc[3]
     verts = np.ascontiguousarray(tri)
-    return bool(triBoxOverlap(&voxCent[0], &halfSize[0], &verts[0]))
+    vc = np.ascontiguousarray(vox_cent)
+
+    return bool(triBoxOverlap(&vc[0], &halfSize[0], &verts[0]))
 
 
 @cython.boundscheck(False) 
@@ -45,6 +51,9 @@ cpdef _cyfilterTriangles(int[:,:] tris,
     cdef Py_ssize_t t, i, a, b, c
     cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
     cdef float verts[3][3]
+    cdef float vc[3]
+
+    vc = np.ascontiguousarray(vox_cent)
 
     for t in range(tris.shape[0]):
         with nogil:
@@ -64,7 +73,7 @@ cpdef _cyfilterTriangles(int[:,:] tris,
             verts[2][1] = points[c,1]
             verts[2][2] = points[c,2]
 
-        fltr[t] = triBoxOverlap(&vox_cent[0], &half_size[0], &verts[0])     
+        fltr[t] = triBoxOverlap(&vc[0], &half_size[0], &verts[0])     
 
     return fltr 
 
