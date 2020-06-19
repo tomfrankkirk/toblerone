@@ -499,7 +499,8 @@ def _getAllSubVoxCorners(supersampler, vox_cent):
 
 
 
-def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
+def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid, 
+                           subvox_size, subvox_half_size, subvox_vol):
     """The Big Daddy that does the Heavy Lifting. 
     Recursive estimation of PVs within a single voxel. Overview as follows: 
     - split voxel into subvoxels according to supersampler
@@ -516,11 +517,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     verbose = False
     inFraction = 0.0
 
-    # Set up the subvoxel sizes and vols. 
-    subvox_size = (1.0 / supersampler).astype(np.float32)
-    subvox_half_size = subvox_size / 2
-    subVoxVol = np.prod(subvox_size).astype(np.float32)
-
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
 
@@ -531,19 +527,13 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
         voxIJK, ~voxCentFlag)
 
     # Test all subvox centres now and store the results for later
-    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
-    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
-    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
-    [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
-    allCents = (np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
-        + voxIJK)
+    allCents = supergrid + voxIJK
     allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK,
         ~voxCentFlag)
 
-
     # Subvoxel loop starts here -----------------------------------------------
 
-    for s in range(np.prod(supersampler)):
+    for s in range(supersampler.prod()):
 
         # Get the centre and corners, prepare the sanity check
         subVoxClassified = False
@@ -558,10 +548,10 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
         # If no triangles intersect the subvox then whole-tissue classification
         # using the flip flags that were set by fullRayIntersectTest()
-        if not np.any(triFltr): 
+        if not triFltr.any(): 
 
             if verbose: print("Whole subvox assignment")
-            inFraction += (int(subVoxFlag) * subVoxVol)        
+            inFraction += (int(subVoxFlag) * subvox_vol)        
             subVoxClassified = True 
 
         # CASE 2: some triangles intersect the subvox -------------------------
@@ -627,9 +617,9 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 if not V: 
                     L2fraction = _classifyVoxelViaRecursion(smallPatch, \
                         subVoxCent, subvox_size, subVoxFlag)
-                    inFraction += (subVoxVol * L2fraction) 
+                    inFraction += (subvox_vol * L2fraction) 
                 else:
-                    inFraction += np.matmul(classes, [V, (subVoxVol - V)])       
+                    inFraction += np.matmul(classes, [V, (subvox_vol - V)])       
                 
                 subVoxClassified = True 
 
@@ -647,7 +637,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
                     L2fraction = _classifyVoxelViaRecursion(smallPatch, 
                         subVoxCent, subvox_size, subVoxFlag)
-                    inFraction += (L2fraction * subVoxVol)
+                    inFraction += (L2fraction * subvox_vol)
                     subVoxClassified = True 
             
         # Sanity check: we should have classified the voxel by now
@@ -680,13 +670,26 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
     size = surf._index_space.size 
 
+    # Set up the subvoxel sizes and vols. 
     supersampler = np.squeeze(np.array(supersampler, dtype=np.int16))
+    subvox_size = (1.0 / supersampler).astype(np.float32)
+    subvox_half_size = subvox_size / 2
+    subvox_vol = np.prod(subvox_size).astype(np.float32)
+
+    # Subvoxel grid (centred on the origin)
+    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
+    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
+    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
+    [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
+    supergrid = np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
     workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 60)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
-        surf, supersampler)
+        surf=surf, supergrid=supergrid, supersampler=supersampler, 
+        subvox_size=subvox_size, subvox_half_size=subvox_half_size, 
+        subvox_vol=subvox_vol)
 
     # Select the appropriate iterator function according to whether progress 
     # bar is requested. Tqdm provides progress bar.  
@@ -719,7 +722,8 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
 
 
-def _estimateFractionsWorker(surf, supersampler, chunk):
+def _estimateFractionsWorker(chunk, surf, supersampler, supergrid, 
+                            subvox_size, subvox_half_size, subvox_vol):
     """Wrapper for _estimateFractions() for use in multiprocessing pool"""
 
     # estimateVoxelFraction can throw, in which case we want to return the 
@@ -732,8 +736,9 @@ def _estimateFractionsWorker(surf, supersampler, chunk):
             dtype=np.float32).T
 
         for idx in range(len(chunk)):
-            pvs[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
-                vox_inds[idx], supersampler)  
+            pvs[idx] = _estimateVoxelFraction(
+                vox_ijks[idx,:], vox_inds[idx], surf, supersampler, supergrid, 
+                subvox_size, subvox_half_size, subvox_vol)
         
         return pvs
 
