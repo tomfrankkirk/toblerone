@@ -28,3 +28,5 @@ toblerone/ctoblerone/ctoblerone.html
 *.nii.gz
 toblerone/ctoblerone/ctoblerone.c
 docs/.buildinfo
+scratch/*
+docs/_build/*
