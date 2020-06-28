@@ -9,8 +9,8 @@ import os
 
 import numpy as np
 
-from . import utils, pvestimation
-from .classes import CommonParser, ImageSpace, Surface
+from toblerone import utils, pvestimation
+from toblerone.classes import CommonParser, ImageSpace, Surface
 
 suffix = (
 """

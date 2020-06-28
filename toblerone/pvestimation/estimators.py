@@ -7,7 +7,7 @@ import copy
 
 import numpy as np
 
-from ..utils import STRUCTURES
+from toblerone.utils import STRUCTURES
 from toblerone.classes import Surface, Hemisphere
 
 def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):

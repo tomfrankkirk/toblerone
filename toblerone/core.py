@@ -20,11 +20,11 @@ import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
-from .ctoblerone import _ctestTriangleVoxelIntersection, _cyfilterTriangles, \
-    _cytestManyRayTriangleIntersections
-from .ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
-from .ctoblerone import separate_point_clouds
-from . import utils 
+from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection, _cyfilterTriangles,
+                                  _cytestManyRayTriangleIntersections)
+from toblerone.ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
+from toblerone.ctoblerone import separate_point_clouds
+from toblerone import utils 
 
 
 # Module level constants ------------------------------------------------------
@@ -46,7 +46,6 @@ SUBVOXCORNERS = np.array([
         dtype=np.int16) 
 
 # Functions -------------------------------------------------------------------
-
 
 def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""

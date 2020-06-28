@@ -1,7 +1,7 @@
 """Surface-based partial volume estimation tools"""
 
-from . import projection, pvestimation
-from .classes import ImageSpace, Surface, Hemisphere
+from toblerone import projection, pvestimation
+from toblerone.classes import ImageSpace, Surface, Hemisphere
 
 __all__ = ['core', 'classes', 'utils']
 __author__ = 'Tom Kirk'

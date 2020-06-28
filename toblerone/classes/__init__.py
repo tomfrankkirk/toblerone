@@ -2,6 +2,6 @@
 Toblerone classes
 """
 
-from .image_space import ImageSpace
-from .surfaces import Surface, Hemisphere
-from .common_parser import CommonParser
+from toblerone.classes.image_space import ImageSpace
+from toblerone.classes.surfaces import Surface, Hemisphere
+from toblerone.classes.common_parser import CommonParser

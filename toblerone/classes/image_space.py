@@ -12,7 +12,7 @@ import nibabel
 import numpy as np 
 from regtricks import ImageSpace as BaseSpace
 
-from .. import utils
+from toblerone import utils
 
 class ImageSpace(BaseSpace):
     """

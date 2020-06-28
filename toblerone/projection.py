@@ -13,9 +13,9 @@ from scipy import sparse
 from scipy.spatial import Delaunay
 from scipy.spatial.qhull import QhullError 
 
-from . import utils 
-from .pvestimation import estimators
-from .classes import ImageSpace, Hemisphere, Surface
+from toblerone import utils 
+from toblerone.pvestimation import estimators
+from toblerone.classes import ImageSpace, Hemisphere, Surface
 
 
 # See the __vox_tri_weights_worker() function for an explanation of the 
