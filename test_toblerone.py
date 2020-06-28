@@ -42,7 +42,7 @@ def test_cortex():
     hemi = classes.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     s2r = np.identity(4)
-    supersampler = np.ceil(spc.vox_size)
+    supersampler = [2,2,2]
 
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
         1, False)
