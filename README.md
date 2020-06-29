@@ -2,6 +2,8 @@
 
 Surface-based analysis tools. 
 
+Install latest version from PyPI: `pip install --upgrade toblerone`
+
 Documentation: https://toblerone.readthedocs.io/en/latest/
 
 Citation: 

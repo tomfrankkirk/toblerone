@@ -119,6 +119,8 @@ if __name__ == '__main__':
         long_description_content_type='text/markdown',
         author='Tom Kirk',
         author_email='thomas.kirk@eng.ox.ac.uk',
+        license='BSD-3-clause', 
+        url='https://github.com/tomfrankkirk/toblerone',
         setup_requires=['numpy', 'cython'],
         install_requires=get_requirements(),
         packages=find_packages(),
