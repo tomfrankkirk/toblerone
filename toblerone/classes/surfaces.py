@@ -1,12 +1,5 @@
 """
-Tobleroe surface-related classes
-
-Surface: the points and triangles of a surface, and various calculated
-    properties that are evaluated ahead of time to speed up later operations
-Hemisphere: a pair of surfaces, used specifically to represent one half 
-    of the cerebral cortex (referred to as inner and outer surfaces)
-Patch: a subcalss of Surface, representing a smaller portion of a surface,
-    used to reduce computational complexity of operations 
+Surface-related classes
 """
 
 import itertools
