@@ -36,6 +36,8 @@ def git_version():
         match = version_regex.match(full_version)
         if match:
             std_version = match.group(0).replace("-", ".")
+            if std_version.endswith("."):
+                std_version += "0"
         else:
             raise RuntimeError("Failed to parse version string %s" % full_version)
         return full_version, std_version
