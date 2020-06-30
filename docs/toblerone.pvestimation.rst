@@ -4,14 +4,6 @@ toblerone.pvestimation package
 Submodules
 ----------
 
-toblerone.pvestimation.estimation module
-----------------------------------------
-
-.. automodule:: toblerone.pvestimation.estimation
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 toblerone.pvestimation.estimators module
 ----------------------------------------
 

@@ -12,10 +12,8 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
-sys.path.insert(0, os.path.abspath('../toblerone'))
 
-from setup import get_version
+from toblerone._version import __version__
 
 
 # -- Project information -----------------------------------------------------
@@ -25,7 +23,7 @@ copyright = '2020, Tom Kirk'
 author = 'Tom Kirk'
 
 # The full version, including alpha/beta/rc tags
-release = get_version()
+release = __version__
 
 
 # -- General configuration ---------------------------------------------------

@@ -24,6 +24,8 @@ This is work in progress.
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+   :ref:modules
+
 
 
 
