@@ -498,12 +498,11 @@ def enforce_and_load_common_arguments(func):
         # need to know what we did here, simply that it is now world-world again)
         if kwargs.get('flirt'):
             if not kwargs.get('struct'):
-                raise RuntimeError("If using a FLIRT transform, the path to the \
-                    structural image must also be given")
+                raise RuntimeError("If using a FLIRT transform, the path to the"
+                    " structural image must also be given")
             
-            kwargs['struct2ref'] = (rt.Registration(kwargs['struct2ref'], 
-                                        kwargs['struct'], kwargs['ref'], "fsl")
-                                        .src2ref_world)
+            kwargs['struct2ref'] = (rt.Registration.from_flirt(kwargs['struct2ref'], 
+                                        kwargs['struct'], kwargs['ref'])).src2ref
             kwargs['flirt'] = False 
 
         # Processor cores
