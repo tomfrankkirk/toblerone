@@ -17,28 +17,23 @@ def cortex(**kwargs):
     Estimate PVs for L/R cortex. All arguments are kwargs.
 
     Required args: 
-        ref: path to reference image for which PVs are required
-        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
-
-        One of: 
-        fsdir: path to a FreeSurfer subject directory, from which L/R 
-            white/pial surfaces will be loaded 
-        LWS/LPS/RWS/RPS: individual paths to the individual surfaces,
+        ref (str): path to reference image for which PVs are required
+        struct2ref (str/np.array): registration between structural 
+            (surface) and reference space. Use 'I' for identity. 
+        fsdir (str): path to a FreeSurfer subject directory
+        LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
             eg LWS = Left White surface, RPS = Right Pial surace
             To estimate for a single hemisphere, only provide surfaces
             for that side. 
 
     Optional args: 
-        space: space in which surfaces are in (world/first)
-        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
-        struct: path to structural image from which surfaces were derived
-        cores: number of cores to use 
-        supersample: int or array-like of 3 values, supersampling factor
+        flirt (bool): denoting struct2ref is FLIRT transform. If so, set struct
+        struct (str): path to structural image from which surfaces were derived
+        cores (int): number of cores to use, default 8 
+        supersample (int/array): single or 3 values, supersampling factor
  
     Returns: 
-        4D array, size equal to the reference image, with the PVs arranged 
+        (np.array), 4D, size equal to the reference image, with the PVs arranged 
             GM/WM/non-brain in 4th dim
     """
 
@@ -90,22 +85,20 @@ def structure(**kwargs):
     All arguments are kwargs.
     
     Required args: 
-        ref: path to reference image for which PVs are required
-        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
-        surf: path to surface (see space argument below)
+        ref (str): path to reference image for which PVs are required
+        struct2ref (str/np.array): registration between structural 
+            (surface) and reference space. Use 'I' for identity. 
+        surf (str): path to surface (see space argument below)
 
     Optional args: 
-        space: space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set as 'first' and provide 'struct'. 
-        struct: path to structural image from which surfaces were derived, reqd
-            for FIRST surfaces. 
-        cores: number of cores to use 
-        supersample: int or array-like of 3 values, supersampling factor
+        space (str): space in which surface is defined: default is 'world' (mm coords),
+            for FIRST surfaces set as 'first' and provide struct argument 
+        struct (str): path to structural image from which surfaces were derived
+        cores (int): number of cores to use, default 8 
+        supersample (int/array): single or 3 values, supersampling factor
  
     Returns: 
-        pvs: PV image
+        (np.array) PV image, sized equal to reference space 
     """
 
     # Check we either have a surface object or path to one 
@@ -155,19 +148,25 @@ def all(**kwargs):
     All arguments are kwargs.
 
     Required args: 
-        ref: path to reference image for which PVs are required
-        struct2ref: path to np or text file, or np.ndarray obj, denoting affine
-                registration between structural (surface) and reference space.
-                Use 'I' for identity. 
-        anat: path to anat dir directory (created by make_surf_anat_dir)
+        ref (str): path to reference image for which PVs are required
+        struct2ref (str/np.array): registration between structural 
+            (surface) and reference space. Use 'I' for identity. 
+        anat (str): path to fsl_fs_anat dir (see toblerone -fsl_fs_anat) 
+        fsdir (str): path to a FreeSurfer subject directory
+        LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
+            eg LWS = Left White surface, RPS = Right Pial surace
+        firstdir (str): path to FSL FIRST directory 
+        fastdir (str): path to FSL FAST results directory 
 
     Optional args: 
-        flirt: bool denoting struct2ref is FLIRT transform. If so, set struct
-        struct: path to structural image from which surfaces were derived
-        cores: number of cores to use 
+        space (str): space in which surface is defined: default is 'world' (mm coords),
+            for FIRST surfaces set as 'first' and provide struct argument 
+        struct (str): path to structural image from which surfaces were derived
+        cores (int): number of cores to use, default 8 
+        supersample (int/array): single or 3 values, supersampling factor
 
     Returns: 
-        dictionary of PVs associated with each individual structure and 
+        (dict) PVs associated with each individual structure and 
             also the overall combined result ('stacked')
     """
 
