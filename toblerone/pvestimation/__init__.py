@@ -185,8 +185,8 @@ def complete(**kwargs):
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
-    s2r = rt.Registration(kwargs['struct2ref'], "world")
-    output = { t: s2r.apply_to_image(fasts[t], kwargs['ref'], superlevel=4).get_data()
+    s2r = rt.Registration(kwargs['struct2ref'])
+    output = { t: s2r.apply_to_image(fasts[t], kwargs['ref'], superlevel=2).get_data()
         for t in ['FAST_WM', 'FAST_GM'] }
     output['FAST_CSF'] = 1 - (output['FAST_WM'] + output['FAST_GM'])
         
