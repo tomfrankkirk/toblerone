@@ -116,7 +116,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
 
 def stack_images(images):
     """
-    Combine the results of estimate_all() into overall PV maps
+    Combine the results of estimate_complete() into overall PV maps
     for each tissue. Note that the below logic is entirely specific 
     to the surfaces produced by FreeSurfer, FIRST and how they may be
     combined with FAST estimates. If you're going off-piste anywhere else

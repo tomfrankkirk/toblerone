@@ -141,7 +141,7 @@ def __structure_wrapper(surf, **kwargs):
 
 
 @utils.enforce_and_load_common_arguments
-def all(**kwargs):
+def complete(**kwargs):
     """
     Estimate PVs for cortex and all structures identified by FIRST within 
     a reference image space. Use FAST to fill in non-surface PVs. 

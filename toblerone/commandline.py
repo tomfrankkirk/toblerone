@@ -135,7 +135,7 @@ def estimate_structure_cmd(*args):
 
 
 
-def estimate_all_cmd(*args):
+def estimate_complete_cmd(*args):
     """
     Estimate PVs for cortex and all structures identified by FIRST within 
     a reference image space. Use FAST to fill in non-surface PVs. 
@@ -183,12 +183,13 @@ def estimate_all_cmd(*args):
         if not op.isdir(kwargs.get('anat')):
             raise RuntimeError("anat dir %s does not exist" % kwargs['anat'])
     else: 
-        if not all([op.isdir(kwargs['fastdir']), 
-            op.isdir(kwargs['firstdir']), op.isdir(kwargs['fsdir'])]):
+        if not all([ 
+            (('fastdir' in kwargs) and ('firstdir' in kwargs)),
+            (('fsdir' in kwargs) or (('LPS' in kwargs) and ('RPS' in kwargs))) ]): 
             raise RuntimeError("Either separate -firstdir, -fsdir and -fastdir"+
                 " must be provided, or an -anat dir must be provided")
 
-    output = pvestimation.all(**kwargs)
+    output = pvestimation.complete(**kwargs)
 
     # Output paths. If given -out then use that as output, otherwise
     # save alongside reference image 

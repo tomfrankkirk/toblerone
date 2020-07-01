@@ -1,8 +1,8 @@
 import sys
 
-from toblerone.commandline import estimate_all_cmd, estimate_cortex_cmd
-from toblerone.commandline import estimate_structure_cmd, convert_surface_cmd
-from toblerone.commandline import fsl_fs_anat_cmd, suffix
+from toblerone.commandline import (estimate_complete_cmd, estimate_cortex_cmd, 
+                                   estimate_structure_cmd, convert_surface_cmd, 
+                                   fsl_fs_anat_cmd, suffix)
 
 def main():
 
@@ -11,7 +11,7 @@ TOBLERONE     Surface-based analysis tools
 
 Usage:
 
--estimate_all           estimate PVs across the brain, for both cortical and subcortical
+-estimate_complete      estimate PVs across the brain, for both cortical and subcortical
                             structures
 
 -estimate_cortex        estimate PVs for the cortex
@@ -26,9 +26,9 @@ Usage:
 """)
 
 
-    funcs = [estimate_all_cmd, estimate_cortex_cmd,
+    funcs = [estimate_complete_cmd, estimate_cortex_cmd,
         estimate_structure_cmd, fsl_fs_anat_cmd, convert_surface_cmd]
-    names = ['-estimate_all', '-estimate_cortex', '-estimate_structure', 
+    names = ['-estimate_complete', '-estimate_cortex', '-estimate_structure', 
         '-fsl_fs_anat', '-convert_surface']
 
     args = sys.argv
