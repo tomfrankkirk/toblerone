@@ -188,7 +188,7 @@ def complete(**kwargs):
     s2r = rt.Registration(kwargs['struct2ref'])
     output = { t: s2r.apply_to_image(fasts[t], kwargs['ref'], superlevel=2).get_data()
         for t in ['FAST_WM', 'FAST_GM'] }
-    output['FAST_CSF'] = 1 - (output['FAST_WM'] + output['FAST_GM'])
+    output['FAST_CSF'] = np.maximum(0, 1 - (output['FAST_WM'] + output['FAST_GM']))
         
     # Process subcortical structures first. 
     FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])

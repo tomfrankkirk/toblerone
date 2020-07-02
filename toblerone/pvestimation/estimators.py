@@ -157,14 +157,18 @@ def stack_images(images):
     reqd_keys = STRUCTURES + [ 'FAST_GM', 'FAST_WM', 'FAST_CSF', 
         'cortex_GM', 'cortex_WM', 'cortex_nonbrain' ]
     reqd_keys.remove('BrStem')
-    if not all([k in reqd_keys for k in images.keys()]):
-        raise RuntimeError("Did not find expected keys in images dict")
+    for k in reqd_keys:
+        if k not in images.keys():
+            raise RuntimeError(f"Did not find '{k}' key in images dict")
     
     # Pop out FAST's estimates  
     csf = images.pop('FAST_CSF').flatten()
     wm = images.pop('FAST_WM').flatten()
     gm = images.pop('FAST_GM')
     shape = (*gm.shape[0:3], 3)
+
+    # Squash small FAST CSF values 
+    csf[csf < 0.01] = 0 
 
     # Pop the cortex estimates and initialise output as all CSF
     ctxgm = images.pop('cortex_GM').flatten()
@@ -188,29 +192,32 @@ def stack_images(images):
     ctxmask = (ctx[:,0] > GM_threshold)
     to_update = np.logical_and(csf > out[:,2], ~ctxmask)
     tmpwm = out[to_update,1]
-    out[to_update,2] = csf[to_update]
+    out[to_update,2] = np.minimum(csf[to_update], 1 - out[to_update,0])
     out[to_update,1] = np.minimum(tmpwm, 1 - (out[to_update,2] + out[to_update,0]))
 
     # Sanity checks: total tissue PV in each vox should sum to 1
-    assert np.all(out[to_update,0] <= GM_threshold), 'Some update voxels have GM'
-    assert np.all(np.abs(out.sum(1) - 1) < 1e-6), 'Voxel PVs do not sum to 1'
+    assert (out[to_update,0] <= GM_threshold).all(), 'Some update voxels have GM'
+    assert (np.abs(out.sum(1) - 1) < 1e-6).all(), 'Voxel PVs do not sum to 1'
+    assert (out > -1e-6).all(), 'Negative PV found'
 
     # For each subcortical structure, create a mask of the voxels which it 
     # relates to. The following operations then apply only to those voxels 
     # All subcortical structures interpreted as pure GM 
     # Update CSF to ensure that GM + CSF in those voxels < 1 
     # Finally, set WM as the remainder in those voxels.
-    for s in images.values():
+    for k,s in images.items():
         smask = (s.flatten() > 0)
         out[smask,0] = np.minimum(1, out[smask,0] + s.flatten()[smask])
         out[smask,2] = np.minimum(out[smask,2], 1 - out[smask,0])
         out[smask,1] = np.maximum(1 - (out[smask,0] + out[smask,2]), 0)
+        assert (out > -1e-6).all(), f'Negative found after {k} layer'
+        assert (np.abs(out.sum(1) - 1) < 1e-6).all(), f'PVs sum > 1 after {k} layer'
 
     # Final sanity check, then rescaling so all voxels sum to unity. 
-    assert (out > -1e-6).all()
+    # assert (out > -1e-6).all()
     out[out < 0] = 0 
     sums = out.sum(1)
-    assert (np.abs(sums - 1) < 1e-6).all()
+    assert (np.abs(out.sum(1) - 1) < 1e-6).all(), 'Voxel PVs do not sum to 1'
     out = out / sums[:,None]
 
     return out.reshape(shape)
