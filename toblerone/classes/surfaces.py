@@ -119,17 +119,17 @@ class Surface(object):
             if struct is None: 
                 raise RuntimeError("Path to structural image required with FIRST surfs")
 
-            structSpace = ImageSpace(struct)
-            if np.linalg.det(structSpace.vox2world) > 0:
-                
-                # Flip X coords from [0, n-1] to [n-1, 0] by adding a shift vector
-                N = structSpace.size[0]
-                ps[:,0] = (N-1) - ps[:,0]
+            # Convert from FSL coordinates to structural voxel coords 
+            struct_spc = ImageSpace(struct)
+            ps /= struct_spc.vox_size
 
-            # Convert from FSL scaled voxel mm to struct voxel coords
-            # Then to world mm coords
-            ps /= structSpace.vox_size
-            ps = utils.affineTransformPoints(ps, structSpace.vox2world)
+            # Flip the X dimension if reqd (according to FSL convention)
+            # Remap from 0, 1, ... N-2, N-1 to N-1, N-2, ..., 1, 0
+            if np.linalg.det(struct_spc.vox2world) > 0:
+                ps[:,0] = ((struct_spc.size[0]) - 1) - ps[:,0]
+
+            # Finally, convert from voxel coords to world mm 
+            ps = utils.affineTransformPoints(ps, struct_spc.vox2world)
 
         self.points = ps.astype(np.float32)
         self.tris = ts.astype(np.int32)
