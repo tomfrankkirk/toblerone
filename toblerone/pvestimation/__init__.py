@@ -12,7 +12,7 @@ from toblerone import utils, core
 from toblerone.classes import ImageSpace, Surface, Hemisphere
 
 @utils.enforce_and_load_common_arguments
-def cortex(**kwargs):
+def cortex(ref, struct2ref, **kwargs):
     """
     Estimate PVs for L/R cortex. All arguments are kwargs.
 
@@ -79,7 +79,7 @@ def cortex(**kwargs):
     return pvs
 
 @utils.enforce_and_load_common_arguments
-def structure(**kwargs):
+def structure(ref, struct2ref, **kwargs):
     """
     Estimate PVs for a structure defined by a single surface. 
     All arguments are kwargs.
@@ -141,7 +141,7 @@ def __structure_wrapper(surf, **kwargs):
 
 
 @utils.enforce_and_load_common_arguments
-def complete(**kwargs):
+def complete(ref, struct2ref, **kwargs):
     """
     Estimate PVs for cortex and all structures identified by FIRST within 
     a reference image space. Use FAST to fill in non-surface PVs. 
@@ -151,12 +151,15 @@ def complete(**kwargs):
         ref (str): path to reference image for which PVs are required
         struct2ref (str/np.array): registration between structural 
             (surface) and reference space. Use 'I' for identity. 
-        anat (str): path to fsl_fs_anat dir (see toblerone -fsl_fs_anat) 
-        fsdir (str): path to a FreeSurfer subject directory
-        LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
-            eg LWS = Left White surface, RPS = Right Pial surace
-        firstdir (str): path to FSL FIRST directory 
-        fastdir (str): path to FSL FAST results directory 
+        anat: path to augmented fsl_anat directory (see -fsl_fs_anat command).
+            This REPLACES fsdir, firstdir, fastdir, LPS/RPS etc args 
+
+    Alternatvies to anat argument (all required): 
+        fsdir (str): FreeSurfer subject directory, OR: 
+        LWS/LPS/RWS/RPS (str): paths to individual surfaces (L/R white/pial)
+        firstdir (str): FIRST directory in which .vtk surfaces are located
+        fastdir (str): FAST directory in which _pve_0/1/2 are located 
+        struct (str): path to structural image from which surfaces were dervied
 
     Optional args: 
         space (str): space in which surface is defined: default is 'world' (mm coords),

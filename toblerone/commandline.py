@@ -145,11 +145,12 @@ def estimate_complete_cmd(*args):
         -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
             registration between structural image used to produce surfaces 
             and reference. Use 'I' for identity, if using FLIRT also set -flirt 
-        -anat: path to augmented fsl_anat directory (see fsl_fs_anat)
+        -anat: path to augmented fsl_anat directory (see -fsl_fs_anat). This
+            REPLACES -fsdir, -firstdir, -fastdir, -LPS/RPS etc 
 
     Alternatvies to anat argument (all required): 
         -fsdir: FreeSurfer subject directory, OR: 
-            -LWS/-LPS/-RWS/-RPS paths to individual surfaces (L/R white/pial)
+        -LWS/-LPS/-RWS/-RPS paths to individual surfaces (L/R white/pial)
         -firstdir: FIRST directory in which .vtk surfaces are located
         -fastdir: FAST directory in which _pve_0/1/2 are located 
         -struct: path to structural image from which surfaces were dervied
