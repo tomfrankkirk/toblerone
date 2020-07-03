@@ -51,13 +51,6 @@ def test_cortex():
     truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
-def test_imagespace():
-    td = get_testdir()
-    spc = toblerone.ImageSpace(op.join(td,'sph_fractions.nii.gz'))
-    sspc = spc.resize_voxels(0.5)
-
-    assert np.all(spc.bbox_origin == sspc.bbox_origin)
-    assert np.all(spc.FoV_size == sspc.FoV_size)
 
 def test_projection():
     td = get_testdir()
