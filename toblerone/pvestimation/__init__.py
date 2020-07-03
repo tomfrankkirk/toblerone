@@ -65,7 +65,7 @@ def cortex(ref, struct2ref, **kwargs):
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ] 
 
-    ref_space = ImageSpace(kwargs['ref'])
+    ref_space = ImageSpace(ref)
 
     # Set supersampler and estimate. 
     if kwargs.get('supersample') is None:
@@ -73,7 +73,7 @@ def cortex(ref, struct2ref, **kwargs):
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
-    pvs = estimators._cortex(hemispheres, ref_space, kwargs['struct2ref'],
+    pvs = estimators._cortex(hemispheres, ref_space, struct2ref,
         supersampler, kwargs['cores'], bool(kwargs.get('ones')))
 
     return pvs
@@ -122,14 +122,14 @@ def structure(ref, struct2ref, **kwargs):
     else: 
         surf = kwargs['surf']
         
-    ref_space = ImageSpace(kwargs['ref'])
+    ref_space = ImageSpace(ref)
 
     if kwargs.get('supersample') is None:
         supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
-    pvs = estimators._structure(surf, ref_space, kwargs['struct2ref'], 
+    pvs = estimators._structure(surf, ref_space, struct2ref, 
         supersampler, bool(kwargs.get('ones')), kwargs['cores'])
 
     return pvs
@@ -173,7 +173,7 @@ def complete(ref, struct2ref, **kwargs):
             also the overall combined result ('stacked')
     """
 
-    print("Estimating PVs for", kwargs['ref'])
+    print("Estimating PVs for", ref)
 
     # If anat dir then various subdirs are loaded by @enforce_common_args
     # If not then direct load below 
@@ -188,8 +188,8 @@ def complete(ref, struct2ref, **kwargs):
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fasts = utils._loadFASTdir(kwargs['fastdir'])
-    s2r = rt.Registration(kwargs['struct2ref'])
-    output = { t: s2r.apply_to_image(fasts[t], kwargs['ref'], superlevel=2).get_data()
+    s2r = rt.Registration(struct2ref)
+    output = { t: s2r.apply_to_image(fasts[t], ref, superlevel=2).get_data()
         for t in ['FAST_WM', 'FAST_GM'] }
     output['FAST_CSF'] = np.maximum(0, 1 - (output['FAST_WM'] + output['FAST_GM']))
         
