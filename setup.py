@@ -99,8 +99,7 @@ def get_extensions():
         Extension("toblerone.ctoblerone",
                   sources=[
                       'toblerone/ctoblerone/ctoblerone.pyx', 
-                      'src/ctoblerone.c',
-                      'src/tribox.c'
+                      'src/ctoblerone.c'
                   ],
                   include_dirs=['src', numpy.get_include()],
                   language="c", 

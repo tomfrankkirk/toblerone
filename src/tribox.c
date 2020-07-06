@@ -186,28 +186,3 @@ char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const f
     };
      /* box and triangle overlaps */
 }
-
-char tribox_wrapper(float bc1, float bc2, float bc3, 
-                   float fs1, float fs2, float fs3,
-                   float tv11, float tv12, float tv13,
-                   float tv21, float tv22, float tv23,
-                   float tv31, float tv32, float tv33)
-{
-    float bc[3], hs[3], tv[3][3];
-    bc[0] = bc1;
-    bc[1] = bc2;
-    bc[2] = bc3;
-    hs[0] = fs1/2;
-    hs[1] = fs2/2;
-    hs[2] = fs3/2;
-    tv[0][0] = tv11;
-    tv[0][1] = tv12;
-    tv[0][2] = tv13;
-    tv[1][0] = tv21;
-    tv[1][1] = tv22;
-    tv[1][2] = tv23;
-    tv[2][0] = tv31;
-    tv[2][1] = tv32;
-    tv[2][2] = tv33;
-    return triBoxOverlap(bc, hs, tv);
-}   

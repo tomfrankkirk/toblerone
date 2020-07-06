@@ -20,7 +20,7 @@ import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
-from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection, _cyfilterTriangles,
+from toblerone.ctoblerone import (_cytribox_overlap, _cyfilterTriangles,
                                   _cytestManyRayTriangleIntersections)
 from toblerone.ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
 from toblerone.ctoblerone import separate_point_clouds
@@ -37,6 +37,7 @@ BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 DIMS = np.array([0,1,2,0,1,2])
 VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
 VOX_HALF_VECS = np.array((VOX_HALF_CYCLE, -1 * VOX_HALF_CYCLE)).reshape(6,3)
+VOX_HALF_SIZE = 0.5 * np.ones(3, dtype=np.float32)
 
 SUBVOXCORNERS = np.array([ 
         [0, 0, 0], [1, 0, 0], 
@@ -61,7 +62,6 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
         defaultdict, key: vox idx, value: list of tri numbers 
     """
 
-    vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
     assocs = sparse.dok_matrix((grid_size.prod(), tris.shape[0]), dtype=np.bool)
 
     for t in triInds:
@@ -75,7 +75,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
             dtype=np.float32)
 
         for ijk in nhood: 
-            if _ctestTriangleVoxelIntersection(ijk, vox_size, tri):
+            if _cytribox_overlap(ijk, VOX_HALF_SIZE, tri):
                 vox = np.ravel_multi_index(ijk.astype(np.int16), grid_size)
                 assocs[vox,t] = 1 
     

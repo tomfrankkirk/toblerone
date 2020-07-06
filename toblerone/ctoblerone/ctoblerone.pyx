@@ -5,11 +5,6 @@ import cython
 from libc.math cimport fabs
 
 
-# External function imports from ../src directory
-cdef extern from "tribox.h":
-    char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
-
-
 cdef extern from "ctoblerone.h":
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 
@@ -17,24 +12,262 @@ cdef extern from "ctoblerone.h":
 # TODO: could re-optimise by passing vx, vy, vz instead of vox_cent
 # - ensure memory integrity? Or re-implement those functions in cython. 
 
+
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _ctestTriangleVoxelIntersection(float[:] vox_cent, 
-                                      float[:] halfSize, 
-                                      float[:,:] tri):
+cpdef _cytribox_overlap(float[:] box_cent, 
+                    float[:] half_size, 
+                    float[:,:] verts):
+
     """
-    Test if triangle intersects voxel. 
+    Cython implementation of Tomas Akenine-Moller's triangle-box overlap test. 
+    Reproduced with original comments by Tom Kirk, 2020. 
 
-    WARNING: this function expects voxel half size, not full size, 
-    as is the case for _cyfilterTriangles()
+    AABB-triangle overlap test code                     
+    by Tomas Akenine-Möller                             
+    Function: int triBoxOverlap(float boxcenter[3],     
+             float boxhalfsize[3],float triverts[3][3]);
+    History:                                            
+      2001-03-05: released the code in its first version
+      2001-06-18: changed the order of the tests, faster
+                                                        
+    Acknowledgement: Many thanks to Pierre Terdiman for 
+    suggestions and discussions on how to optimize code.
+    Thanks to David Hunt for finding a ">="-bug!        
     """
 
-    cdef float verts[3][3]
-    cdef float vc[3]
-    verts = np.ascontiguousarray(tri)
-    vc = np.ascontiguousarray(vox_cent)
+    #use separating axis theorem to test overlap between triangle and box
+    #need to test for overlap in these directions:
+    #1) the {x,y,z}-directions (actually, since we use the AABB of the triangle
+    #   we do not even need to test these)
+    #2) normal of the triangle
+    #3) crossproduct(edge from tri, {x,y,z}-direction)
+    #   this gives 3x3=9 more tests
 
-    return bool(triBoxOverlap(&vc[0], &halfSize[0], &verts[0]))
+    cdef float v0[3]
+    cdef float v1[3]
+    cdef float v2[3]
+    cdef float normal[3]
+    cdef float e0[3]
+    cdef float e1[3]
+    cdef float e2[3] 
+    cdef float vmin[3]
+    cdef float vmax[3]
+    cdef Py_ssize_t idx 
+    cdef float mini,maxi,d,p0,p1,p2,rad,fex,fey,fez
+
+    for idx in range(3):            
+        v0[idx] = verts[0,idx] - box_cent[idx]
+        v1[idx] = verts[1,idx] - box_cent[idx]
+        v2[idx] = verts[2,idx] - box_cent[idx]
+        e0[idx] = v1[idx] - v0[idx]
+        e1[idx] = v2[idx] - v1[idx] 
+        e2[idx] = v0[idx] - v2[idx] 
+
+    #Bullet 3: 
+    # test the 9 tests first (this was faster)
+    fex = fabs(e0[0])
+    fey = fabs(e0[1])
+    fez = fabs(e0[2])
+
+    #AXISTEST_X01(e0[Z], e0[Y], fez, fey);
+    p0 = e0[2] * v0[1] - e0[1] * v0[2];                    
+    p2 = e0[2] * v2[1] - e0[1] * v2[2];                    
+    if (p0 < p2): 
+        mini = p0
+        maxi = p2 
+    else:
+        mini = p2
+        maxi = p0
+
+    rad = fez * half_size[1] + fey * half_size[2];  
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Y02(e0[Z], e0[X], fez, fex);
+    p0 = -e0[2] * v0[0] + e0[0] * v0[2];                    
+    p2 = -e0[2] * v2[0] + e0[0] * v2[2];   
+    if (p0 < p2): 
+        mini = p0
+        maxi = p2 
+    else:
+        mini = p2
+        maxi = p0
+
+    rad = fez * half_size[0] + fex * half_size[2]
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Z12(e0[Y], e0[X], fey, fex);
+    p1 = e0[1] * v1[0] - e0[0] * v1[1];                   
+    p2 = e0[1] * v2[0] - e0[0] * v2[1];  
+    if (p2 < p1):
+        mini=p2
+        maxi=p1
+    else:
+        mini=p1 
+        maxi=p2
+        
+    rad = fey * half_size[0] + fex * half_size[1];
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+
+    fex = fabs(e1[0])
+    fey = fabs(e1[1])
+    fez = fabs(e1[2])
+
+    #AXISTEST_X01(e1[Z], e1[Y], fez, fey);
+    p0 = e1[2] * v0[1] - e1[1] * v0[2];                    
+    p2 = e1[2] * v2[1] - e1[1] * v2[2];                    
+    if (p0 < p2): 
+        mini = p0
+        maxi = p2 
+    else:
+        mini = p2
+        maxi = p0
+
+    rad = fez * half_size[1] + fey * half_size[2];  
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Y02(e1[Z], e1[X], fez, fex);
+    p0 = -e1[2] * v0[0] + e1[0] * v0[2];                    
+    p2 = -e1[2] * v2[0] + e1[0] * v2[2];   
+    if (p0 < p2): 
+        mini = p0
+        maxi = p2 
+    else:
+        mini = p2
+        maxi = p0
+
+    rad = fez * half_size[0] + fex * half_size[2]
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Z0(e1[Y], e1[X], fey, fex);
+    p0 = e1[1] * v0[0] - e1[0] * v0[1];  
+    p1 = e1[1] * v1[0] - e1[0] * v1[1];  
+    if (p0 < p1):
+        mini=p0 
+        maxi=p1
+    else:
+        mini=p1
+        maxi=p0
+
+    rad = fey * half_size[0] + fex * half_size[1];   
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+
+    fex = fabs(e2[0])
+    fey = fabs(e2[1])
+    fez = fabs(e2[2])
+
+    #AXISTEST_X2(e2[Z], e2[Y], fez, fey);
+    p0 = e2[2] * v0[1] - e2[1] * v0[2]                  
+    p1 = e2[2] * v1[1] - e2[1] * v1[2]                   
+    if(p0<p1):
+        mini = p0
+        maxi = p1
+    else:
+        mini = p1
+        maxi = p0
+    
+    rad = fez * half_size[1] + fey * half_size[2];  
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Y1(e2[Z], e2[X], fez, fex);
+    p0 = -e2[2] * v0[0] + e2[0] * v0[2]                  
+    p1 = -e2[2] * v1[0] + e2[0] * v1[2]                     
+    if(p0<p1):
+        mini = p0
+        maxi = p1
+    else:
+        mini = p1
+        maxi = p0    
+
+    rad = fez * half_size[0] + fex * half_size[2];  
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #AXISTEST_Z12(e2[Y], e2[X], fey, fex);
+    p1 = e2[1] * v1[0] - e2[0] * v1[1];                    
+    p2 = e2[1] * v2[0] - e2[0] * v2[1];                    
+    if (p2 < p1):
+        mini=p2
+        maxi=p1
+    else:
+        mini=p1 
+        maxi=p2   
+
+    rad = fey * half_size[0] + fex * half_size[1];   
+    if (mini > rad) or (maxi <- rad): 
+        return 0 
+
+    #Bullet 1: 
+    # first test overlap in the {x,y,z}-directions 
+    # find min, max of the triangle each direction, and test for overlap in 
+    # that direction -- this is equivalent to testing a minimal AABB around 
+    # the triangle against the AABB 
+
+    mini = v0[0]
+    maxi = v0[0]
+    if v1[0] < mini: mini = v1[0]
+    if v1[0] > maxi: maxi = v1[0] 
+    if v2[0] < mini: mini = v2[0] 
+    if v2[0] > maxi: maxi = v2[0] 
+    if (mini > half_size[0]) or (maxi<-half_size[0]): 
+        return 0 
+
+    mini = v0[1]
+    maxi = v0[1]
+    if v1[1] < mini: mini = v1[1]
+    if v1[1] > maxi: maxi = v1[1] 
+    if v2[1] < mini: mini = v2[1] 
+    if v2[1] > maxi: maxi = v2[1] 
+    if (mini > half_size[1]) or (maxi<-half_size[1]): 
+        return 0 
+
+    mini = v0[2]
+    maxi = v0[2]
+    if v1[2] < mini: mini = v1[2]
+    if v1[2] > maxi: maxi = v1[2] 
+    if v2[2] < mini: mini = v2[2] 
+    if v2[2] > maxi: maxi = v2[2] 
+    if (mini > half_size[2]) or (maxi<-half_size[2]): 
+        return 0 
+
+    normal[0] = (e0[1] * e1[2]) - (e0[2] * e1[1])
+    normal[1] = (e0[2] * e1[0]) - (e0[0] * e1[2])
+    normal[2] = (e0[0] * e1[1]) - (e0[1] * e1[0])
+    d = -dot(normal, v0)
+
+    #Bullet 2:
+    # test if the box intersects the plane of the triangle
+    # compute plane equation of triangle: normal*x+d=0
+    for idx in range(3): 
+        if (normal[idx] > 0.0):
+            vmin[idx] = -half_size[idx]
+            vmax[idx] = half_size[idx]
+
+        else:
+            vmin[idx] = half_size[idx]
+            vmax[idx] = -half_size[idx]
+
+    if (dot(&normal[0], &vmin[0]) + d) > 0.0:
+        return 0
+    if (dot(&normal[0], &vmax[0]) + d) >= 0.0:
+        return 1
+    return 0 
+
+
+@cython.boundscheck(False) 
+@cython.wraparound(False) 
+cdef dot(float a[3], float b[3]):
+    cdef float out = ((a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]))
+    return out 
 
 
 @cython.boundscheck(False) 
@@ -45,35 +278,21 @@ cpdef _cyfilterTriangles(int[:,:] tris,
                          float[:] half_size):
     """
     Test if multiple triangles intersect voxel defined
-    by centre vC and full size vS
+    by centre vox_cent and half_size 
     """
     
-    cdef Py_ssize_t t, i, a, b, c
+    cdef Py_ssize_t t
     cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
-    cdef float verts[3][3]
-    cdef float vc[3]
-
-    vc = np.ascontiguousarray(vox_cent)
+    verts_array = np.empty((3,3), dtype=np.float32)
+    cdef float[:,:] verts = verts_array
 
     for t in range(tris.shape[0]):
         with nogil:
-            a = tris[t,0]
-            b = tris[t,1]
-            c = tris[t,2]
-
-            verts[0][0] = points[a,0]
-            verts[0][1] = points[a,1]
-            verts[0][2] = points[a,2]
-
-            verts[1][0] = points[b,0]
-            verts[1][1] = points[b,1]
-            verts[1][2] = points[b,2]
-
-            verts[2][0] = points[c,0]
-            verts[2][1] = points[c,1]
-            verts[2][2] = points[c,2]
-
-        fltr[t] = triBoxOverlap(&vc[0], &half_size[0], &verts[0])     
+            verts[0,:] = points[tris[t,0],:]
+            verts[1,:] = points[tris[t,1],:]
+            verts[2,:] = points[tris[t,2],:]
+    
+        fltr[t] = _cytribox_overlap(vox_cent, half_size, verts_array)   
 
     return fltr 
 
