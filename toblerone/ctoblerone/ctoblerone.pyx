@@ -9,15 +9,11 @@ cdef extern from "ctoblerone.h":
     char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
 
 
-# TODO: could re-optimise by passing vx, vy, vz instead of vox_cent
-# - ensure memory integrity? Or re-implement those functions in cython. 
-
-
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _cytribox_overlap(float[:] box_cent, 
+cpdef char _cytribox_overlap(float[:] box_cent, 
                     float[:] half_size, 
-                    float[:,:] verts):
+                    float[:,:] verts) nogil:
 
     """
     Cython implementation of Tomas Akenine-Moller's triangle-box overlap test. 
@@ -265,7 +261,7 @@ cpdef _cytribox_overlap(float[:] box_cent,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cdef dot(float a[3], float b[3]):
+cdef float dot(float a[3], float b[3]) nogil:
     cdef float out = ((a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]))
     return out 
 
@@ -291,7 +287,6 @@ cpdef _cyfilterTriangles(int[:,:] tris,
             verts[0,:] = points[tris[t,0],:]
             verts[1,:] = points[tris[t,1],:]
             verts[2,:] = points[tris[t,2],:]
-    
         fltr[t] = _cytribox_overlap(vox_cent, half_size, verts_array)   
 
     return fltr 
@@ -339,7 +334,7 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-def quick_cross(float[::] a, float[::] b):
+cpdef quick_cross(float[::] a, float[::] b):
     """
     Unsafe (no bounds check) cross product of a,b
 

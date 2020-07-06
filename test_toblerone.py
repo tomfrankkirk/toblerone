@@ -47,7 +47,7 @@ def test_cortex():
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
         1, False)
 
-    spc.save_image(fracs, 'fracs.nii.gz')
+    # spc.save_image(fracs, 'fracs.nii.gz')
     truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs, truth, 1)
 
