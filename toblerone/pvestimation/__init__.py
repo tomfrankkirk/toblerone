@@ -204,7 +204,8 @@ def complete(ref, struct2ref, **kwargs):
 
     # To estimate against each subcortical structure, we apply the following
     # partial func to each using a map() call. Carry kwargs from this func 
-    estimator = functools.partial(__structure_wrapper, **kwargs)
+    estimator = functools.partial(__structure_wrapper, 
+                                  ref=ref, struct2ref=struct2ref, **kwargs)
 
     # This is equivalent to a map(estimator, structures) call
     # All the extra stuff (tqdm etc) is used for progress bar
@@ -216,7 +217,7 @@ def complete(ref, struct2ref, **kwargs):
     output.update(dict(zip([s.name for s in structures], results)))
 
     # Now do the cortex, then stack the whole lot 
-    ctx  = cortex(**kwargs)
+    ctx  = cortex(ref=ref, struct2ref=struct2ref, **kwargs)
     for i,t in enumerate(['_GM', '_WM', '_nonbrain']):
        output['cortex' + t] = (ctx[:,:,:,i])
 

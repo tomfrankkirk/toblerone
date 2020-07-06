@@ -29,10 +29,8 @@ def estimate_cortex_cmd(*args):
         -struct2ref: path to np or text file, or np.ndarray obj, denoting affine
             registration between structural image used to produce surfaces 
             and reference. Use 'I' for identity, if using FLIRT also set -flirt 
-
-        One of: 
         -fsdir: path to a FreeSurfer subject directory, from which L/R 
-            white/pial surfaces will be loaded 
+            white/pial surfaces will be loaded, OR: 
         -LWS/LPS/RWS/RPS: individual paths to the individual surfaces,
             eg LWS = Left White surface, RPS = Right Pial surace
             To estimate for a single hemisphere, only provide surfaces
