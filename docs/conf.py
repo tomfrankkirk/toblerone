@@ -13,6 +13,7 @@
 import os
 import sys
 
+sys.path.insert(1, '..')
 from toblerone._version import __version__
 
 
@@ -35,8 +36,9 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'recommonmark',
-    'sphinx.ext.autosectionlabel'
 ]
+
+autodoc_member_order = 'bysource'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
