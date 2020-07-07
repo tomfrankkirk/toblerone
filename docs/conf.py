@@ -13,7 +13,11 @@
 import os
 import sys
 
+<<<<<<< HEAD
 # sys.path.insert(1, '..')
+=======
+sys.path.insert(1, '..')
+>>>>>>> a0a2ec120f498409b69eaae1e475894b82391853
 from toblerone._version import __version__
 
 
