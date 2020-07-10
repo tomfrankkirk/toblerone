@@ -79,4 +79,4 @@ def test_convert():
     os.remove('test.vtk')
 
 if __name__ == "__main__":
-    test_convert()
+    test_cortex()

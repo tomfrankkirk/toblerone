@@ -334,6 +334,52 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
+cpdef test_ray_tris_intersection(int[:,:] tris, float[:,:] points, 
+                                float[::] start, int ax1, int ax2):
+
+    cdef np.ndarray[char, ndim=1, cast=True] fltr_array = \
+        np.zeros(tris.shape[0], dtype=np.bool)
+    cdef char[::] fltr = fltr_array
+    verts_array = np.empty((3,3), dtype=np.float32)
+    cdef float[:,:] verts = verts_array
+    cdef Py_ssize_t t,i,j,ti,tj 
+    cdef char intersection 
+
+    with nogil: 
+
+        for t in range(tris.shape[0]):
+            verts[0,:] = points[tris[t,0],:]
+            verts[1,:] = points[tris[t,1],:]
+            verts[2,:] = points[tris[t,2],:]
+            intersection = 0 
+            j = 2 
+            for i in range(3):
+
+                # if one vertex is on one side of the point in the x direction, 
+                # and the other is on the other side (equal case is treated as greater)
+                if ((verts[i,ax1] < start[ax1]) != (verts[j,ax1] < start[ax1])): 
+
+                    #reorient the segment consistently to get a consistent answer
+                    if (verts[i,ax1] < verts[j,ax1]):
+                        ti = i; tj = j;
+                    else:
+                        ti = j; tj = i;
+
+                    # if the point on the line described by the two vertices with 
+                    # the same x coordinate is above (greater y) than the test point
+                    if (((verts[ti,ax2] - verts[tj,ax2]) / (verts[ti,ax1] - verts[tj,ax1])) 
+                        * (start[ax1] - verts[tj,ax1]) + verts[tj,ax2] > start[ax2]):
+                        intersection = not intersection # even/odd winding rule
+    
+                # consecutive vertices, does 2,0 then 0,1 then 1,2
+                j = i
+
+            fltr[t] = intersection 
+
+    return fltr_array
+
+@cython.boundscheck(False) 
+@cython.wraparound(False) 
 cpdef quick_cross(float[::] a, float[::] b):
     """
     Unsafe (no bounds check) cross product of a,b

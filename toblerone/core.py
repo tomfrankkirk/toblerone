@@ -21,7 +21,7 @@ from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
 from toblerone.ctoblerone import (_cytribox_overlap, _cyfilterTriangles,
-                                  _cytestManyRayTriangleIntersections)
+                                  test_ray_tris_intersection)
 from toblerone.ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
 from toblerone.ctoblerone import separate_point_clouds
 from toblerone import utils 
@@ -104,7 +104,7 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
     ray[axis] = 1 
 
     # Filter triangles that intersect with this ray 
-    fltr = _cytestManyRayTriangleIntersections(patch.tris, patch.points, 
+    fltr = test_ray_tris_intersection(patch.tris, patch.points, 
         testPnt, (axis+1)%3, (axis+2)%3)
 
     # And find the multipliers for those that do intersect 
@@ -185,8 +185,9 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
 
     # Now perform the test 
     start = np.zeros(3, dtype=np.float32)
-    fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
+    fltr = test_ray_tris_intersection(patch.tris, onPlane2d.T, start,
         0, 1)
+
 
     # For those trianglest that passed, calculate multiplier to point of 
     # intersection
