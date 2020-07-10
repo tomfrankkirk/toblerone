@@ -5,13 +5,9 @@ import cython
 from libc.math cimport fabs
 
 
-cdef extern from "ctoblerone.h":
-    char testRayTriangleIntersection(const float tri[3][3], const float start[3], int ax1, int ax2)
-
-
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef char _cytribox_overlap(float[:] box_cent, 
+cpdef char tribox_overlap(float[:] box_cent, 
                     float[:] half_size, 
                     float[:,:] verts) nogil:
 
@@ -268,7 +264,7 @@ cdef float dot(float a[3], float b[3]) nogil:
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef _cyfilterTriangles(int[:,:] tris, 
+cpdef filterTriangles(int[:,:] tris, 
                          float[:,:] points, 
                          float[:] vox_cent, 
                          float[:] half_size):
@@ -287,47 +283,7 @@ cpdef _cyfilterTriangles(int[:,:] tris,
             verts[0,:] = points[tris[t,0],:]
             verts[1,:] = points[tris[t,1],:]
             verts[2,:] = points[tris[t,2],:]
-        fltr[t] = _cytribox_overlap(vox_cent, half_size, verts_array)   
-
-    return fltr 
-
-
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-cpdef _cytestManyRayTriangleIntersections(int[:,:] tris, 
-                                          float[:,:] points, 
-                                          float[:] start, 
-                                          int ax1, 
-                                          int ax2):
-    """
-    Test if a ray intersects triangles. The ray originates from the point 
-    defined by start and travels along the dimension NOT specified by ax1 
-    and ax2 (e.g 0 corresponds to X)
-    """
-
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
-    cdef Py_ssize_t t, a, b, c
-    cdef float verts[3][3]
-
-    for t in range(tris.shape[0]):
-        with nogil: 
-            a = tris[t,0]
-            b = tris[t,1]
-            c = tris[t,2]
-
-            verts[0][0] = points[a,0]
-            verts[0][1] = points[a,1]
-            verts[0][2] = points[a,2]
-
-            verts[1][0] = points[b,0]
-            verts[1][1] = points[b,1]
-            verts[1][2] = points[b,2]
-
-            verts[2][0] = points[c,0]
-            verts[2][2] = points[c,2]
-            verts[2][1] = points[c,1]
-
-        fltr[t] = testRayTriangleIntersection(verts, &start[0], ax1, ax2)     
+        fltr[t] = tribox_overlap(vox_cent, half_size, verts_array)   
 
     return fltr 
 
@@ -336,6 +292,21 @@ cpdef _cytestManyRayTriangleIntersections(int[:,:] tris,
 @cython.wraparound(False) 
 cpdef test_ray_tris_intersection(int[:,:] tris, float[:,:] points, 
                                 float[::] start, int ax1, int ax2):
+    """
+    Test if a ray intersects a group of triangles. With thanks to 
+    Tim Coalson, this is a direct port of his HCP wb_command code. 
+
+    Args: 
+        tris (np.array): 2D array of int32 triangle indices. 
+        points (np.array): 2D array of float32 triangle points. 
+        start (np.array): 3-vector of float32, ray origin 
+        ax1 (int): one of the axes (X1, Y2, Z3) ray does not travel along
+        ax2 (int): the other axis ray does not travel along 
+
+    Returns: 
+        (np.array), 1D of bool, length equal to triangles
+    """
+    
 
     cdef np.ndarray[char, ndim=1, cast=True] fltr_array = \
         np.zeros(tris.shape[0], dtype=np.bool)

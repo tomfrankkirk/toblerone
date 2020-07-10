@@ -20,10 +20,10 @@ import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError 
 
-from toblerone.ctoblerone import (_cytribox_overlap, _cyfilterTriangles,
-                                  test_ray_tris_intersection)
-from toblerone.ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
-from toblerone.ctoblerone import separate_point_clouds
+from toblerone.ctoblerone import (tribox_overlap, filterTriangles,
+                                  test_ray_tris_intersection, quick_cross, 
+                                  normal_to_vector, point_groups_intersect, 
+                                  separate_point_clouds)
 from toblerone import utils 
 
 
@@ -75,7 +75,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
             dtype=np.float32)
 
         for ijk in nhood: 
-            if _cytribox_overlap(ijk, VOX_HALF_SIZE, tri):
+            if tribox_overlap(ijk, VOX_HALF_SIZE, tri):
                 vox = np.ravel_multi_index(ijk.astype(np.int16), grid_size)
                 assocs[vox,t] = 1 
     
@@ -541,7 +541,7 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
         subVoxFlag = allCentFlags[s]
 
         # Do any triangles intersect the subvox?
-        triFltr = _cyfilterTriangles(patch.tris, patch.points, 
+        triFltr = filterTriangles(patch.tris, patch.points, 
             subVoxCent, subvox_half_size)
 
         # CASE 1 --------------------------------------------------------------
