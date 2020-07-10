@@ -14,27 +14,26 @@ from toblerone.classes import ImageSpace, Surface, Hemisphere
 @utils.enforce_and_load_common_arguments
 def cortex(ref, struct2ref, **kwargs):
     """
-    Estimate PVs for L/R cortex. All arguments are kwargs.
+    Estimate PVs for L/R cortex. All arguments are kwargs. To estimate for 
+    a single hemisphere, provide only surfaces for that side. 
 
     Required args: 
-        ref (str): path to reference image for which PVs are required
-        struct2ref (str/np.array): registration between structural 
-            (surface) and reference space. Use 'I' for identity. 
-        fsdir (str): path to a FreeSurfer subject directory
+        ref (str): path to reference image for which PVs are required. 
+        struct2ref (str/np.array): registration between space of  
+            surface and reference, use 'I' for identity. 
+        fsdir (str): path to a FreeSurfer subject directory. 
         LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
-            eg LWS = Left White surface, RPS = Right Pial surace
-            To estimate for a single hemisphere, only provide surfaces
-            for that side. 
+            eg LWS = Left White surface, RPS = Right Pial surace. 
 
     Optional args: 
-        flirt (bool): denoting struct2ref is FLIRT transform. If so, set struct
-        struct (str): path to structural image from which surfaces were derived
-        cores (int): number of cores to use, default 8 
-        supersample (int/array): single or 3 values, supersampling factor
+        flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
+        struct (str): path to structural image from which surfaces were derived. 
+        cores (int): number of cores to use, default 8. 
+        supersample (int/array): single or 3 values, supersampling factor. 
  
     Returns: 
         (np.array), 4D, size equal to the reference image, with the PVs arranged 
-            GM/WM/non-brain in 4th dim
+            GM/WM/non-brain in 4th dim. 
     """
 
     if not any([

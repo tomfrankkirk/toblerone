@@ -23,10 +23,9 @@ This is work in progress.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
-   :ref:modules
 
-
+   PV estimation <pvestimation>
+   API index <modules> 
 
 
 Indices and tables
