@@ -291,7 +291,7 @@ cpdef filterTriangles(int[:,:] tris,
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
 cpdef test_ray_tris_intersection(int[:,:] tris, float[:,:] points, 
-                                float[::] start, int ax1, int ax2):
+                                float[:] start, int ax1, int ax2):
     """
     Test if a ray intersects a group of triangles. With thanks to 
     Tim Coalson, this is a direct port of his HCP wb_command code. 
