@@ -647,8 +647,8 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
 
     # END of subvoxel loop ----------------------------------------------------
       
-    if inFraction > 1.000001:
-        raise RuntimeError('Fraction exceeds 1 in', voxIdx)
+    if inFraction > 1.01:
+        raise RuntimeError(f'Fraction is {inFraction} in vox {voxIdx} at {voxIJK}')
 
     return inFraction
 
