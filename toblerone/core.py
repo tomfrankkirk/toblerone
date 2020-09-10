@@ -431,14 +431,9 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
 
     # Create a grid of 125 subvoxels, calculate fraction by simply testing
     # each subvoxel centre coordinate. 
-    super2 = 5
-    Nsubs2 = super2**3
-    sX = np.arange(1 / (2 * super2), 1, 1 / super2, dtype=np.float32) - 0.5
-    sX, sY, sZ = np.meshgrid(sX, sX, sX)
-    subVoxCents = np.vstack((
-        sX.flatten() * vox_size[0], 
-        sY.flatten() * vox_size[1],  
-        sZ.flatten() * vox_size[2])).T + voxCent
+    super2 = [5,5,5]
+    Nsubs2 = np.prod(super2)
+    subVoxCents = _get_subvoxel_grid(super2)
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
@@ -471,6 +466,21 @@ def _fetchSubVoxCornerIndices(linIdx, supersampler):
     return corners 
 
 
+def _get_subvoxel_grid(supersampler):
+    """Grid of sub voxel centres, centered on the origin [0,0,0.]
+
+    Args:
+        supersampler (array): 3 values, supersampling in each dimension.
+
+    Returns: 
+        (array) sized (product of supersampler) x 3. 
+    """
+
+    centres = np.stack(np.meshgrid(*[
+        np.linspace(0,1,2*s+1)[1:-1:2] for s in supersampler
+    ]), axis=-1).reshape(-1,3)
+    return (centres - 0.5).astype(np.float32)
+
 
 def _getAllSubVoxCorners(supersampler, vox_cent):
     """Produce a grid of subvoxel vertices within a given voxel.
@@ -485,16 +495,13 @@ def _getAllSubVoxCorners(supersampler, vox_cent):
             of IJK along the rows
     """
 
-    # Get the origin for the grid of vertices (corner with smallest xyz)
+    # Subvoxel grid (centred on the origin)
+    corners = np.stack(np.meshgrid(*[
+        np.linspace(0,1,2*s+1)[::2] for s in supersampler
+    ], indexing='xy'), axis=-1).reshape(-1,3)
+    corners -= 0.5
 
-    # Grid will have s+1 points in each dimension 
-    X, Y, Z = np.meshgrid(
-        np.linspace(vox_cent[0] - 0.5, vox_cent[0] + 0.5, supersampler[0] + 1),
-        np.linspace(vox_cent[1] - 0.5, vox_cent[1] + 0.5, supersampler[1] + 1),
-        np.linspace(vox_cent[2] - 0.5, vox_cent[2] + 0.5, supersampler[2] + 1))
-
-    return (np.vstack((X.flatten(), Y.flatten(), Z.flatten()))
-        .astype(np.float32).T)
+    return corners + vox_cent[None,:]
 
 
 
@@ -674,13 +681,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     subvox_size = (1.0 / supersampler).astype(np.float32)
     subvox_half_size = subvox_size / 2
     subvox_vol = np.prod(subvox_size).astype(np.float32)
-
-    # Subvoxel grid (centred on the origin)
-    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
-    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
-    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
-    [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
-    supergrid = np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
+    supergrid = _get_subvoxel_grid(supersampler).astype(np.float32)
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
