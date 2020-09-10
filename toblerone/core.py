@@ -43,7 +43,7 @@ SUBVOXCORNERS = np.array([
         [0, 1, 0], [1, 1, 0], 
         [0, 0, 1], [1, 0, 1], 
         [0, 1, 1], [1, 1, 1]], 
-        dtype=np.int16) 
+        dtype=np.float32) 
 
 # Functions -------------------------------------------------------------------
 
@@ -423,7 +423,10 @@ def _safeFormHull(points):
             raise 
     else: 
         return 0
+        
 
+def _points_in_voxel(points, vc, vs):
+    return (np.abs(points - vc) <= vs/2).all(1)
 
 
 def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
@@ -527,10 +530,8 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
     patch = surf.to_patch(voxIdx)
 
     # Test all subvox corners now and store the results for later
-    allCorners = _getAllSubVoxCorners(supersampler, voxIJK)
+    subvoxcorners = (SUBVOXCORNERS - 0.5) * subvox_size[None,:]
     voxCentFlag = surf.voxelised[voxIdx]
-    allCornerFlags = _reducedRayIntersectionTest(allCorners, patch,
-        voxIJK, ~voxCentFlag)
 
     # Test all subvox centres now and store the results for later
     allCents = supergrid + voxIJK
@@ -564,11 +565,11 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
 
         else: 
 
-            # Shrink the patch appropriately, load corner flags 
+            # Shrink the patch appropriately, calculate corners
             smallPatch = patch.shrink(triFltr)
-            cornerIndices = _fetchSubVoxCornerIndices(s, supersampler)
-            corners = allCorners[cornerIndices,:]
-            cornerFlags = allCornerFlags[cornerIndices] 
+            corners = subVoxCent + subvoxcorners
+            cornerFlags = _reducedRayIntersectionTest(corners, smallPatch, 
+                                voxIJK, ~subVoxFlag)
 
             # Check for subvoxel edge intersections with the local patch of
             # triangles and for folds
@@ -712,9 +713,10 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
 
     # Aggregate the results back together and check for exceptions
     # Then clip to range [0, 1] (reqd for geometric approximations)
-    if any([ isinstance(r, Exception) for r in workerFractions ]):
-        print("Exception was raised during worker estimation:")
-        raise workerFractions[0]
+    for r in workerFractions:
+        if isinstance(r, Exception):
+            print("Exception was raised during worker estimation:")
+            raise r
 
     # Clip results to 1 (reqd due to geometric approximations)
     fractions = np.concatenate(workerFractions)
