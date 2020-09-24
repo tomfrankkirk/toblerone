@@ -469,27 +469,27 @@ def _get_subvoxel_grid(supersampler):
     ]), axis=-1).reshape(-1,3)
     return (centres - 0.5).astype(np.float32)
 
+# FIXME: this can be removed?
+# def _getAllSubVoxCorners(supersampler, vox_cent):
+#     """Produce a grid of subvoxel vertices within a given voxel.
 
-def _getAllSubVoxCorners(supersampler, vox_cent):
-    """Produce a grid of subvoxel vertices within a given voxel.
-
-    Args: 
-        supersampler: 1 x 3 vector of supersampling factor
-        voxCent: 1 x 3 vector centre of voxel
-        vox_size: 1 x 3 vector voxel dimensions
+#     Args: 
+#         supersampler: 1 x 3 vector of supersampling factor
+#         voxCent: 1 x 3 vector centre of voxel
+#         vox_size: 1 x 3 vector voxel dimensions
     
-    Returns: 
-        s x 3 matrix of subvoxel vertices, arranged by linear index
-            of IJK along the rows
-    """
+#     Returns: 
+#         s x 3 matrix of subvoxel vertices, arranged by linear index
+#             of IJK along the rows
+#     """
 
-    # Subvoxel grid (centred on the origin)
-    corners = np.stack(np.meshgrid(*[
-        np.linspace(0,1,2*s+1)[::2] for s in supersampler
-    ], indexing='xy'), axis=-1).reshape(-1,3)
-    corners -= 0.5
+#     # Subvoxel grid (centred on the origin)
+#     corners = np.stack(np.meshgrid(*[
+#         np.linspace(0,1,2*s+1)[::2] for s in supersampler
+#     ]), axis=-1).reshape(-1,3)
+#     corners -= 0.5
 
-    return corners + vox_cent[None,:]
+#     return corners + vox_cent[None,:]
 
 
 def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid, 
