@@ -11,14 +11,14 @@
 
 import functools
 import itertools
-import multiprocessing
+import multiprocessing as mp 
 from scipy import sparse
 import copy 
 
 import numpy as np 
 import tqdm
 from scipy.spatial import ConvexHull
-from scipy.spatial.qhull import QhullError 
+from scipy.spatial.qhull import QhullError, Delaunay
 
 from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection, _cyfilterTriangles,
                                   _cytestManyRayTriangleIntersections)
@@ -29,21 +29,41 @@ from toblerone import utils
 
 # Module level constants ------------------------------------------------------
 
+# edge vectors for a single voxel 
 ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
     1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int8) - 1
 ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
     6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int8) - 1
-BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
+
+# iterating over dimensions xyz, xyz 
 DIMS = np.array([0,1,2,0,1,2])
+
+# vectors to the 6 faces of a voxel from the centre point 
 VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
 VOX_HALF_VECS = np.array((VOX_HALF_CYCLE, -1 * VOX_HALF_CYCLE)).reshape(6,3)
 
+# 
 SUBVOXCORNERS = np.array([ 
         [0, 0, 0], [1, 0, 0], 
         [0, 1, 0], [1, 1, 0], 
         [0, 0, 1], [1, 0, 1], 
         [0, 1, 1], [1, 1, 1]], 
         dtype=np.float32) 
+
+# See the _vox_tri_weights_worker() function for an explanation of the 
+# naming convention here. 
+TETRA1 = np.array([[0,3,4,5],   # aABC
+                       [0,1,2,4],   # abcB
+                       [0,2,4,5]],  # acBC
+                       dtype=np.int8)  
+
+TETRA2 = np.array([[0,3,4,5],   # aABC
+                       [0,1,2,5],   # abcC
+                       [0,1,4,5]],  # abBC
+                       dtype=np.int8) 
+
+# tdqm progress bar format
+BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Functions -------------------------------------------------------------------
 
@@ -82,7 +102,6 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
     return assocs.tocsr()
 
 
-
 def _findRayTriangleIntersections2D(testPnt, patch, axis):
     """Find intersections between a ray and a patch of surface, testing along
     one coordinate axis only (XYZ). As the triangle intersection test used within
@@ -117,7 +136,6 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
     return mus
 
 
-
 def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     """Find points of intersection between a ray and the planes defined by a
     set of triangles. As these points may not lie within their respective 
@@ -140,7 +158,6 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
     mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
 
     return mu 
-
 
 
 def _findRayTriangleIntersections3D(testPnt, ray, patch):
@@ -196,7 +213,6 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     return mus
 
 
-
 def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
     """To be used in conjunction with reducedRayIntersectionTest(). Determine if a 
     point lies within a surface by performing a ray intersection test against
@@ -234,7 +250,6 @@ def _fullRayIntersectionTest(testPnt, surf, voxIJK, size):
     
     else: 
         return False 
-
 
 
 def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
@@ -307,7 +322,6 @@ def _reducedRayIntersectionTest(testPnts, patch, rootPoint, flip):
     return flags 
 
 
-
 def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
     """Find points of intersection of all triangle edges within a patch with 
     the faces of a voxel given by cent and size. 
@@ -356,9 +370,7 @@ def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
         keep = np.logical_and(keep, np.logical_and(mus <= 1, mus >= 0))
         intXs = np.vstack((intXs, pInts[keep,:]))
 
-
     return intXs 
-
 
 
 def _findVoxelSurfaceIntersections(patch, vertices):
@@ -406,7 +418,6 @@ def _findVoxelSurfaceIntersections(patch, vertices):
     return (intersects, fold)
 
 
-
 def _safeFormHull(points):
     """If three or less points are provided, or not enough distinct points 
     (eg coplanar points), then return 0 volume (recursion will be used 
@@ -443,7 +454,7 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     return flags.sum() / Nsubs2
 
 
-
+# FIXME: remove this function and associated module level constant 
 def _fetchSubVoxCornerIndices(linIdx, supersampler):
     """Map between linear subvox index number and the indices of its
     vertices (i,j,k) within the larger grid of subvoxel vertices
@@ -505,7 +516,6 @@ def _getAllSubVoxCorners(supersampler, vox_cent):
     corners -= 0.5
 
     return corners + vox_cent[None,:]
-
 
 
 def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid, 
@@ -661,7 +671,6 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
     return inFraction
 
 
-
 def _estimateFractions(surf, supersampler, descriptor, cores):
     """Estimate fraction of voxels lying interior to surface. 
 
@@ -704,7 +713,7 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     # And map across worker chunks either in parallel or serial. 
     workerFractions = []
     if cores > 1:
-        with multiprocessing.Pool(cores) as p: 
+        with mp.Pool(cores) as p: 
             for r in iterator(p.imap(estimatePartial, workerChunks)): 
                 workerFractions.append(r)
     else: 
@@ -721,7 +730,6 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
     # Clip results to 1 (reqd due to geometric approximations)
     fractions = np.concatenate(workerFractions)
     return np.minimum(fractions, 1.0)
-
 
 
 def _estimateFractionsWorker(chunk, surf, supersampler, supergrid, 
@@ -746,7 +754,6 @@ def _estimateFractionsWorker(chunk, surf, supersampler, supergrid,
 
     except Exception as e:
         return e
-
 
 
 def _voxelise_worker(surf, dim_range, raysd1d2):
@@ -823,3 +830,288 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
 
         return mask.reshape(mask_size)
 
+
+def vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count(), 
+                     ones=False):     
+    """
+    Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
+    fraction of samples from voxel I that are in triangle prism J. 
+
+    Args: 
+        in_surf: Surface object, inner surface of cortical ribbon
+        out_surf: Surface object, outer surface of cortical ribbon
+        spc: ImageSpace object within which to project 
+        factor: voxel subdivision factor
+        cores: number of cpu cores
+        
+    Returns: 
+        vox_tri_weights: a scipy.sparse CSR matrix of shape
+            (n_voxs, n_tris), in which each entry at index [I,J] gives the 
+            number of samples from triangle prism J that are in voxel I. 
+            NB this matrix is not normalised in any way!
+    """
+
+    n_tris = in_surf.tris.shape[0]
+    worker = functools.partial(_vox_tri_weights_worker, in_surf=in_surf, 
+        out_surf=out_surf, spc=spc, factor=factor, ones=ones)
+    
+    if cores > 1: 
+        t_ranges = utils._distributeObjects(range(n_tris), cores)
+        with mp.Pool(cores) as p: 
+            vpmats = p.map(worker, t_ranges)
+            
+        vpmat = vpmats[0]
+        for vp in vpmats[1:]:
+            vpmat += vp
+            
+    else: 
+        vpmat = worker(range(n_tris))
+         
+    return vpmat / (factor ** 3)
+
+
+def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False):
+    """
+    Helper method for vox_tri_weights(). 
+
+    Args: 
+        t_range: iterable of triangle numbers to process
+        in_surf: inner surface of cortex, voxel coordinates
+        out_surf: outer surface of cortex, voxel coordinates 
+        spc: ImageSpace in which surfaces lie 
+        factor: voxel subdivision factor
+
+    Returns: 
+        sparse CSR matrix of size (n_vox x n_tris)
+    """
+
+    # Initialise a grid of sample points, sized by (factor) in each dimension. 
+    # We then shift the samples into each individual voxel. 
+    vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
+        in_surf.tris.shape[0]))
+    sampler = np.linspace(0, 1, 2*factor + 1, dtype=np.float32)[1:-1:2]
+    samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
+               .reshape(-1,3) - 0.5)
+
+    for t in t_range: 
+
+        # Stack the vertices of the inner and outer triangles into a 6x3 array.
+        # We will then refer to these points by the indices abc, ABC; lower 
+        # case for the white surface, upper for the pial. We also cycle the 
+        # vertices (note, NOT A SHUFFLE) such that the highest index is first 
+        # (corresponding to A,a). The relative ordering of vertices remains the
+        # same, so we use flagsum to check if B < C or C < B. 
+        tri = in_surf.tris[t,:]
+        tri_max = np.argmax(tri)
+        tri_sort = [ tri[(tri_max + i) % 3] for i in range(3) ]
+        flagsum = sum([ int(tri_sort[v] < tri_sort[(v + 1) % 3]) 
+                        for v in range(3) ])
+
+        # Two positive divisions and one negative
+        if flagsum == 2: 
+            tets = TETRA1
+
+        # This MUST be two negatives and one positive. 
+        else:
+            tets = TETRA2
+
+        hull_ps = np.vstack((in_surf.points[tri_sort,:], 
+                             out_surf.points[tri_sort,:]))
+
+        # Get the neighbourhood of voxels through which this prism passes
+        # in linear indices
+        bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
+                           np.minimum(spc.size, hull_ps.max(0)+1)))
+                           .round().astype(np.int32))
+        hood = (np.stack(np.meshgrid(
+                *[ range(*bbox[:,d]) for d in range(3) ]), axis=-1)
+                .reshape(-1,3).astype(np.int32))             
+        hood_vidx = np.ravel_multi_index(hood.T, spc.size)
+
+        # Debug mode: just stick ones in all candidate voxels and continue 
+        if ones: 
+            vox_tri_samps[hood_vidx,t] = factor ** 3
+            continue
+
+        for vidx, ijk in zip(hood_vidx, hood.astype(np.float32)):
+            v_samps = ijk + samples
+
+            # The two triangles form an almost triangular prism in space (like a
+            # toblerone bar...). It has 6 vertices and 8 triangular faces (2 end
+            # caps, 3 almost rectangular side faces that are further split into 2
+            # triangles each). Splitting the quadrilateral faces into triangles is 
+            # the tricky bit as it can be done in two ways, as below. 
+            # 
+            #   pial 
+            # N______N+1
+            #  |\  /|
+            #  | \/ |
+            #  | /\ |
+            # n|/__\|n+1
+            #   white
+            #   
+            # It is important to ensure that neighbouring prisms share the same 
+            # subdivision of their adjacent faces (ie, both of them agree to split
+            # it in the \ or / direction) to avoid double counting regions of space.
+            # This is achieved by enumerating the triangular faces of the prism in 
+            # a specific order according to the index numbers of the triangle 
+            # vertices. For each vertex n, if the index number of vertex n+1 (with
+            # wraparound for the last vertex) is greater, then we split the face
+            # that the edge (n, n+1) belongs to in a "positive" manner. Otherwise, 
+            # we split the face in a "negative" manner. A positive split means that 
+            # a diagonal will go from the pial vertex N to white vertex n+1. A
+            # negative split will go from pial vertex N+1 to white vertex n. As a
+            # result, around the complete prism formed by the two triangles, there
+            # will be two face diagonals that ALWAYS meet at the WHITE vertex
+            # with the HIGHEST index number (referred to as 'a'). With these two 
+            # diagonals fixed, the order of the last diagonal depends on the 
+            # condition B < C (+ve) or C < B (-ve). We check this using the 
+            # flagsum variable, which will be 2 for B < C or 1 for C < B. Finally,
+            # knowing how the last diagonal is arranged, there are exactly two 
+            # ways of splitting the prism down, hardcoded at the top of this file. 
+            # See http://www.alecjacobson.com/weblog/?p=1888. 
+
+
+            # Test the sample points against the tetrahedra. We don't care about
+            # double counting within the polyhedra (although in theory this 
+            # shouldn't happen). Hull formation can fail due to geometric 
+            # degeneracy so wrap it up in a try block 
+            samps_in = np.zeros(v_samps.shape[0], dtype=np.bool)
+            for tet in tets: 
+                try: 
+                    hull = Delaunay(hull_ps[tet,:])
+                    samps_in |= (hull.find_simplex(v_samps) >= 0)  
+
+                # Silent fail for geometric degeneracy, raise anything else 
+                except QhullError:
+                    continue  
+
+                except Exception as e: 
+                    raise e 
+
+            # Don't write explicit zero
+            if samps_in.any():
+                vox_tri_samps[vidx,t] = samps_in.sum()
+
+    return vox_tri_samps.tocsr()
+
+
+def __meyer_worker(points, tris, edges, edge_lengths, worklist):
+    """
+    Woker function for _meyer_areas()
+
+    Args: 
+        points: Px3 array
+        tris: Tx3 array of triangle indices into points 
+        edges: Tx3x3 array of triangle edges 
+        edge_lengths: Tx3 array of edge lengths 
+        worklist: iterable object, point indices to process (indexing
+            into the tris array)
+
+    Returns: 
+        PxT sparse CSR matrix, where element I,J is the area of triangle J
+            belonging to vertx I 
+    """
+
+    # We pre-compute all triangle edges, in the following order:
+    # e1-0, then e2-0, then e2-1. But we don't necessarily process
+    # the edge lengths in this order, so we need to keep track of them
+    EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
+    FULL_SET = set(range(3))
+    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]))
+
+    # Iterate through each triangle containing each point 
+    for pidx in worklist:
+        tris_touched = (tris == pidx)
+
+        for tidx in np.flatnonzero(tris_touched.any(1)):
+            # We need to work out at which index within the triangle
+            # this point sits: could be {0,1,2}, call it the cent_pidx
+            # Edge pairs e1 and e2 are defined as including cent_pidx (order
+            # irrelevant), then e3 is the remaining edge pair
+            cent_pidx = np.flatnonzero(tris_touched[tidx,:]).tolist()
+            e3 = FULL_SET.difference(cent_pidx)
+            other_idx = list(e3)
+            e1 = set(cent_pidx + [other_idx[0]])
+            e2 = set(cent_pidx + [other_idx[1]])
+
+            # Match the edge pairs to the order in which edges were calculated 
+            # earlier 
+            e1_idx, e2_idx, e3_idx = [ np.flatnonzero(
+                [ e == ei for ei in EDGE_INDEXING ]
+                ) for e in [e1, e2, e3] ] 
+
+            # And finally load the edges in the correct order 
+            L12 = edge_lengths[tidx,e3_idx]
+            L01 = edge_lengths[tidx,e1_idx]
+            L02 = edge_lengths[tidx,e2_idx]
+
+            # Angles 
+            alpha = (np.arccos((np.square(L01) + np.square(L02) - np.square(L12)) 
+                        / (2*L01*L02)))
+            beta  = (np.arccos((np.square(L01) + np.square(L12) - np.square(L02)) 
+                        / (2*L01*L12)))
+            gamma = (np.arccos((np.square(L02) + np.square(L12) - np.square(L01))
+                        / (2*L02*L12)))
+            angles = np.array([alpha, beta, gamma])
+
+            # Area if not obtuse
+            if not np.any((angles > np.pi/2)): # Voronoi
+                a = ((np.square(L01)/np.tan(gamma)) + (np.square(L02)/np.tan(beta))) / 8
+            else: 
+                # If obtuse, heuristic approach
+                area_t = 0.5 * np.linalg.norm(np.cross(edges[tidx,0,:], edges[tidx,1,:]))
+                if alpha > np.pi/2:
+                    a = area_t / 2
+                else:
+                    a = area_t / 4
+
+            vtx_tri_areas[pidx,tidx] = a 
+
+    return vtx_tri_areas.tocsr()
+
+
+def vtx_tri_weights(surf, cores=mp.cpu_count()):
+    """
+    Form a matrix of size (n_vertices x n_tris) where element (I,J) corresponds
+    to the area of triangle J belonging to vertex I. 
+
+    Areas are calculated according to the definition of A_mixed in "Discrete 
+    Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
+    M. Desbrun, P. Schroder, A.H. Barr.
+
+    With thanks to Jack Toner for the original code from which this is adapted.
+
+    Args: 
+        surf: Surface object 
+        cores: number of CPU cores to use, default max 
+
+    Returns: 
+        sparse CSR matrix, size (n_points, n_tris) where element I,J is the 
+            area of triangle J belonging to vertx I 
+    """
+
+    points = surf.points 
+    tris = surf.tris 
+    edges = np.stack([points[tris[:,1],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,0],:],
+                      points[tris[:,2],:] - points[tris[:,1],:]], axis=1)
+    edge_lengths = np.linalg.norm(edges, axis=2)
+    worker_func = functools.partial(__meyer_worker, points, tris, 
+                                    edges, edge_lengths)
+
+    if cores > 1: 
+        worker_lists = utils._distributeObjects(range(points.shape[0]), cores)
+        with mp.Pool(cores) as p: 
+            results = p.map(worker_func, worker_lists)
+
+        # Flatten results back down 
+        vtx_tri_weights = results[0]
+        for r in results[1:]:
+            vtx_tri_weights += r 
+
+    else: 
+        vtx_tri_weights = worker_func(range(points.shape[0]))
+
+    assert (vtx_tri_weights.data > 0).all(), 'Zero areas returned'
+    return vtx_tri_weights 

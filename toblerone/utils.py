@@ -9,6 +9,7 @@ import shutil
 import warnings 
 import time
 import multiprocessing
+import copy 
 
 import numpy as np 
 import nibabel
@@ -536,3 +537,42 @@ def enforce_and_load_common_arguments(func):
 
     return common_args_enforced
 
+
+def sparse_normalise(mat, axis, threshold=1e-6): 
+    """
+    Normalise a sparse matrix so that all rows (axis=1) or columns (axis=0)
+    sum to either 1 or zero. NB any rows or columns that sum to less than 
+    threshold will be rounded to zeros.
+
+    Args: 
+        mat: sparse matrix to normalise 
+        axis: dimension along which sums should equal 1 (0 for col, 1 for row)
+        threshold: any row/col wuth sum < threshold will be set to zero  
+
+    Returns: 
+        sparse matrix. either CSR (axis 0) or CSC (axis 1)
+    """
+
+    # Make local copy - otherwise this function will modify the caller's copy 
+    constructor = type(mat)
+    mat = copy.deepcopy(mat)
+
+    if axis == 0:
+        matrix = mat.tocsr()
+        norm = mat.sum(0).A.flatten()
+    elif axis == 1: 
+        matrix = mat.tocsc()
+        norm = mat.sum(1).A.flatten()
+    else: 
+        raise RuntimeError("Axis must be 0 or 1")
+
+    # Set threshold. Round any row/col below this to zeros 
+    fltr = (norm > threshold)
+    normalise = np.zeros(norm.size)
+    normalise[fltr] = 1 / norm[fltr]
+    matrix.data *= np.take(normalise, matrix.indices)
+
+    # Sanity check
+    sums = matrix.sum(axis).A.flatten()
+    assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'Did not normalise to 1'
+    return constructor(matrix)
