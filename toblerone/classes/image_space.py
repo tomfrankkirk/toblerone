@@ -19,7 +19,7 @@ class ImageSpace(BaseSpace):
     Voxel grid of an image, ignoring actual image data. 
 
     Args: 
-        path: path to image file
+        reference: path to image file, or regtricks ImageSpace object 
     
     Attributes: 
         size: array of voxel counts in each dimension 
@@ -30,8 +30,14 @@ class ImageSpace(BaseSpace):
     """
 
 
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, reference):
+        if type(reference) is BaseSpace:
+            self.file_name = reference.file_name
+            self.size = reference.size
+            self.vox2world = reference.vox2world
+            self.header = reference.header
+        else: 
+            super().__init__(reference)
         self.offset = None
 
 
