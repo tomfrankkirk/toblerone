@@ -69,6 +69,15 @@ def test_projection():
     v2n = projector.vol2node(vdata)
     n2v = projector.node2vol(v2n)
 
+def test_subvoxels():
+    supersampler = np.random.randint(2, 10, 3)
+    subvox_size = 1.0 / supersampler
+    vox_cent = np.random.randint(-10, 10, 3)
+    subvox_cents = core._get_subvoxel_grid(supersampler) + vox_cent
+    assert (np.abs(subvox_cents.mean(0) - vox_cent) < 1e-6).all()
+    for cidx, cent in enumerate(subvox_cents):
+        corners = cent + ((core.SUBVOXCORNERS - 0.5) * (subvox_size[None,:]))
+        assert ((np.abs(corners - cent) - subvox_size/2) < 1e-6).all()
 
 def test_convert(): 
     td = get_testdir()
