@@ -141,6 +141,16 @@ class Surface(object):
         self.assocs = None 
         self._index_space = None 
 
+    def __repr__(self):
+
+        from textwrap import dedent
+        return dedent(f"""\
+            Surface with {self.points.shape[0]} points and {self.tris.shape[0]} triangles. 
+            min (X,Y,Z):  {self.points.min(0)}
+            mean (X,Y,Z): {self.points.mean(0)}
+            max (X,Y,Z):  {self.points.max(0)}
+            """)
+
 
     @classmethod
     def manual(cls, ps, ts, name=None):
