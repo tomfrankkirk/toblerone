@@ -230,41 +230,6 @@ def _runFAST(struct, dir):
     os.chdir(pwd)
 
 
-# Local function to read out an FSL-specific affine matrix from an image
-def _getFSLspace(imgPth):
-    obj = nibabel.load(imgPth)
-    if obj.header['dim'][0] < 3:
-        raise RuntimeError("Volume has less than 3 dimensions" +
-                                "cannot resolve space")
-
-    sform = obj.affine
-    det = np.linalg.det(sform[0:4, 0:4])
-    ret = np.identity(4)
-    pixdim = obj.header['pixdim'][1:4]
-    for d in range(3):
-        ret[d,d] = pixdim[d]
-
-    # Check the xyzt field to find the spatial units. 
-    xyzt = str(obj.header['xyzt_units'])
-    if xyzt == '01': 
-        multi = 1000
-    elif xyzt == '10':
-        multi = 1 
-    elif xyzt == '11':
-        multi = 1e-3
-    else: 
-        multi = 1
-        warnings.warn("Assuming mm units for transform")
-
-    if det > 0:
-        ret[0,0] = -pixdim[0]
-        ret[0,3] = (obj.header['dim'][1] - 1) * pixdim[0]
-
-    ret = ret * multi
-    ret[3,3] = 1
-    return ret
-
-
 def affineTransformPoints(points, affine):
     """Apply affine transformation to set of points.
 
