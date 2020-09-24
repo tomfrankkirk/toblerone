@@ -42,7 +42,7 @@ def test_cortex():
     hemi = classes.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     s2r = np.identity(4)
-    supersampler = [2,2,2]
+    supersampler = 3 * [1]
 
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
         1, False)
@@ -78,5 +78,26 @@ def test_convert():
     assert np.allclose(s.points, s2.points)
     os.remove('test.vtk')
 
+def test_adjacency():
+    td = get_testdir()
+    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    adj = s.adjacency_matrix()
+    assert not (adj.data < 0).any(), 'negative value in adjacency matrix'
+
+def test_mesh_laplacian():
+    td = get_testdir()
+    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    lap = s.mesh_laplacian()
+    assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
+
+def test_lbo():
+    td = get_testdir()
+    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    for area in ['barycentric', 'voronoi', 'mayer']:
+        lbo = s.laplace_beltrami(area)
+        assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
+
+
+
 if __name__ == "__main__":
-    test_convert()
+    test_lbo()

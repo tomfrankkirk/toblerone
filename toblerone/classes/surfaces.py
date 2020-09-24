@@ -10,13 +10,15 @@ import multiprocessing as mp
 
 import numpy as np 
 import nibabel 
+import igl 
+from scipy import sparse
 
 try: 
     import pyvista
     import meshio 
     _VTK_ENABLED = True 
 except ImportError as e: 
-    warnings.warn("Could not import VTK/meshio/pyvista: these are required to"
+    warnings.warn("Could not import meshio/pyvista: these are required to"
         " read/write VTK surfaces. VTK requires Python <=3.7 (as of May 2020)")
     _VTK_ENABLED = False 
 
@@ -608,6 +610,56 @@ class Surface(object):
         tris = 3 * np.ones((self.tris.shape[0], self.tris.shape[1]+1), np.int32)
         tris[:,1:] = self.tris 
         return pyvista.PolyData(self.points, tris)
+
+    def adjacency_matrix(self):
+        """
+        Adjacency matrix for the points of this surface, as a scipy sparse
+        matrix of size P x P, with 1 denoting a shared edge between points. 
+        """
+
+        return igl.adjacency_matrix(self.tris)
+
+    def mesh_laplacian(self):
+        """
+        Mesh Laplacian operator for this surface, as a scipy sparse matrix 
+        of size n_points x n_points. Elements on the diagonal are negative 
+        and off-diagonal elements are positive. All neighbours are weighted 
+        with value 1 (ie, equal weighting ignoring distance). 
+        """
+
+        adj = self.adjacency_matrix()
+        central_weight = np.sum(adj, axis=1)
+        laplacian = np.diagflat(central_weight)
+        laplacian = adj - laplacian
+        assert (laplacian.sum(1) == 0).min(), 'unweighted laplacian'
+        return laplacian
+
+    def laplace_beltrami(self, area='mayer'):
+        """
+        Laplace-Beltrami operator for this surface, as a scipy sparse matrix
+        of size n_points x n_points. Elements on the diagonal are negative 
+        and off-diagonal elements are positive. 
+
+        Args: 
+            area (string): 'barycentric', 'voronoi', 'mayer'. Area calculation
+                used for mass matrix, default is 'mayer'. 
+        """
+
+        if area == 'barycentric':
+            M = igl.massmatrix(self.points, self.tris, 
+                    igl.MASSMATRIX_TYPE_BARYCENTRIC)
+        elif area == 'voronoi':
+            M = igl.massmatrix(self.points, self.tris, 
+                    igl.MASSMATRIX_TYPE_VORONOI)
+        elif area == 'mayer':
+            M = core.vtx_tri_weights(self)
+            M = sparse.diags(np.squeeze(M.sum(1).A))
+
+        L = igl.cotmatrix(self.points, self.tris)
+        lbo = (M.power(-1)).dot(L)
+        assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
+        return lbo
+
 
 
 class Patch(Surface):
