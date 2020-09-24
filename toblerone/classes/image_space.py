@@ -10,6 +10,7 @@ import warnings
 
 import nibabel
 import numpy as np 
+from scipy import sparse
 from regtricks import ImageSpace as BaseSpace
 
 from toblerone import utils
@@ -32,10 +33,11 @@ class ImageSpace(BaseSpace):
 
     def __init__(self, reference):
         if type(reference) is BaseSpace:
-            self.file_name = reference.file_name
-            self.size = reference.size
-            self.vox2world = reference.vox2world
-            self.header = reference.header
+            ref = copy.deepcopy(reference)
+            self.file_name = ref.file_name
+            self.size = ref.size
+            self.vox2world = ref.vox2world
+            self.header = ref.header
         else: 
             super().__init__(reference)
         self.offset = None
