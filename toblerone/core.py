@@ -42,7 +42,7 @@ DIMS = np.array([0,1,2,0,1,2])
 VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
 VOX_HALF_VECS = np.array((VOX_HALF_CYCLE, -1 * VOX_HALF_CYCLE)).reshape(6,3)
 
-# 
+# # 
 SUBVOXCORNERS = np.array([ 
         [0, 0, 0], [1, 0, 0], 
         [0, 1, 0], [1, 1, 0], 
@@ -452,32 +452,6 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
         ~containedFlag)
 
     return flags.sum() / Nsubs2
-
-
-# FIXME: remove this function and associated module level constant 
-def _fetchSubVoxCornerIndices(linIdx, supersampler):
-    """Map between linear subvox index number and the indices of its
-    vertices (i,j,k) within the larger grid of subvoxel vertices
-
-    Args: 
-        linIdx: int linear index within the grid of subvoxels
-        supersampler: 3-element list, size of subvoxel grid
-
-    Returns: 
-        list of linear indices into array of subvoxel corners array
-    """
-
-    # Get the IJK coords within the subvoxel grid. 
-    # Vertices are then +1/0 from these coords
-    ijk = np.array(np.unravel_index(linIdx, supersampler), dtype=np.int16).T
-    subs = SUBVOXCORNERS + ijk[None,:]
-
-    # And map these vertix subscripts to linear indices within the 
-    # grid of subvox vertices (which is always + 1 larger than supersamp)
-    corners = np.ravel_multi_index((subs[:,0], subs[:,1], subs[:,2]), 
-        supersampler + 1)
-
-    return corners 
 
 
 def _get_subvoxel_grid(supersampler):
