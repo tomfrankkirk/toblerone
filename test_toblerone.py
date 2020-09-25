@@ -11,8 +11,9 @@ from pdb import set_trace
 import os 
 
 import toblerone
-from toblerone import classes, projection
+from toblerone import classes, projection, core 
 from toblerone.pvestimation import estimators
+from regtricks.application_helpers import sum_array_blocks
 
 cores = multiprocessing.cpu_count()
 
@@ -42,14 +43,27 @@ def test_cortex():
     hemi = classes.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     s2r = np.identity(4)
-    supersampler = 3 * [1]
 
+    # superfactor = 10
+    # spc_high = spc.resize_voxels(1.0/superfactor)
+    # voxelised = np.zeros(spc_high.size.prod(), dtype=np.float32)
+    # hemi.inSurf.index_on(spc_high, s2r)
+    # reindex_in = hemi.inSurf.reindexing_filter(spc_high)
+    # voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(np.float32)
+    # hemi.outSurf.index_on(spc_high, s2r)
+    # reindex_out = hemi.outSurf.reindexing_filter(spc_high)
+    # voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
+    # voxelised = voxelised.reshape(spc_high.size)
+    # voxelised = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
+    # spc.save_image(voxelised, f'{td}/voxelised.nii.gz')
+
+    supersampler = 3 * [4]
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
-        1, False)
+        8, False)
 
-    spc.save_image(fracs, 'fracs.nii.gz')
-    truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
-    np.testing.assert_array_almost_equal(fracs, truth, 1)
+    spc.save_image(fracs, f'{td}/fracs.nii.gz')
+    # truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
+    # np.testing.assert_array_almost_equal(fracs, truth, 1)
 
 
 def test_projection():
@@ -70,14 +84,15 @@ def test_projection():
     n2v = projector.node2vol(v2n)
 
 def test_subvoxels():
+
     supersampler = np.random.randint(2, 10, 3)
     subvox_size = 1.0 / supersampler
     vox_cent = np.random.randint(-10, 10, 3)
     subvox_cents = core._get_subvoxel_grid(supersampler) + vox_cent
     assert (np.abs(subvox_cents.mean(0) - vox_cent) < 1e-6).all()
-    for cidx, cent in enumerate(subvox_cents):
-        corners = cent + ((core.SUBVOXCORNERS - 0.5) * (subvox_size[None,:]))
-        assert ((np.abs(corners - cent) - subvox_size/2) < 1e-6).all()
+    for cidx, scent in enumerate(subvox_cents):
+        corners = scent + ((core.SUBVOXCORNERS) * (subvox_size[None,:]))
+        assert ((np.abs(corners - scent) - subvox_size/2) < 1e-6).all()
 
 def test_convert(): 
     td = get_testdir()
@@ -109,4 +124,4 @@ def test_lbo():
 
 
 if __name__ == "__main__":
-    test_lbo()
+    test_subvoxels()
