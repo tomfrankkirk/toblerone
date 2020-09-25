@@ -90,14 +90,15 @@ def test_projection():
 
 def test_subvoxels():
 
-    supersampler = np.random.randint(2, 10, 3)
+    supersampler = np.random.randint(2, 3, 3)
     subvox_size = 1.0 / supersampler
     vox_cent = np.random.randint(-10, 10, 3)
     subvox_cents = core._get_subvoxel_grid(supersampler) + vox_cent
     assert (np.abs(subvox_cents.mean(0) - vox_cent) < 1e-6).all()
+    assert subvox_cents.shape[0] == supersampler.prod()
     for cidx, scent in enumerate(subvox_cents):
         corners = scent + ((core.SUBVOXCORNERS) * (subvox_size[None,:]))
-        assert core._filterPoints(corners, scent, subvox_size)
+        assert core._filterPoints(corners, scent, subvox_size).all()
 
 def test_convert(): 
     td = get_testdir()
@@ -126,7 +127,5 @@ def test_lbo():
         lbo = s.laplace_beltrami(area)
         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
-
-
 if __name__ == "__main__":
-    test_cortex()
+    test_subvoxels()

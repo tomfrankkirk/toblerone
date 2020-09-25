@@ -519,19 +519,21 @@ def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
 
     # Create a grid of 125 subvoxels, calculate fraction by simply testing
     # each subvoxel centre coordinate. 
-    super2 = 5
-    Nsubs2 = 125
-    sX = np.arange(1 / (2 * super2), 1, 1 / super2, dtype=np.float32) - 0.5
-    sX, sY, sZ = np.meshgrid(sX, sX, sX)
-    subVoxCents = np.vstack((
-        sX.flatten() * vox_size[0], 
-        sY.flatten() * vox_size[1],  
-        sZ.flatten() * vox_size[2])).T + voxCent
+    super2 = 5 * np.ones(3)
+    subVoxCents = _get_subvoxel_grid(super2) + voxCent
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
-    return flags.sum() / Nsubs2
+    return flags.sum() / super2.prod()
 
+
+def _get_subvoxel_grid(supersampler):
+
+    # Test all subvox centres now and store the results for later
+    steps = 1.0 / supersampler
+    subs = np.meshgrid(*[np.arange(s/2, 1, s, dtype=np.float32) for s in steps ]
+    )
+    return np.stack(subs, axis=-1).reshape(-1,3) - 0.5
 
 def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
@@ -563,12 +565,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     patch = surf.to_patch(voxIdx)
 
     # Test all subvox centres now and store the results for later
-    si = np.linspace(0, 1, 2*supersampler[0] + 1, dtype=np.float32) - 0.5
-    sj = np.linspace(0, 1, 2*supersampler[1] + 1, dtype=np.float32) - 0.5
-    sk = np.linspace(0, 1, 2*supersampler[2] + 1, dtype=np.float32) - 0.5
-    [si, sj, sk] = np.meshgrid(si[1:-1:2], sj[1:-1:2], sk[1:-1:2])
-    allCents = (np.vstack((si.flatten(), sj.flatten(), sk.flatten())).T
-        + voxIJK)
+    allCents = _get_subvoxel_grid(supersampler) + voxIJK
     allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK,
         ~voxCentFlag)
 
