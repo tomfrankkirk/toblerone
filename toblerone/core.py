@@ -22,8 +22,7 @@ from scipy.spatial.qhull import QhullError, Delaunay
 
 from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection, _cyfilterTriangles,
                                   _cytestManyRayTriangleIntersections)
-from toblerone.ctoblerone import quick_cross, normal_to_vector, point_groups_intersect
-from toblerone.ctoblerone import separate_point_clouds
+from toblerone.ctoblerone import quick_cross, normal_to_vector
 from toblerone import utils 
 
 
@@ -42,25 +41,25 @@ DIMS = np.array([0,1,2,0,1,2])
 VOX_HALF_CYCLE = np.array(((0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5))) 
 VOX_HALF_VECS = np.array((VOX_HALF_CYCLE, -1 * VOX_HALF_CYCLE)).reshape(6,3)
 
-# # 
-SUBVOXCORNERS = np.array([ 
+# corners of a voxel centered on origin 
+SUBVOXCORNERS = (np.array([ 
         [0, 0, 0], [1, 0, 0], 
         [0, 1, 0], [1, 1, 0], 
         [0, 0, 1], [1, 0, 1], 
         [0, 1, 1], [1, 1, 1]], 
-        dtype=np.float32) 
+        dtype=np.float32) - 0.5)
 
 # See the _vox_tri_weights_worker() function for an explanation of the 
 # naming convention here. 
 TETRA1 = np.array([[0,3,4,5],   # aABC
-                       [0,1,2,4],   # abcB
-                       [0,2,4,5]],  # acBC
-                       dtype=np.int8)  
+                   [0,1,2,4],   # abcB
+                   [0,2,4,5]],  # acBC
+                   dtype=np.int8)  
 
 TETRA2 = np.array([[0,3,4,5],   # aABC
-                       [0,1,2,5],   # abcC
-                       [0,1,4,5]],  # abBC
-                       dtype=np.int8) 
+                   [0,1,2,5],   # abcC
+                   [0,1,4,5]],  # abBC
+                   dtype=np.int8) 
 
 # tdqm progress bar format
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
@@ -71,6 +70,76 @@ def _filterPoints(points, voxCent, vox_size):
     """Logical filter of points inside a voxel"""
 
     return np.all(np.less_equal(np.abs(points - voxCent), vox_size/2), axis=1)
+
+
+def _pointGroupsIntersect(grps, tris): 
+    """For _separatePointClouds. Break as soon as overlap is found"""
+    for g in range(len(grps)):
+        for h in range(g + 1, len(grps)): 
+            if np.any(np.intersect1d(tris[grps[g],:], 
+                tris[grps[h],:])):
+                return True 
+
+    return False 
+
+
+def _separatePointClouds(tris):
+    """Separate patches of a surface that intersect a voxel into disconnected
+    groups, ie, point clouds. If the patch is cointguous within the voxel
+    a single group will be returned.
+    
+    Args: 
+        tris: n x 3 matrix of triangle indices into a points matrix
+
+    Returns: 
+        list of m arrays representing the point clouds, each of which is 
+            list of row numbers into the given tris matrix 
+    """
+
+    if not tris.shape[0]:
+        return [] 
+
+    groups = [] 
+    for t in range(tris.shape[0]):
+
+        # If any node of the triangle is contained within the existing
+        # groups, then append to that group. Assume new group needed
+        # until proven otherwise
+        newGroupNeeded = True 
+        for g in range(len(groups)):
+            if np.any(np.in1d(tris[t,:], tris[groups[g],:])):
+                newGroupNeeded = False
+                break 
+        
+        # Append triangle to existing group, using the break-value of g
+        if not newGroupNeeded:
+            groups[g].append(t)
+        
+        # New group needed
+        else: 
+            groups.append([t])
+
+    # Merge groups that intersect 
+    if len(groups) > 1: 
+        while _pointGroupsIntersect(groups, tris): 
+            didMerge = False 
+
+            for g in range(len(groups)):
+                if didMerge: break 
+
+                for h in range(g + 1, len(groups)):
+                    if didMerge: break
+
+                    if np.any(np.intersect1d(tris[groups[g],:], 
+                        tris[groups[h],:])):
+                        groups[g] = groups[g] + groups[h]
+                        groups.pop(h)
+                        didMerge = True  
+
+    # Check for empty groups 
+    assert all(map(len, groups)), 'Empty group remains after merging'
+    
+    return groups 
 
 
 def _formAssociationsWorker(tris, points, grid_size, triInds):
@@ -513,11 +582,8 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
     # Rebase triangles and points for this voxel
     patch = surf.to_patch(voxIdx)
 
-    # Test all subvox corners now and store the results for later
-    subvoxcorners = (SUBVOXCORNERS - 0.5) * subvox_size[None,:]
-    voxCentFlag = surf.voxelised[voxIdx]
-
     # Test all subvox centres now and store the results for later
+    voxCentFlag = surf.voxelised[voxIdx]
     allCents = supergrid + voxIJK
     allCentFlags = _reducedRayIntersectionTest(allCents, patch, voxIJK,
         ~voxCentFlag)
@@ -551,7 +617,7 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
 
             # Shrink the patch appropriately, calculate corners
             smallPatch = patch.shrink(triFltr)
-            corners = subVoxCent + subvoxcorners
+            corners = subVoxCent + ((SUBVOXCORNERS) * (subvox_size[None,:]))
             cornerFlags = _reducedRayIntersectionTest(corners, smallPatch, 
                                 voxIJK, ~subVoxFlag)
 
@@ -562,7 +628,7 @@ def _estimateVoxelFraction(voxIJK, voxIdx, surf, supersampler, supergrid,
 
             # Separate points within the voxel into distinct clouds, to check
             # for multiple surface intersection
-            groups = separate_point_clouds(smallPatch.tris)
+            groups = _separatePointClouds(smallPatch.tris)
 
             # If neither surface is folded within the subvox and there 
             # are no multiple intersections, we can form hulls. 

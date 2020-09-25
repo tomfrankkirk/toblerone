@@ -412,7 +412,7 @@ class Surface(object):
             array of linear voxel indices 
         """
 
-        group_counts = np.array([len(core.separate_point_clouds(
+        group_counts = np.array([len(core._separatePointClouds(
             self.tris[self.assocs[v,:].indices,:])) 
             for v in self.assocs_keys ])
         bridges = self.assocs_keys[group_counts > 1]
