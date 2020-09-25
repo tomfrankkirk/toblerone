@@ -38,32 +38,37 @@ def test_indexing():
 
 def test_cortex():
     td = get_testdir()
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+
     ins = op.join(td, 'in.surf.gii')
     outs = op.join(td, 'out.surf.gii')
     hemi = classes.Hemisphere(ins, outs, 'L')
-    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     s2r = np.identity(4)
-
-    # superfactor = 10
-    # spc_high = spc.resize_voxels(1.0/superfactor)
-    # voxelised = np.zeros(spc_high.size.prod(), dtype=np.float32)
-    # hemi.inSurf.index_on(spc_high, s2r)
-    # reindex_in = hemi.inSurf.reindexing_filter(spc_high)
-    # voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(np.float32)
-    # hemi.outSurf.index_on(spc_high, s2r)
-    # reindex_out = hemi.outSurf.reindexing_filter(spc_high)
-    # voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
-    # voxelised = voxelised.reshape(spc_high.size)
-    # voxelised = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
-    # spc.save_image(voxelised, f'{td}/voxelised.nii.gz')
-
-    supersampler = 3 * [4]
+    supersampler = np.random.randint(3,6,3)
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
         8, False)
+    # spc.save_image(fracs, f'{td}/fracs.nii.gz')
 
-    spc.save_image(fracs, f'{td}/fracs.nii.gz')
-    # truth = np.squeeze(nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata())
-    # np.testing.assert_array_almost_equal(fracs, truth, 1)
+    # REFRESH the surfaces of the hemisphere before starting again - indexing! 
+    hemi = classes.Hemisphere(ins, outs, 'L')
+    superfactor = 10
+    spc_high = spc.resize_voxels(1.0/superfactor)
+    voxelised = np.zeros(spc_high.size.prod(), dtype=np.float32)
+    hemi.inSurf.index_on(spc_high, s2r)
+    reindex_in = hemi.inSurf.reindexing_filter(spc_high)
+    voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(np.float32)
+    hemi.outSurf.index_on(spc_high, s2r)
+    reindex_out = hemi.outSurf.reindexing_filter(spc_high)
+    voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
+    voxelised = voxelised.reshape(spc_high.size)
+    voxelised = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
+    # spc.save_image(voxelised, f'{td}/voxelised.nii.gz')
+
+    truth = np.squeeze(nibabel.load(op.join(td, 'voxelised.nii.gz')).get_fdata())
+    np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
+
+
+# TODO: a test for tri-voxel intersection?
 
 
 def test_projection():
@@ -92,7 +97,7 @@ def test_subvoxels():
     assert (np.abs(subvox_cents.mean(0) - vox_cent) < 1e-6).all()
     for cidx, scent in enumerate(subvox_cents):
         corners = scent + ((core.SUBVOXCORNERS) * (subvox_size[None,:]))
-        assert ((np.abs(corners - scent) - subvox_size/2) < 1e-6).all()
+        assert core._filterPoints(corners, scent, subvox_size)
 
 def test_convert(): 
     td = get_testdir()
@@ -124,4 +129,4 @@ def test_lbo():
 
 
 if __name__ == "__main__":
-    test_subvoxels()
+    test_cortex()
