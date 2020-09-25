@@ -20,8 +20,10 @@ import tqdm
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError, Delaunay
 
-from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection, _cyfilterTriangles,
-                                  _cytestManyRayTriangleIntersections)
+from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,  
+                                  _cyfilterTriangles,
+                                  _cytestManyRayTriangleIntersections,
+                                  _quick_cross)
 from toblerone import utils 
 
 
@@ -64,14 +66,6 @@ TETRA2 = np.array([[0,3,4,5],   # aABC
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
 # Functions -------------------------------------------------------------------
-
-def quick_cross(a, b):
-    """Quick cross product of 3-element vectors"""
-
-    return np.array([
-        (a[1]*b[2]) - (a[2]*b[1]),
-        (a[2]*b[0]) - (a[0]*b[2]), 
-        (a[0]*b[1]) - (a[1]*b[0])], dtype = np.float32)
 
 
 def _filterPoints(points, voxCent, vox_size):
@@ -264,10 +258,10 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # dimensions 1 and 2 (XY). Define a new coordinate system (d unit vectors) 
     # with d3 along the ray, d2 and d1 in plane.
     if np.abs(ray[2]) < np.abs(ray[0]):
-        d2 = np.array([ray[1], -ray[0], 0])
+        d2 = np.array([ray[1], -ray[0], 0], dtype=np.float32)
     else:
-        d2 = np.array([0, -ray[2], ray[1]])
-    d1 = quick_cross(d2, ray)
+        d2 = np.array([0, -ray[2], ray[1]], dtype=np.float32)
+    d1 = _quick_cross(d2, ray)
 
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
