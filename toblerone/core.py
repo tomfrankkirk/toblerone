@@ -147,7 +147,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
     Worker function for use with multiprocessing. See formAssociations
     
     Returns: 
-        defaultdict, key: vox idx, value: list of tri numbers 
+        sparse CSR matrix, shape (n_voxels, n_tris), boolean values.  
     """
 
     vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
