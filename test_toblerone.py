@@ -61,10 +61,10 @@ def test_cortex():
     reindex_out = hemi.outSurf.reindexing_filter(spc_high)
     voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
     voxelised = voxelised.reshape(spc_high.size)
-    voxelised = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
-    # spc.save_image(voxelised, f'{td}/voxelised.nii.gz')
+    truth = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
+    # spc.save_image(truth, f'{td}/truth.nii.gz')
 
-    truth = np.squeeze(nibabel.load(op.join(td, 'voxelised.nii.gz')).get_fdata())
+    # truth = np.squeeze(nibabel.load(op.join(td, 'truth.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
 
 def test_vox_tri_intersection():
