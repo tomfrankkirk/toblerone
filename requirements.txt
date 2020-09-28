@@ -5,3 +5,4 @@ scipy
 tqdm
 fslpy
 regtricks
+igl @ git+https://github.com/libigl/libigl-python-bindings.git@master
