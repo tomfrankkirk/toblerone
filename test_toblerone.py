@@ -1,10 +1,9 @@
 """Toblerone tests"""
 
-import unittest
 import os.path as op 
 import nibabel 
 import pickle 
-import gzip
+from nibabel import test
 import numpy as np 
 import multiprocessing
 from pdb import set_trace
@@ -12,6 +11,7 @@ import os
 
 import toblerone
 from toblerone import classes, projection, core 
+from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
 
@@ -67,9 +67,24 @@ def test_cortex():
     truth = np.squeeze(nibabel.load(op.join(td, 'voxelised.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
 
+def test_vox_tri_intersection():
 
-# TODO: a test for tri-voxel intersection?
+    # Generate N triangles for which all vertices are contained
+    # within a unit voxel at the origin 
+    N = int(1e6)
+    ps = (np.random.rand(N,3,3) - 0.5).astype(np.float32)
+    ts = np.arange(3*N).reshape(N,3).astype(np.int32)
 
+    # Multiply out the first two vertices of each triangle,
+    # which will push most of them outside the voxel
+    ps[:,1:,:] *= np.random.randint(1, 10, (N,2))[:,:,None]
+    ps = ps.reshape(-1,3)
+
+    # Unit voxel, assert all intersect. 
+    cent = np.zeros(3, dtype=np.float32)
+    size = np.ones(3, dtype=np.float32)
+    flags = _cyfilterTriangles(ts, ps, cent, size)
+    assert flags.all(), 'Not all triangles intersect voxel'
 
 def test_projection():
     td = get_testdir()
@@ -128,4 +143,4 @@ def test_lbo():
         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
 if __name__ == "__main__":
-    test_subvoxels()
+    test_vox_tri_intersection()
