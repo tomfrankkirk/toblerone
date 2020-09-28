@@ -25,6 +25,7 @@ from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,
                                   _cytestManyRayTriangleIntersections,
                                   _quick_cross)
 from toblerone import utils 
+from toblerone.utils import NP_FLOAT
 
 
 # Module level constants ------------------------------------------------------
@@ -48,7 +49,7 @@ SUBVOXCORNERS = (np.array([
         [0, 1, 0], [1, 1, 0], 
         [0, 0, 1], [1, 0, 1], 
         [0, 1, 1], [1, 1, 1]], 
-        dtype=np.float32) - 0.5)
+        dtype=NP_FLOAT) - 0.5)
 
 # See the _vox_tri_weights_worker() function for an explanation of the 
 # naming convention here. 
@@ -152,7 +153,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
         sparse CSR matrix, shape (n_voxels, n_tris), boolean values.  
     """
 
-    vox_size = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    vox_size = np.array([0.5, 0.5, 0.5], dtype=NP_FLOAT)
     assocs = sparse.dok_matrix((grid_size.prod(), tris.shape[0]), dtype=np.bool)
 
     for t in triInds:
@@ -163,7 +164,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
         lims = np.vstack((tri.min(0), tri.max(0)+1)).round().astype(np.int16)
         nhood = np.array(list(itertools.product(
             range(*lims[:,0]), range(*lims[:,1]), range(*lims[:,2]))), 
-            dtype=np.float32)
+            dtype=NP_FLOAT)
 
         for ijk in nhood: 
             if _ctestTriangleVoxelIntersection(ijk, vox_size, tri):
@@ -190,7 +191,7 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
         1 x j vector of multipliers along the ray to the points of intersection
     """
 
-    ray = np.zeros(3, dtype=np.float32)
+    ray = np.zeros(3, dtype=NP_FLOAT)
     ray[axis] = 1 
 
     # Filter triangles that intersect with this ray 
@@ -258,9 +259,9 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # dimensions 1 and 2 (XY). Define a new coordinate system (d unit vectors) 
     # with d3 along the ray, d2 and d1 in plane.
     if np.abs(ray[2]) < np.abs(ray[0]):
-        d2 = np.array([ray[1], -ray[0], 0], dtype=np.float32)
+        d2 = np.array([ray[1], -ray[0], 0], dtype=NP_FLOAT)
     else:
-        d2 = np.array([0, -ray[2], ray[1]], dtype=np.float32)
+        d2 = np.array([0, -ray[2], ray[1]], dtype=NP_FLOAT)
     d1 = _quick_cross(d2, ray)
 
     # Calculate the projection of each point onto the direction vector of the
@@ -272,10 +273,10 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
     onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(lmbda.size)], dtype=np.float32)
+        np.zeros(lmbda.size)], dtype=NP_FLOAT)
 
     # Now perform the test 
-    start = np.zeros(3, dtype=np.float32)
+    start = np.zeros(3, dtype=NP_FLOAT)
     fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
         0, 1)
 
@@ -410,7 +411,7 @@ def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
     """
 
     if not patch.tris.shape[0]:
-        return np.zeros((0,3), dtype=np.float32)
+        return np.zeros((0,3), dtype=NP_FLOAT)
 
     # Form all the edge vectors of the patch, then strip out repeats
     edges = np.concatenate((patch.tris[:,0],patch.tris[:,0],patch.tris[:,2],
@@ -421,7 +422,7 @@ def _findTriangleVoxFaceIntersections(patch, voxCent, vox_size):
         if not np.any(np.all(np.isin(edges[k+1:,:], edges[k,:]), axis=1)):
             nonrpt = np.vstack((nonrpt, edges[k,:]))
     
-    intXs = np.empty((0,3), dtype=np.float32)
+    intXs = np.empty((0,3), dtype=NP_FLOAT)
     edgeVecs = (patch.points[nonrpt[:,1],:] - patch.points[nonrpt[:,0],:])
 
     # Iterate over each dimension, moving +0.5 and -0.5 of the voxel size
@@ -461,7 +462,7 @@ def _findVoxelSurfaceIntersections(patch, vertices):
             function returns immediately (without complete set of intersections)
     """
 
-    intersects = np.empty((0,3), dtype=np.float32)
+    intersects = np.empty((0,3), dtype=NP_FLOAT)
     fold = False 
 
     # If nothing to test, silently return empty results / false flag
@@ -531,7 +532,7 @@ def _get_subvoxel_grid(supersampler):
 
     # Test all subvox centres now and store the results for later
     steps = 1.0 / supersampler
-    subs = np.meshgrid(*[np.arange(s/2, 1, s, dtype=np.float32) for s in steps ]
+    subs = np.meshgrid(*[np.arange(s/2, 1, s, dtype=NP_FLOAT) for s in steps ]
     )
     return np.stack(subs, axis=-1).reshape(-1,3) - 0.5
 
@@ -557,8 +558,8 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     inFraction = 0.0
 
     # Set up the subvoxel sizes and vols. 
-    subvox_size = (1.0 / supersampler).astype(np.float32)
-    subVoxVol = np.prod(subvox_size).astype(np.float32)
+    subvox_size = (1.0 / supersampler).astype(NP_FLOAT)
+    subVoxVol = np.prod(subvox_size).astype(NP_FLOAT)
 
     # Rebase triangles and points for this voxel
     voxCentFlag = surf.voxelised[voxIdx]
@@ -753,10 +754,10 @@ def _estimateFractionsWorker(surf, supersampler, chunk):
     # exception to the caller instead of raising it here (within a parallel
     # pool the exception will not be raised)
     try:
-        pvs = np.zeros(len(chunk), dtype=np.float32)
+        pvs = np.zeros(len(chunk), dtype=NP_FLOAT)
         vox_inds = surf.assocs_keys[chunk]
         vox_ijks = np.array(np.unravel_index(vox_inds, surf._index_space.size),
-            dtype=np.float32).T
+            dtype=NP_FLOAT).T
 
         for idx in range(len(chunk)):
             pvs[idx] = _estimateVoxelFraction(surf, vox_ijks[idx,:], 
@@ -796,7 +797,7 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
         shift[other_dims[0]] = dim_range.start
         rayIJK = np.zeros((size[dim], 3), dtype=np.int32)
         rayIJK[:,dim] = np.arange(0, size[dim])
-        start_point = np.zeros(3, dtype=np.float32)
+        start_point = np.zeros(3, dtype=NP_FLOAT)
 
         for d1d2 in raysd1d2: 
 
@@ -900,8 +901,8 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
     # Initialise a grid of sample points, sized by (factor) in each dimension. 
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]), dtype=np.float32)
-    sampler = np.linspace(0, 1, 2*factor + 1, dtype=np.float32)[1:-1:2]
+        in_surf.tris.shape[0]), dtype=NP_FLOAT)
+    sampler = np.linspace(0, 1, 2*factor + 1, dtype=NP_FLOAT)[1:-1:2]
     samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
                .reshape(-1,3) - 0.5)
 
@@ -945,7 +946,7 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
             vox_tri_samps[hood_vidx,t] = factor ** 3
             continue
 
-        for vidx, ijk in zip(hood_vidx, hood.astype(np.float32)):
+        for vidx, ijk in zip(hood_vidx, hood.astype(NP_FLOAT)):
             v_samps = ijk + samples
 
             # The two triangles form an almost triangular prism in space (like a
@@ -1031,7 +1032,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
     FULL_SET = set(range(3))
     vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]),
-        dtype=np.float32)
+        dtype=NP_FLOAT)
 
     # Iterate through each triangle containing each point 
     for pidx in worklist:

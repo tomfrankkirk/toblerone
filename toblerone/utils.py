@@ -16,6 +16,8 @@ import nibabel
 from fsl.wrappers import fsl_anat
 import regtricks as rt 
 
+NP_FLOAT = np.float32
+
 STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
                 'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
                 'R_Thal', 'BrStem']
@@ -250,7 +252,7 @@ def affineTransformPoints(points, affine):
     # then re-transpose and drop 4th column  
     transfd = np.ones((points.shape[0], 4))
     transfd[:,0:3] = points
-    transfd = np.matmul(affine, transfd.T).astype(np.float32)
+    transfd = np.matmul(affine, transfd.T).astype(NP_FLOAT)
     return np.squeeze(transfd[0:3,:].T)
 
 
@@ -441,12 +443,12 @@ def enforce_and_load_common_arguments(func):
                     try: 
                         if matExt in ['.txt', '.mat']:
                             matrix = np.loadtxt(kwargs['struct2ref'], 
-                                dtype=np.float32)
+                                dtype=NP_FLOAT)
                         elif matExt in ['.npy', 'npz', '.pkl']:
                             matrix = np.load(kwargs['struct2ref'])
                         else: 
                             matrix = np.fromfile(kwargs['struct2ref'], 
-                                dtype=np.float32)
+                                dtype=NP_FLOAT)
 
                     except Exception as e:
                         warnings.warn("""Could not load struct2ref matrix. 

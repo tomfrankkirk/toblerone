@@ -7,7 +7,7 @@ import copy
 
 import numpy as np
 
-from toblerone.utils import STRUCTURES
+from toblerone.utils import STRUCTURES, NP_FLOAT
 from toblerone.classes import Surface, Hemisphere
 
 def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
@@ -55,7 +55,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         out_pvs = h.outSurf.output_pvs(space).flatten()
 
         # Combine estimates from each surface into whole hemi PV estimates
-        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=NP_FLOAT)
         hemiPVs[:,1] = in_pvs 
         hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
         hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
@@ -68,7 +68,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
 
     else:
         h1, h2 = loc_hemispheres
-        outPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        outPVs = np.zeros((np.prod(space.size), 3), dtype=NP_FLOAT)
         outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
         outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
             h1.PVs[:,1] + h2.PVs[:,1])

@@ -24,6 +24,7 @@ except ImportError as e:
 
 from .image_space import ImageSpace
 from .. import utils, core
+from ..utils import NP_FLOAT
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -133,7 +134,7 @@ class Surface(object):
             # Finally, convert from voxel coords to world mm 
             ps = utils.affineTransformPoints(ps, struct_spc.vox2world)
 
-        self.points = ps.astype(np.float32)
+        self.points = ps.astype(NP_FLOAT)
         self.tris = ts.astype(np.int32)
         self.xProds = None 
         self.voxelised = None 
@@ -163,7 +164,7 @@ class Surface(object):
             raise RuntimeError("ts array should be 0-indexed")
 
         s = cls.__new__(cls)
-        s.points = ps.astype(np.float32)
+        s.points = ps.astype(NP_FLOAT)
         s.tris = ts.astype(np.int32)
         s.xProds = None 
         s.voxelised = None 
@@ -186,7 +187,7 @@ class Surface(object):
 
         gii = nibabel.GiftiImage()
         gii.add_gifti_data_array(
-            nibabel.gifti.GiftiDataArray(data.astype(np.float32)))
+            nibabel.gifti.GiftiDataArray(data.astype(NP_FLOAT)))
         nibabel.save(gii, path)
 
 
@@ -267,9 +268,9 @@ class Surface(object):
         surface's current index_space. 
         """
 
-        pvs_curr = self.voxelised.astype(np.float32)
+        pvs_curr = self.voxelised.astype(NP_FLOAT)
         pvs_curr[self.assocs_keys] = self.fractions
-        out = np.zeros(np.prod(space.size), dtype=np.float32)
+        out = np.zeros(np.prod(space.size), dtype=NP_FLOAT)
         curr_inds, dest_inds = self.reindexing_filter(space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
@@ -439,7 +440,7 @@ class Surface(object):
         """Apply affine transformation (4x4 array) to surface coordinates"""
 
         self.points = (utils.affineTransformPoints(
-            self.points, transform).astype(np.float32))
+            self.points, transform).astype(NP_FLOAT))
 
 
     def form_associations(self, cores=mp.cpu_count()):
@@ -497,7 +498,7 @@ class Surface(object):
             (points, tris) tuple of re-indexed points/tris. 
         """
 
-        points = np.empty((0, 3), dtype=np.float32)
+        points = np.empty((0, 3), dtype=NP_FLOAT)
         tris = np.empty((len(tri_inds), 3), dtype=np.int32)
         pointsLUT = []
 

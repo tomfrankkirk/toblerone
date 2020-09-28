@@ -14,6 +14,7 @@ from toblerone import classes, projection, core
 from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
+from toblerone.utils import NP_FLOAT
 
 cores = multiprocessing.cpu_count()
 
@@ -53,10 +54,10 @@ def test_cortex():
     hemi = classes.Hemisphere(ins, outs, 'L')
     superfactor = 10
     spc_high = spc.resize_voxels(1.0/superfactor)
-    voxelised = np.zeros(spc_high.size.prod(), dtype=np.float32)
+    voxelised = np.zeros(spc_high.size.prod(), dtype=NP_FLOAT)
     hemi.inSurf.index_on(spc_high, s2r)
     reindex_in = hemi.inSurf.reindexing_filter(spc_high)
-    voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(np.float32)
+    voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(NP_FLOAT)
     hemi.outSurf.index_on(spc_high, s2r)
     reindex_out = hemi.outSurf.reindexing_filter(spc_high)
     voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
@@ -72,7 +73,7 @@ def test_vox_tri_intersection():
     # Generate N triangles for which all vertices are contained
     # within a unit voxel at the origin 
     N = int(1e6)
-    ps = (np.random.rand(N,3,3) - 0.5).astype(np.float32)
+    ps = (np.random.rand(N,3,3) - 0.5).astype(NP_FLOAT)
     ts = np.arange(3*N).reshape(N,3).astype(np.int32)
 
     # Multiply out the first two vertices of each triangle,
@@ -81,8 +82,8 @@ def test_vox_tri_intersection():
     ps = ps.reshape(-1,3)
 
     # Unit voxel, assert all intersect. 
-    cent = np.zeros(3, dtype=np.float32)
-    size = np.ones(3, dtype=np.float32)
+    cent = np.zeros(3, dtype=NP_FLOAT)
+    size = np.ones(3, dtype=NP_FLOAT)
     flags = _cyfilterTriangles(ts, ps, cent, size)
     assert flags.all(), 'Not all triangles intersect voxel'
 
@@ -92,8 +93,8 @@ def test_projection():
     outs = op.join(td, 'out.surf.gii')
     hemi = toblerone.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    sdata = np.ones(hemi.inSurf.points.shape[0], dtype=np.float32)
-    vdata = np.ones(spc.size.prod(), dtype=np.float32)
+    sdata = np.ones(hemi.inSurf.points.shape[0], dtype=NP_FLOAT)
+    vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
 
     projector = toblerone.projection.Projector(hemi, spc, 10, 1)
     v2s = projector.vol2surf(vdata)
@@ -143,4 +144,4 @@ def test_lbo():
         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
 if __name__ == "__main__":
-    test_vox_tri_intersection()
+    test_lbo()
