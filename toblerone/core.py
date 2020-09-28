@@ -900,7 +900,7 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
     # Initialise a grid of sample points, sized by (factor) in each dimension. 
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]))
+        in_surf.tris.shape[0]), dtype=np.float32)
     sampler = np.linspace(0, 1, 2*factor + 1, dtype=np.float32)[1:-1:2]
     samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
                .reshape(-1,3) - 0.5)
@@ -1030,7 +1030,8 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     # the edge lengths in this order, so we need to keep track of them
     EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
     FULL_SET = set(range(3))
-    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]))
+    vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]),
+        dtype=np.float32)
 
     # Iterate through each triangle containing each point 
     for pidx in worklist:

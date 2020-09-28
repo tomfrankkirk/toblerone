@@ -638,7 +638,7 @@ class Surface(object):
         """
 
         adj = self.adjacency_matrix()
-        central_weight = np.sum(adj, axis=1)
+        central_weight = np.sum(adj, axis=1).astype(np.int32)
         laplacian = np.diagflat(central_weight)
         laplacian = adj - laplacian
         assert (laplacian.sum(1) == 0).min(), 'unweighted laplacian'
@@ -664,6 +664,8 @@ class Surface(object):
         elif area == 'mayer':
             M = core.vtx_tri_weights(self)
             M = sparse.diags(np.squeeze(M.sum(1).A))
+        else: 
+            raise ValueError("Area must be barycentric/voronoi/mayer.")
 
         L = igl.cotmatrix(self.points, self.tris)
         lbo = (M.power(-1)).dot(L)
