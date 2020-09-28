@@ -638,9 +638,9 @@ class Surface(object):
         with value 1 (ie, equal weighting ignoring distance). 
         """
 
-        adj = self.adjacency_matrix()
-        central_weight = np.sum(adj, axis=1).astype(np.int32)
-        laplacian = np.diagflat(central_weight)
+        adj = self.adjacency_matrix().astype(NP_FLOAT)
+        dia = np.sum(adj, axis=1).A.flatten().astype(NP_FLOAT)
+        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape))
         laplacian = adj - laplacian
         assert (laplacian.sum(1) == 0).min(), 'unweighted laplacian'
         return laplacian
