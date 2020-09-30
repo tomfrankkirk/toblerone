@@ -152,5 +152,10 @@ def test_hemi_init():
     hemi2 = toblerone.Hemisphere.manual(ins, outs, 'L')
     assert id(hemi.inSurf.points) != id(hemi2.inSurf.points)
 
+def test_surf_edges():
+    td = get_testdir()
+    ins = Surface(op.join(td, 'in.surf.gii'))
+    e = ins.edges()
+
 if __name__ == "__main__":
-    test_hemi_init()
+    test_surf_edges()

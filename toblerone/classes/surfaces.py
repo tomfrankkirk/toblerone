@@ -674,7 +674,20 @@ class Surface(object):
         assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
         return lbo
 
+    def edges(self):
+        """
+        Edge matrix, sized as follows (tris, 3, 3), where the second dimension
+        contains the edges defined as (v1 - v0), (v2 - v0), (v2 - v1), and 
+        the final dimension contains the edge components in XYZ.  
+        """
+        edge_defns = [ list(e) for e in core.TRI_EDGE_INDEXING ]
+        edges = np.stack([
+            self.points[self.tris[:,e[0]],:] - self.points[self.tris[:,e[1]],:] 
+            for e in edge_defns
+        ], axis=1)
 
+        return edges 
+        
 
 class Patch(Surface):
     """

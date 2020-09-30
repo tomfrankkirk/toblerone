@@ -63,6 +63,10 @@ TETRA2 = np.array([[0,3,4,5],   # aABC
                    [0,1,4,5]],  # abBC
                    dtype=np.int8) 
 
+# For defining the edges of triangle within a mesh
+TRI_EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
+TRI_FULL_SET = set(range(3))
+
 # tdqm progress bar format
 BAR_FORMAT = '{l_bar}{bar} {elapsed} | {remaining}'
 
@@ -1029,8 +1033,6 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
     # We pre-compute all triangle edges, in the following order:
     # e1-0, then e2-0, then e2-1. But we don't necessarily process
     # the edge lengths in this order, so we need to keep track of them
-    EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
-    FULL_SET = set(range(3))
     vtx_tri_areas = sparse.dok_matrix((points.shape[0], tris.shape[0]),
         dtype=NP_FLOAT)
 
@@ -1044,7 +1046,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
             # Edge pairs e1 and e2 are defined as including cent_pidx (order
             # irrelevant), then e3 is the remaining edge pair
             cent_pidx = np.flatnonzero(tris_touched[tidx,:]).tolist()
-            e3 = FULL_SET.difference(cent_pidx)
+            e3 = TRI_FULL_SET.difference(cent_pidx)
             other_idx = list(e3)
             e1 = set(cent_pidx + [other_idx[0]])
             e2 = set(cent_pidx + [other_idx[1]])
@@ -1052,7 +1054,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
             # Match the edge pairs to the order in which edges were calculated 
             # earlier 
             e1_idx, e2_idx, e3_idx = [ np.flatnonzero(
-                [ e == ei for ei in EDGE_INDEXING ]
+                [ e == ei for ei in TRI_EDGE_INDEXING ]
                 ) for e in [e1, e2, e3] ] 
 
             # And finally load the edges in the correct order 
