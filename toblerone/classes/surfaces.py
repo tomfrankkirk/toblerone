@@ -7,6 +7,7 @@ import os.path as op
 import functools
 import warnings 
 import multiprocessing as mp 
+import copy 
 
 import numpy as np 
 import nibabel 
@@ -164,8 +165,8 @@ class Surface(object):
             raise RuntimeError("ts array should be 0-indexed")
 
         s = cls.__new__(cls)
-        s.points = ps.astype(NP_FLOAT)
-        s.tris = ts.astype(np.int32)
+        s.points = copy.deepcopy(ps.astype(NP_FLOAT))
+        s.tris = copy.deepcopy(ts.astype(np.int32))
         s.xProds = None 
         s.voxelised = None 
         s.name = name
@@ -728,8 +729,8 @@ class Hemisphere(object):
             raise RuntimeError("Initialise with surface objects")
 
         h = cls.__new__(cls)
-        h.inSurf = insurf
-        h.outSurf = outsurf
+        h.inSurf = copy.deepcopy(insurf)
+        h.outSurf = copy.deepcopy(outsurf)
         h.PVs = None 
         h.side = side 
         return h 

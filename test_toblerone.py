@@ -1,6 +1,7 @@
 """Toblerone tests"""
 
-import os.path as op 
+import os.path as op
+from toblerone.classes.surfaces import Surface 
 import nibabel 
 import pickle 
 from nibabel import test
@@ -143,5 +144,13 @@ def test_lbo():
         lbo = s.laplace_beltrami(area)
         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
+def test_hemi_init():
+    td = get_testdir()
+    ins = Surface(op.join(td, 'in.surf.gii'))
+    outs = Surface(op.join(td, 'out.surf.gii'))
+    hemi = toblerone.Hemisphere.manual(ins, outs, 'L')
+    hemi2 = toblerone.Hemisphere.manual(ins, outs, 'L')
+    assert id(hemi.inSurf.points) != id(hemi2.inSurf.points)
+
 if __name__ == "__main__":
-    test_lbo()
+    test_hemi_init()
