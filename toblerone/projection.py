@@ -48,6 +48,7 @@ class Projector(object):
         self.pvs = [] 
         self.__vox_tri_mats = [] 
         self.__vtx_tri_mats = []
+        ncores = cores if hemispheres[0].inSurf._use_mp else 1 
 
         for hemi in hemispheres: 
 
@@ -57,7 +58,7 @@ class Projector(object):
             else: 
                 supersample = np.ceil(spc.vox_size).astype(np.int8) 
                 pvs = estimators._cortex(hemi, spc, np.eye(4), supersample, 
-                    cores, ones)
+                    ncores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
             # Transform surfaces voxel coordinates, check for partial coverage
@@ -70,8 +71,8 @@ class Projector(object):
             # Calculate the constituent matrices for projection with each hemi 
             midsurf = calc_midsurf(hemi.inSurf, hemi.outSurf)
             vox_tri = vox_tri_weights(hemi.inSurf, hemi.outSurf, 
-                spc, factor, cores, ones)
-            vtx_tri = vtx_tri_weights(midsurf, cores)
+                spc, factor, ncores, ones)
+            vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.__vox_tri_mats.append(vox_tri)
             self.__vtx_tri_mats.append(vtx_tri)
 

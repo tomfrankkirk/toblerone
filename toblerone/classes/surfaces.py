@@ -142,6 +142,7 @@ class Surface(object):
         self.name = name
         self.assocs = None 
         self._index_space = None 
+        self._use_mp = (self.tris.shape[0] > 1000)
 
     def __repr__(self):
 
@@ -171,6 +172,7 @@ class Surface(object):
         s.voxelised = None 
         s.name = name
         s._index_space = None 
+        s._use_mp = (s.tris.shape[0] > 1000)
         return s
     
 
@@ -468,7 +470,7 @@ class Surface(object):
         workerFunc = functools.partial(core._formAssociationsWorker, 
             self.tris, self.points, size)
 
-        if cores > 1:
+        if (cores > 1) and (self._use_mp):
             chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
             with mp.Pool(cores) as p:
                 worker_assocs = p.map(workerFunc, chunks, chunksize=1)
@@ -591,7 +593,7 @@ class Surface(object):
 
         worker = functools.partial(core._voxelise_worker, self)
 
-        if cores > 1: 
+        if (cores > 1) and (self._use_mp): 
 
             # Share out the rays and subset of the overall dimension range
             # amongst pool workers
@@ -646,7 +648,7 @@ class Surface(object):
         assert (laplacian.sum(1) == 0).min(), 'unweighted laplacian'
         return laplacian
 
-    def laplace_beltrami(self, area='mayer'):
+    def laplace_beltrami(self, area='mayer', cores=mp.cpu_count()):
         """
         Laplace-Beltrami operator for this surface, as a scipy sparse matrix
         of size n_points x n_points. Elements on the diagonal are negative 
@@ -664,7 +666,8 @@ class Surface(object):
             M = igl.massmatrix(self.points, self.tris, 
                     igl.MASSMATRIX_TYPE_VORONOI)
         elif area == 'mayer':
-            M = core.vtx_tri_weights(self)
+            ncores = cores if self._use_mp else 1 
+            M = core.vtx_tri_weights(self, ncores)
             M = sparse.diags(np.squeeze(M.sum(1).A))
         else: 
             raise ValueError("Area must be barycentric/voronoi/mayer.")
