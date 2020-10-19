@@ -35,9 +35,12 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'recommonmark',
+    'sphinx.ext.viewcode',
 ]
 
 autodoc_member_order = 'bysource'
+autodoc_mock_imports = ['igl', 'Cython', 'fslpy', 'meshio', 'pyvista']
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
