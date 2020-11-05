@@ -1,6 +1,7 @@
 """Toblerone tests"""
 
 import os.path as op
+
 from toblerone.classes.surfaces import Surface 
 import nibabel 
 import pickle 
@@ -134,8 +135,10 @@ def test_adjacency():
 def test_mesh_laplacian():
     td = get_testdir()
     s = classes.Surface(op.join(td, 'in.surf.gii'))
-    lap = s.mesh_laplacian()
-    assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
+
+    for w in [None,1,2,3]:
+        lap = s.mesh_laplacian(distance_weight=w)
+        assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
 
 def test_lbo():
     td = get_testdir()
@@ -156,6 +159,7 @@ def test_surf_edges():
     td = get_testdir()
     ins = Surface(op.join(td, 'in.surf.gii'))
     e = ins.edges()
+           
 
 if __name__ == "__main__":
-    test_surf_edges()
+    test_mesh_laplacian()

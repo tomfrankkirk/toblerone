@@ -11,7 +11,8 @@ import copy
 
 import numpy as np 
 import nibabel 
-import igl 
+import igl
+from numpy.lib.arraysetops import isin 
 from scipy import sparse
 
 try: 
@@ -633,19 +634,58 @@ class Surface(object):
 
         return igl.adjacency_matrix(self.tris)
 
-    def mesh_laplacian(self):
+    def mesh_laplacian(self, distance_weight=None):
         """
         Mesh Laplacian operator for this surface, as a scipy sparse matrix 
         of size n_points x n_points. Elements on the diagonal are negative 
         and off-diagonal elements are positive. All neighbours are weighted 
         with value 1 (ie, equal weighting ignoring distance). 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                None (do not weight, all values are unity), whereas positive
+                values will weight elements by 1 / d^n, where d is Euclidean 
+                distance between vertices. 
+
+        Returns: 
+            sparse CSR matrix
         """
 
-        adj = self.adjacency_matrix().astype(NP_FLOAT)
-        dia = np.sum(adj, axis=1).A.flatten().astype(NP_FLOAT)
+        adj = self.adjacency_matrix().tocsr().astype(NP_FLOAT)
+
+        if distance_weight is not None: 
+            if not (isinstance(distance_weight, int) and (distance_weight > 0)):
+                raise ValueError("distance_weight must be a positive int")
+            
+            # Find all connected pairs of vertices in the upper triangle
+            # of the adjacency matrix. By symmetry of the adjacency matrix, 
+            # we don't need to consider the lower triangle. We use some 
+            # sneaky tricks on the CSR indexing of the adjacency matrix
+            # to work out which columns are non-zero 
+            pairs = []
+            for row in range(adj.shape[0]):
+                for col in adj[row,row:].indices + row:
+                    pairs.append((row,col))
+
+            # Find the distance between connected pairs 
+            pairs = np.array(pairs)
+            dists = np.linalg.norm(self.points[pairs[:,0],:]
+                                    - self.points[pairs[:,1],:], axis=1, ord=2)
+
+            # Apply inverse distance weighting (eg, 1 / d^2), write
+            # them back into the matrix (symmetry again)
+            weight = 1 / (dists ** distance_weight)
+            adj[pairs[:,0], pairs[:,1]] = weight 
+            adj[pairs[:,1], pairs[:,0]] = weight 
+
+        # The diagonal is the negative sum of other elements 
+        dia = adj.sum(1).A.flatten()
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape))
         laplacian = adj - laplacian
-        assert (laplacian.sum(1) == 0).min(), 'unweighted laplacian'
+
+        assert np.abs(laplacian.sum(1)).max() < 1e-6, 'Unweighted laplacian'
+        assert utils.is_nsd(laplacian), 'Not negative semi-definite'
+        assert utils.is_symmetric(laplacian), 'Not symmetric'
         return laplacian
 
     def laplace_beltrami(self, area='mayer', cores=mp.cpu_count()):
@@ -755,7 +795,6 @@ class Hemisphere(object):
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
         return [self.inSurf, self.outSurf]
-
 
     def surf_dict(self):
         """Return surfs as dict with appropriate keys (eg LPS)"""

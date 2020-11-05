@@ -7,14 +7,13 @@ import subprocess
 import sys
 import shutil
 import warnings 
-import time
 import multiprocessing
 import copy 
 
 import numpy as np 
-import nibabel
 from fsl.wrappers import fsl_anat
 import regtricks as rt 
+from scipy import sparse
 
 NP_FLOAT = np.float32
 
@@ -543,3 +542,10 @@ def sparse_normalise(mat, axis, threshold=1e-6):
     sums = matrix.sum(axis).A.flatten()
     assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'Did not normalise to 1'
     return constructor(matrix)
+
+
+def is_symmetric(a, tol=1e-9): 
+    return not (np.abs(a - a.T) > tol).max()
+
+def is_nsd(a):
+    return not (sparse.linalg.eigs(a)[0] > 0).any()
