@@ -150,35 +150,50 @@ class Projector(object):
         v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
         return v2n_mat
 
-    def surf2vol_matrix(self):
+    def surf2vol_matrix(self, pv_weight=False):
         """
         Surface to volume projection matrix. 
+
+        Args: 
+            pv_weight (bool): default False, apply partial volume weighting.
 
         Returns: 
             sparse matrix sized (surface vertices x voxels)
         """
 
-        gm_weights = []
-        if len(self.hemis) == 1: 
-            gm_weights.append(np.ones(self.spc.size.prod()))
-        else: 
-            # GM PV can be shared between both hemispheres, so rescale each row of
-            # the s2v matrices by the proportion of all voxel-wise GM that belongs
-            # to that hemisphere (eg, the GM could be shared 80:20 between the two)
-            GM = self.pvs[0][:,0] + self.pvs[1][:,0]
-            GM[GM == 0] = 1 
-            gm_weights.append(self.pvs[0][:,0] / GM)
-            gm_weights.append(self.pvs[1][:,0] / GM)
-
         proj_mats = []
-        for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, self.vtx_tri_mats, gm_weights): 
-            s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
-            s2v_mat.data *= np.take(weights, s2v_mat.indices)
-            proj_mats.append(s2v_mat)
 
-        pvs = self.flat_pvs()
-        s2v_mat = sparse.hstack(proj_mats, format="csc")
-        s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+        if pv_weight: 
+            gm_weights = []
+            if len(self.hemis) == 1: 
+                gm_weights.append(np.ones(self.spc.size.prod()))
+            else: 
+                # GM PV can be shared between both hemispheres, so rescale each row of
+                # the s2v matrices by the proportion of all voxel-wise GM that belongs
+                # to that hemisphere (eg, the GM could be shared 80:20 between the two)
+                GM = self.pvs[0][:,0] + self.pvs[1][:,0]
+                GM[GM == 0] = 1 
+                gm_weights.append(self.pvs[0][:,0] / GM)
+                gm_weights.append(self.pvs[1][:,0] / GM)
+
+            for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, 
+                                                 self.vtx_tri_mats, gm_weights): 
+                s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
+                s2v_mat.data *= np.take(weights, s2v_mat.indices)
+                proj_mats.append(s2v_mat)
+
+            pvs = self.flat_pvs()
+            s2v_mat = sparse.hstack(proj_mats, format="csc")
+            s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+
+        else: 
+            for vox_tri, vtx_tri in zip(self.vox_tri_mats, 
+                                        self.vtx_tri_mats): 
+                s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
+                proj_mats.append(s2v_mat)
+
+            s2v_mat = sparse.hstack(proj_mats, format="csc")
+
         return s2v_mat  
 
 
@@ -204,7 +219,7 @@ class Projector(object):
 
         Args: 
             vdata: np.array, sized n_voxels in first dimension
-            edge_correction: upweight voxels that are less than 100% brain
+            edge_correction (bool): upweight voxels that are less than 100% brain
         
         Returns:
             np.array, sized n_vertices in first dimension 
@@ -217,18 +232,19 @@ class Projector(object):
         return v2s_mat.dot(vdata)
 
 
-    def surf2vol(self, sdata): 
+    def surf2vol(self, sdata, pv_weight=False): 
         """
         Project data from surface to volume. 
 
         Args: 
-            sdata: np.array sized n_vertices in first dimension (arranged L,R)
+            sdata (np.array): sized n_vertices in first dimension (arranged L,R)
+            pv_weight (bool): default False, apply partial volume weighting.
 
         Returns: 
             np.array, sized n_voxels in first dimension 
         """
 
-        s2v_mat = self.surf2vol_matrix()
+        s2v_mat = self.surf2vol_matrix(pv_weight)
         if sdata.shape[0] != s2v_mat.shape[1]: 
             raise RuntimeError("sdata must have the same number of rows as" +
                 " total surface nodes (were one or two hemispheres used?)")
