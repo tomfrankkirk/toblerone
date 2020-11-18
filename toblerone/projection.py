@@ -108,12 +108,12 @@ class Projector(object):
             return self.pvs[0]
 
 
-    def vol2surf_matrix(self, edge_correction=False):
+    def vol2surf_matrix(self, edge_correction):
         """
         Volume to surface projection matrix. 
 
         Args: 
-            edge_correction: upweight signal from voxels less than 100% brain
+            edge_correction (bool): upweight signal from voxels less than 100% brain
 
         Returns: 
             sparse matrix sized (surface vertices x voxels). Surface vertices 
@@ -134,12 +134,12 @@ class Projector(object):
         return v2s_mat 
 
 
-    def vol2node_matrix(self, edge_correction=True): 
+    def vol2node_matrix(self, edge_correction): 
         """
         Volume to node space projection matrix. 
 
         Args: 
-            edge_correction: upweight signal from voxels less than 100% brain
+            edge_correction (bool): upweight signal from voxels less than 100% brain
 
         Returns: 
             sparse matrix sized ((surface vertices + voxels) x voxels)
@@ -150,9 +150,12 @@ class Projector(object):
         v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
         return v2n_mat
 
-    def surf2vol_matrix(self):
+    def surf2vol_matrix(self, pv_weight):
         """
         Surface to volume projection matrix. 
+
+        Args: 
+            pv_weight (bool): downweight signal by voxel-wise PV fraction
 
         Returns: 
             sparse matrix sized (surface vertices x voxels)
@@ -178,33 +181,37 @@ class Projector(object):
 
         pvs = self.flat_pvs()
         s2v_mat = sparse.hstack(proj_mats, format="csc")
-        s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+        if pv_weight:
+            s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
         return s2v_mat  
 
 
-    def node2vol_matrix(self): 
+    def node2vol_matrix(self, pv_weight): 
         """
         Node space to volume projection matrix. 
+
+        Args: 
+            pv_weight (bool): downweight signal by voxel-wise PV fraction
 
         Returns: 
             sparse matrix sized (voxels x (surface vertices + voxels))
         """
 
         pvs = self.flat_pvs()
-        s2v_mat = self.surf2vol_matrix()
+        s2v_mat = self.surf2vol_matrix(pv_weight)
         v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
             shape=2*[self.spc.size.prod()])
         n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
         return n2v_mat
 
 
-    def vol2surf(self, vdata, edge_correction=False):
+    def vol2surf(self, vdata, edge_correction):
         """
         Project data from volum to surface. 
 
         Args: 
-            vdata: np.array, sized n_voxels in first dimension
-            edge_correction: upweight voxels that are less than 100% brain
+            vdata (np.array): sized n_voxels in first dimension
+            edge_correction (bool): upweight voxels that are less than 100% brain
         
         Returns:
             np.array, sized n_vertices in first dimension 
@@ -217,31 +224,32 @@ class Projector(object):
         return v2s_mat.dot(vdata)
 
 
-    def surf2vol(self, sdata): 
+    def surf2vol(self, sdata, pv_weight): 
         """
         Project data from surface to volume. 
 
         Args: 
-            sdata: np.array sized n_vertices in first dimension (arranged L,R)
+            sdata (np.array): sized n_vertices in first dimension (arranged L,R)
 
         Returns: 
             np.array, sized n_voxels in first dimension 
         """
 
-        s2v_mat = self.surf2vol_matrix()
+        s2v_mat = self.surf2vol_matrix(pv_weight)
         if sdata.shape[0] != s2v_mat.shape[1]: 
             raise RuntimeError("sdata must have the same number of rows as" +
                 " total surface nodes (were one or two hemispheres used?)")
         return s2v_mat.dot(sdata)
 
 
-    def vol2node(self, vdata, edge_correction=True):
+    def vol2node(self, vdata, edge_correction):
         """
         Project data from volume to node space. 
 
         Args: 
-            vdata: np.array, sized n_voxels in first dimension 
-        
+            vdata (np.array): sized n_voxels in first dimension 
+            pv_weight (bool): downweight signal by voxel-wise PV fraction
+
         Returns: 
             np.array, sized (n_vertices + n_voxels) in first dimension.
                 Surface vertices are arranged L then R. 
@@ -259,7 +267,7 @@ class Projector(object):
         Project data from node space to volume.
 
         Args: 
-            ndata: np.array, sized (n_vertices + n_voxels) in first dimension. 
+            ndata (np.array): sized (n_vertices + n_voxels) in first dimension, 
                 Surface data should be arranged L then R in the first dim. 
 
         Returns: 

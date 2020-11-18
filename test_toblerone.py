@@ -102,9 +102,13 @@ def test_projection():
     v2s = projector.vol2surf(vdata)
     v2s_edge = projector.vol2surf(vdata, True)
     assert (v2s <= v2s_edge).all(), "edge correction did not increase signal"
-    s2v = projector.surf2vol(sdata)
+
     v2n = projector.vol2node(vdata)
     n2v = projector.node2vol(v2n)
+    
+    s2v = projector.surf2vol(sdata, False)
+    s2v_noedge = projector.surf2vol(sdata, pv_weight=False)
+    assert (s2v_noedge >= s2v).all()
 
 def test_subvoxels():
 
@@ -162,4 +166,4 @@ def test_surf_edges():
            
 
 if __name__ == "__main__":
-    test_mesh_laplacian()
+    test_projection()
