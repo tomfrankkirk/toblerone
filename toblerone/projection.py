@@ -161,23 +161,38 @@ class Projector(object):
             sparse matrix sized (surface vertices x voxels)
         """
 
-        gm_weights = []
-        if len(self.hemis) == 1: 
-            gm_weights.append(np.ones(self.spc.size.prod()))
-        else: 
-            # GM PV can be shared between both hemispheres, so rescale each row of
-            # the s2v matrices by the proportion of all voxel-wise GM that belongs
-            # to that hemisphere (eg, the GM could be shared 80:20 between the two)
-            GM = self.pvs[0][:,0] + self.pvs[1][:,0]
-            GM[GM == 0] = 1 
-            gm_weights.append(self.pvs[0][:,0] / GM)
-            gm_weights.append(self.pvs[1][:,0] / GM)
-
         proj_mats = []
-        for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, self.vtx_tri_mats, gm_weights): 
-            s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
-            s2v_mat.data *= np.take(weights, s2v_mat.indices)
-            proj_mats.append(s2v_mat)
+
+        if pv_weight: 
+            gm_weights = []
+            if len(self.hemis) == 1: 
+                gm_weights.append(np.ones(self.spc.size.prod()))
+            else: 
+                # GM PV can be shared between both hemispheres, so rescale each row of
+                # the s2v matrices by the proportion of all voxel-wise GM that belongs
+                # to that hemisphere (eg, the GM could be shared 80:20 between the two)
+                GM = self.pvs[0][:,0] + self.pvs[1][:,0]
+                GM[GM == 0] = 1 
+                gm_weights.append(self.pvs[0][:,0] / GM)
+                gm_weights.append(self.pvs[1][:,0] / GM)
+
+            for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, 
+                                                 self.vtx_tri_mats, gm_weights): 
+                s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
+                s2v_mat.data *= np.take(weights, s2v_mat.indices)
+                proj_mats.append(s2v_mat)
+
+            pvs = self.flat_pvs()
+            s2v_mat = sparse.hstack(proj_mats, format="csc")
+            s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+
+        else: 
+            for vox_tri, vtx_tri in zip(self.vox_tri_mats, 
+                                        self.vtx_tri_mats): 
+                s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
+                proj_mats.append(s2v_mat)
+
+            s2v_mat = sparse.hstack(proj_mats, format="csc")
 
         pvs = self.flat_pvs()
         s2v_mat = sparse.hstack(proj_mats, format="csc")
