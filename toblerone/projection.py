@@ -2,20 +2,16 @@
 Toblerone surface-volume projection functions
 """
 
-import functools
-import itertools
 import multiprocessing as mp 
 import copy 
 import warnings
 
 import numpy as np 
 from scipy import sparse 
-from scipy.spatial import Delaunay
-from scipy.spatial.qhull import QhullError 
 
 from toblerone import utils 
 from toblerone.pvestimation import estimators
-from toblerone.classes import ImageSpace, Hemisphere, Surface
+from toblerone.classes import Hemisphere, Surface
 from toblerone.core import vtx_tri_weights, vox_tri_weights
 
 
