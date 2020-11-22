@@ -12,6 +12,7 @@ import nibabel
 import numpy as np 
 from scipy import sparse
 from regtricks import ImageSpace as BaseSpace
+from regtricks.multiplication import cast_potential_array
 
 from toblerone import utils
 
@@ -75,6 +76,7 @@ class ImageSpace(BaseSpace):
             space = copy.deepcopy(reference)
 
         if affine is not None: 
+            affine = cast_potential_array(affine)
             overall = space.world2vox @ affine.src2ref
         else: 
             overall = space.world2vox

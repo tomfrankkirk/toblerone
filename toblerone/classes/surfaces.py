@@ -14,7 +14,7 @@ import nibabel
 import igl
 from numpy.lib.arraysetops import isin 
 from scipy import sparse
-
+from regtricks.multiplication import cast_potential_array
 try: 
     import pyvista
     import meshio 
@@ -23,6 +23,7 @@ except ImportError as e:
     warnings.warn("Could not import meshio/pyvista: these are required to"
         " read/write VTK surfaces. VTK requires Python <=3.7 (as of May 2020)")
     _VTK_ENABLED = False 
+
 
 from .image_space import ImageSpace
 from .. import utils, core
@@ -326,6 +327,7 @@ class Surface(object):
         # Smallest possible ImageSpace, based on space, that fully encloses surf 
         encl_space = ImageSpace.minimal_enclosing(self, space, struct2ref)
         if struct2ref is not None: 
+            struct2ref = cast_potential_array(struct2ref)
             overall = encl_space.world2vox @ struct2ref.src2ref
         else: 
             overall = encl_space.world2vox
