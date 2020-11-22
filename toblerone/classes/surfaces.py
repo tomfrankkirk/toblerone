@@ -313,9 +313,8 @@ class Surface(object):
 
         Args: 
             space: ImageSpace object large enough to contain the surface
-            affine: 4x4 np.array representing transformation into the reference
-                space, in world-world mm terms (not FLIRT scaled-voxels). See
-                utils._FLIRT_to_world for help. Pass None to represent identity.
+            affine: rt.Registration transformation into the reference
+                space, in world-world mm terms (not FLIRT convention)
 
         Updates: 
             self.points: converted into voxel coordinates for the space
@@ -327,7 +326,7 @@ class Surface(object):
         # Smallest possible ImageSpace, based on space, that fully encloses surf 
         encl_space = ImageSpace.minimal_enclosing(self, space, struct2ref)
         if struct2ref is not None: 
-            overall = encl_space.world2vox @ struct2ref
+            overall = encl_space.world2vox @ struct2ref.src2ref
         else: 
             overall = encl_space.world2vox
 

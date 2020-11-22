@@ -32,15 +32,15 @@ class ImageSpace(BaseSpace):
 
 
     def __init__(self, reference):
-        if type(reference) is BaseSpace:
-            ref = copy.deepcopy(reference)
-            self.file_name = ref.file_name
-            self.size = ref.size
-            self.vox2world = ref.vox2world
-            self.header = ref.header
-        else: 
+        if type(reference) is str:
             super().__init__(reference)
+        else: 
+            if not type(reference) is BaseSpace:
+                raise ValueError("Reference must be a path or regtricks ImageSpace")
+            for k,v in vars(reference).items():
+                setattr(self, k, v)         
         self.offset = None
+
 
 
     @classmethod
@@ -55,10 +55,8 @@ class ImageSpace(BaseSpace):
         Args: 
             surfs: singular or list of surface objects 
             reference: ImageSpace object or path to image to use 
-            affine: 4x4 np.array, transformation INTO the reference space, 
-                in world-world mm terms (ie, not a FLIRT scaled-voxel 
-                matrix). See utils._FLIRT_to_world() for help. Pass None 
-                to represent identity 
+            affine: rt.Registration transformation INTO the reference space, 
+                in world-world mm terms (not FLIRT convention)
 
         Returns: 
             ImageSpace object, with a shifted origin and potentially different
@@ -77,7 +75,7 @@ class ImageSpace(BaseSpace):
             space = copy.deepcopy(reference)
 
         if affine is not None: 
-            overall = space.world2vox @ affine 
+            overall = space.world2vox @ affine.src2ref
         else: 
             overall = space.world2vox
 

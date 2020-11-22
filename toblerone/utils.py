@@ -12,7 +12,7 @@ import copy
 
 import numpy as np 
 from fsl.wrappers import fsl_anat
-import regtricks as rt 
+import regtricks as rt
 from scipy import sparse
 
 NP_FLOAT = np.float32
@@ -389,7 +389,7 @@ def enforce_and_load_common_arguments(func):
     def enforcer(ref, struct2ref, **kwargs):
 
         # Reference image path 
-        if not op.isfile(ref):
+        if (not isinstance(ref, rt.ImageSpace)) and (not op.isfile(ref)):
             raise RuntimeError("Reference image %s does not exist" % ref)
 
         # If given a anat_dir we can load the structural image in 
@@ -420,11 +420,12 @@ def enforce_and_load_common_arguments(func):
                     raise RuntimeError("Could not find T1.nii.gz in the anat dir")
 
  
-        # Structural to reference transformation. Either as array or path
-        # to file containing matrix
-        if not any([type(struct2ref) is str, type(struct2ref) is np.ndarray]):
-            raise RuntimeError("struct2ref transform must be given (either path", 
-                "or np.array object)")
+        # Structural to reference transformation. Either as array, path
+        # to file containing matrix, or regtricks Registration object 
+        if not any([type(struct2ref) is str, type(struct2ref) is np.ndarray,
+                    type(struct2ref) is rt.Registration ]):
+            raise RuntimeError("struct2ref transform must be given (either path,", 
+                " np.array or regtricks Registration object)")
 
         else:
             s2r = struct2ref
@@ -452,9 +453,6 @@ def enforce_and_load_common_arguments(func):
 
                 struct2ref = matrix
 
-        if not struct2ref.shape == (4,4):
-            raise RuntimeError("struct2ref must be a 4x4 matrix")
-
         # If FLIRT transform we need to do some clever preprocessing
         # We then set the flirt flag to false again (otherwise later steps will 
         # repeat the tricks and end up reverting to the original - those steps don't
@@ -464,9 +462,13 @@ def enforce_and_load_common_arguments(func):
                 raise RuntimeError("If using a FLIRT transform, the path to the"
                     " structural image must also be given")
             
-            struct2ref = (rt.Registration.from_flirt(struct2ref, 
-                                        kwargs['struct'], ref)).src2ref
+            struct2ref = rt.Registration.from_flirt(struct2ref, 
+                                        kwargs['struct'], ref)
             kwargs['flirt'] = False 
+        elif not isinstance(struct2ref, rt.Registration): 
+            struct2ref = rt.Registration(struct2ref)
+        
+        assert isinstance(struct2ref, rt.Registration), 'should have cast to Registration by now'
 
         # Processor cores
         if not kwargs.get('cores'):

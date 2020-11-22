@@ -14,12 +14,12 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
 
     Args: 
-        hemispheres: either a single, or iterable list of, Hemisphere objects 
-        space: an ImageSpace within which to operate
-        struct2ref: 4x4 affine transformation from struct to surface space
-        supersampler: supersampling factor (3-vector) to use for estimation
-        cores: number of processor cores to use
-        ones: debug tool, write ones in all voxels containing triangles
+        hemispheres: either a single, or iterable list of, Hemisphere objects.
+        space: an ImageSpace within which to operate.
+        struct2ref: rt.Registration transformation into reference space. 
+        supersampler: supersampling factor (3-vector) to use for estimation.
+        cores: number of processor cores to use.
+        ones: debug tool, write ones in all voxels containing triangles.
 
     Returns: 
         4D array, size equal to the reference image, with the PVs arranged 
@@ -97,6 +97,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
     Args: 
         surf: Surface object 
         space: ImageSpace to estimate within 
+        struct2ref: rt.Registration, transformation into reference space. 
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
         cores: number of processor cores to use
