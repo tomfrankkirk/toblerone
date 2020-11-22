@@ -386,14 +386,11 @@ def enforce_and_load_common_arguments(func):
         a modified copy of kwargs dictionary passed to the caller
     """
     
-    def enforcer(**kwargs):
+    def enforcer(ref, struct2ref, **kwargs):
 
         # Reference image path 
-        if not kwargs.get('ref'):
-            raise RuntimeError("Path to reference image must be given")
-
-        if (type(kwargs['ref']) is str) and not op.isfile(kwargs['ref']):
-            raise RuntimeError("Reference image %s does not exist" % kwargs['ref'])
+        if not op.isfile(ref):
+            raise RuntimeError("Reference image %s does not exist" % ref)
 
         # If given a anat_dir we can load the structural image in 
         if kwargs.get('anat'):
@@ -425,28 +422,27 @@ def enforce_and_load_common_arguments(func):
  
         # Structural to reference transformation. Either as array or path
         # to file containing matrix
-        if not any([type(kwargs.get('struct2ref')) is str, 
-            type(kwargs.get('struct2ref')) is np.ndarray]):
+        if not any([type(struct2ref) is str, type(struct2ref) is np.ndarray]):
             raise RuntimeError("struct2ref transform must be given (either path", 
                 "or np.array object)")
 
         else:
-            s2r = kwargs['struct2ref']
+            s2r = struct2ref
 
             if (type(s2r) is str): 
                 if s2r == 'I':
                     matrix = np.identity(4)
                 else:
-                    _, matExt = op.splitext(kwargs['struct2ref'])
+                    _, matExt = op.splitext(s2r)
 
                     try: 
                         if matExt in ['.txt', '.mat']:
-                            matrix = np.loadtxt(kwargs['struct2ref'], 
+                            matrix = np.loadtxt(s2r, 
                                 dtype=NP_FLOAT)
                         elif matExt in ['.npy', 'npz', '.pkl']:
-                            matrix = np.load(kwargs['struct2ref'])
+                            matrix = np.load(s2r)
                         else: 
-                            matrix = np.fromfile(kwargs['struct2ref'], 
+                            matrix = np.fromfile(s2r, 
                                 dtype=NP_FLOAT)
 
                     except Exception as e:
@@ -454,9 +450,9 @@ def enforce_and_load_common_arguments(func):
                             File should be any type valid with numpy.load().""")
                         raise e 
 
-                kwargs['struct2ref'] = matrix
+                struct2ref = matrix
 
-        if not kwargs['struct2ref'].shape == (4,4):
+        if not struct2ref.shape == (4,4):
             raise RuntimeError("struct2ref must be a 4x4 matrix")
 
         # If FLIRT transform we need to do some clever preprocessing
@@ -468,8 +464,8 @@ def enforce_and_load_common_arguments(func):
                 raise RuntimeError("If using a FLIRT transform, the path to the"
                     " structural image must also be given")
             
-            kwargs['struct2ref'] = (rt.Registration.from_flirt(kwargs['struct2ref'], 
-                                        kwargs['struct'], kwargs['ref'])).src2ref
+            struct2ref = (rt.Registration.from_flirt(struct2ref, 
+                                        kwargs['struct'], ref)).src2ref
             kwargs['flirt'] = False 
 
         # Processor cores
@@ -495,11 +491,11 @@ def enforce_and_load_common_arguments(func):
             kwargs['super'] = sup.astype(np.int8)
             print("Using manual supersampling factor", kwargs['super'])
 
-        return kwargs
+        return ref, struct2ref, kwargs
 
-    def common_args_enforced(**kwargs):
-        enforced = enforcer(**kwargs)
-        return func(**enforced)
+    def common_args_enforced(ref, struct2ref, **kwargs):
+        ref, struct2ref, enforced = enforcer(ref, struct2ref, **kwargs)
+        return func(ref, struct2ref, **enforced)
 
     return common_args_enforced
 
