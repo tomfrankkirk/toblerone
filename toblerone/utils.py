@@ -489,9 +489,6 @@ def enforce_and_load_common_arguments(func):
             except:
                 raise RuntimeError("-super must be a value or list of 3" + 
                     " values of int type")
-        
-            kwargs['super'] = sup.astype(np.int8)
-            print("Using manual supersampling factor", kwargs['super'])
 
         return ref, struct2ref, kwargs
 

@@ -177,7 +177,17 @@ def test_surf_edges():
     td = get_testdir()
     ins = Surface(op.join(td, 'in.surf.gii'))
     e = ins.edges()
+
+def cmd_line():
+
+    from toblerone.__main__ import main
+    import sys 
+    anat = "/Users/tom/Data/pcasl2/1.anat"
+    ref = anat + "/T1.nii.gz"
+    cmd = f" -estimate_complete -ref {ref} -struct2ref I -anat {anat} -super 1"
+    sys.argv[1:] = cmd.split()
+    main()
            
 
 if __name__ == "__main__":
-    test_projection()
+    cmd_line()
