@@ -50,22 +50,25 @@ def test_cortex():
     supersampler = np.random.randint(3,6,3)
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
         8, False)
-    # spc.save_image(fracs, f'{td}/fracs.nii.gz')
+    spc.save_image(fracs, f'{td}/fracs.nii.gz')
 
     # REFRESH the surfaces of the hemisphere before starting again - indexing! 
     hemi = classes.Hemisphere(ins, outs, 'L')
     superfactor = 10
     spc_high = spc.resize_voxels(1.0/superfactor)
     voxelised = np.zeros(spc_high.size.prod(), dtype=NP_FLOAT)
+
     hemi.inSurf.index_on(spc_high, s2r)
     reindex_in = hemi.inSurf.reindexing_filter(spc_high)
     voxelised[reindex_in[1]] = -(hemi.inSurf.voxelised[reindex_in[0]]).astype(NP_FLOAT)
+
     hemi.outSurf.index_on(spc_high, s2r)
     reindex_out = hemi.outSurf.reindexing_filter(spc_high)
     voxelised[reindex_out[1]] += hemi.outSurf.voxelised[reindex_out[0]]
+
     voxelised = voxelised.reshape(spc_high.size)
     truth = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
-    # spc.save_image(truth, f'{td}/truth.nii.gz')
+    spc.save_image(truth, f'{td}/truth.nii.gz')
 
     # truth = np.squeeze(nibabel.load(op.join(td, 'truth.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
@@ -166,4 +169,4 @@ def test_surf_edges():
            
 
 if __name__ == "__main__":
-    test_projection()
+    test_cortex()

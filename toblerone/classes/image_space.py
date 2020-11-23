@@ -39,7 +39,7 @@ class ImageSpace(BaseSpace):
             if not type(reference) is BaseSpace:
                 raise ValueError("Reference must be a path or regtricks ImageSpace")
             for k,v in vars(reference).items():
-                setattr(self, k, v)         
+                setattr(self, k, copy.deepcopy(v))         
         self.offset = None
 
 
@@ -124,3 +124,4 @@ class ImageSpace(BaseSpace):
         offset_mm = parent.vox2world[0:3,3] - self.vox2world[0:3,3] 
         offset_mm2 = parent.vox2world[0:3,3] @ self.offset 
         return ((np.abs(det1 - det2) < 1e-9) and np.all(np.abs(offset_mm - offset_mm2) < 1e9))
+
