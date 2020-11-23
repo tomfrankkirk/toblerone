@@ -2,7 +2,8 @@
 
 import os.path as op 
 import functools
-import copy 
+import copy
+import nibabel 
 
 import numpy as np 
 import tqdm
@@ -20,8 +21,8 @@ def cortex(ref, struct2ref, **kwargs):
 
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
-        struct2ref (str/np.array/regtricks Registration): registration between 
-            space of surface and reference space. Use 'I' for identity. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         fsdir (str): path to a FreeSurfer subject directory. 
         LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
             eg LWS = Left White surface, RPS = Right Pial surace. 
@@ -91,8 +92,8 @@ def structure(ref, struct2ref, **kwargs):
     
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
-        struct2ref (str/np.array/regtricks Registration): registration between 
-            space of surface and reference space. Use 'I' for identity. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         surf (str): path to surface (see space argument below)
 
     Optional args: 
@@ -160,8 +161,8 @@ def complete(ref, struct2ref, **kwargs):
 
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
-        struct2ref (str/np.array/regtricks Registration): registration between 
-            space of surface and reference space. Use 'I' for identity. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         anat: path to augmented fsl_anat directory (see -fsl_fs_anat command).
             This REPLACES fsdir, firstdir, fastdir, LPS/RPS etc args 
 
@@ -199,9 +200,13 @@ def complete(ref, struct2ref, **kwargs):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
-    fasts = utils._loadFASTdir(kwargs['fastdir'])
-    output = { t: struct2ref.apply_to_image(fasts[t], ref).get_data()
-        for t in ['FAST_WM', 'FAST_GM'] }
+    fast_paths = utils._loadFASTdir(kwargs['fastdir'])
+    fast_spc = fast_paths['FAST_GM']
+    fast = np.stack([
+        nibabel.load(fast_paths[f'FAST_{p}']).get_fdata() for p in ['GM', 'WM']
+    ], axis=-1)
+    fasts_transformed = rt.Registration(struct2ref).apply_to_array(fast, fast_spc, ref)
+    output = dict(FAST_GM=fasts_transformed[...,0], FAST_WM=fasts_transformed[...,1])
     output['FAST_CSF'] = np.maximum(0, 1 - (output['FAST_WM'] + output['FAST_GM']))
         
     # Process subcortical structures first. 

@@ -14,7 +14,6 @@ import nibabel
 import igl
 from numpy.lib.arraysetops import isin 
 from scipy import sparse
-from regtricks.multiplication import cast_potential_array
 try: 
     import pyvista
     import meshio 
@@ -313,8 +312,8 @@ class Surface(object):
         the surface). See also Surface.reindex_for() method. 
 
         Args: 
-            space: ImageSpace object large enough to contain the surface
-            affine: rt.Registration transformation into the reference
+            space (ImageSpace): containing the surface
+            struct2ref (np.array): transformation into the reference
                 space, in world-world mm terms (not FLIRT convention)
 
         Updates: 
@@ -327,8 +326,7 @@ class Surface(object):
         # Smallest possible ImageSpace, based on space, that fully encloses surf 
         encl_space = ImageSpace.minimal_enclosing(self, space, struct2ref)
         if struct2ref is not None: 
-            struct2ref = cast_potential_array(struct2ref)
-            overall = encl_space.world2vox @ struct2ref.src2ref
+            overall = encl_space.world2vox @ struct2ref
         else: 
             overall = encl_space.world2vox
 

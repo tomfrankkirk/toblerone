@@ -16,7 +16,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     Args: 
         hemispheres: either a single, or iterable list of, Hemisphere objects.
         space: an ImageSpace within which to operate.
-        struct2ref: rt.Registration transformation into reference space. 
+        struct2ref: np.array affine transformation into reference space. 
         supersampler: supersampling factor (3-vector) to use for estimation.
         cores: number of processor cores to use.
         ones: debug tool, write ones in all voxels containing triangles.
@@ -97,7 +97,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
     Args: 
         surf: Surface object 
         space: ImageSpace to estimate within 
-        struct2ref: rt.Registration, transformation into reference space. 
+        struct2ref: np.array affine transformation into reference space. 
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
         cores: number of processor cores to use
@@ -108,7 +108,6 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
 
     # Create our own local copy of inputs 
     loc_surf = copy.deepcopy(surf)
-
     loc_surf.index_on(space, struct2ref, cores)
     loc_surf._estimate_fractions(supersampler, cores, ones)
     

@@ -367,7 +367,7 @@ def enforce_and_load_common_arguments(func):
 
     Required args:
         ref: path to a reference image in which to operate 
-        struct2ref: path to file or 4x4 array representing transformation
+        struct2ref: path/np.array/Registration representing transformation
             between structural space (that of the surfaces) and reference. 
             If given as 'I', identity matrix will be used. 
 
@@ -389,8 +389,8 @@ def enforce_and_load_common_arguments(func):
     def enforcer(ref, struct2ref, **kwargs):
 
         # Reference image path 
-        if (not isinstance(ref, rt.ImageSpace)) and (not op.isfile(ref)):
-            raise RuntimeError("Reference image %s does not exist" % ref)
+        if (not isinstance(ref, rt.ImageSpace)): 
+            ref = rt.ImageSpace(ref)
 
         # If given a anat_dir we can load the structural image in 
         if kwargs.get('anat'):
@@ -463,12 +463,12 @@ def enforce_and_load_common_arguments(func):
                     " structural image must also be given")
             
             struct2ref = rt.Registration.from_flirt(struct2ref, 
-                                        kwargs['struct'], ref)
+                                        kwargs['struct'], ref).src2ref
             kwargs['flirt'] = False 
-        elif not isinstance(struct2ref, rt.Registration): 
-            struct2ref = rt.Registration(struct2ref)
+        elif isinstance(struct2ref, rt.Registration): 
+            struct2ref = struct2ref.src2ref 
         
-        assert isinstance(struct2ref, rt.Registration), 'should have cast to Registration by now'
+        assert isinstance(struct2ref, np.ndarray), 'should have cast struc2ref to np.array'
 
         # Processor cores
         if not kwargs.get('cores'):

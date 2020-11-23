@@ -12,7 +12,6 @@ import nibabel
 import numpy as np 
 from scipy import sparse
 from regtricks import ImageSpace as BaseSpace
-from regtricks.multiplication import cast_potential_array
 
 from toblerone import utils
 
@@ -56,7 +55,7 @@ class ImageSpace(BaseSpace):
         Args: 
             surfs: singular or list of surface objects 
             reference: ImageSpace object or path to image to use 
-            affine: rt.Registration transformation INTO the reference space, 
+            affine: np.array transformation INTO the reference space, 
                 in world-world mm terms (not FLIRT convention)
 
         Returns: 
@@ -76,8 +75,7 @@ class ImageSpace(BaseSpace):
             space = copy.deepcopy(reference)
 
         if affine is not None: 
-            affine = cast_potential_array(affine)
-            overall = space.world2vox @ affine.src2ref
+            overall = space.world2vox @ affine
         else: 
             overall = space.world2vox
 
