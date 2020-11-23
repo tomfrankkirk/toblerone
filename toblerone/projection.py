@@ -273,7 +273,7 @@ class Projector(object):
         return v2n_mat.dot(vdata)
 
 
-    def node2vol(self, ndata):
+    def node2vol(self, ndata, pv_weight):
         """
         Project data from node space to volume.
 
@@ -285,7 +285,7 @@ class Projector(object):
             np.array, sized n_voxels in first dimension
         """
 
-        n2v_mat = self.node2vol_matrix()
+        n2v_mat = self.node2vol_matrix(pv_weight)
         if ndata.shape[0] != n2v_mat.shape[1]: 
             raise RuntimeError("ndata must have the same number of rows as" +
                 " total nodes in ImageSpace (voxels+vertices)")
