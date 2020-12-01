@@ -14,6 +14,7 @@ from toblerone.pvestimation import estimators
 from toblerone.classes import Hemisphere, Surface
 from toblerone.core import vtx_tri_weights, vox_tri_weights
 
+SIDES = ['L', 'R']
 
 class Projector(object):
     """
@@ -23,7 +24,7 @@ class Projector(object):
     may be calculated directly from the object. 
 
     Args: 
-        hemispheres: single, or iterable, of Hemisphere objects (order: L,R)
+        hemispheres: single or list of two (L/R) Hemisphere objects 
         spc: ImageSpace to project from/to 
         factor: voxel subdivision factor (default 10)
         cores: number of processor cores to use (default max)
@@ -34,12 +35,20 @@ class Projector(object):
 
         print("Initialising projector (will take some time)")
         if not isinstance(hemispheres, Hemisphere):
-            if not len(hemispheres) == 2: 
-                raise RuntimeError("Either provide a single or iterable of 2 Hemisphere objects")
+            if len(hemispheres) == 2:
+                if (any([ h.side not in SIDES for h in hemispheres ])
+                    and (hemispheres[0].side == hemispheres[1].side)):
+                    raise ValueError("Hemisphere objects must have 'L' and 'R' sides") 
+        
         else: 
+            if not isinstance(hemispheres, Hemisphere): 
+                raise ValueError("Projector must be initialised with 1 or 2 Hemispheres")
+            side = hemispheres.side[0]
+            if not side in SIDES: 
+                raise ValueError("Hemisphere must have 'L' or 'R' side")
             hemispheres = [hemispheres]
             
-        self.hemis = hemispheres
+        self.hemis = { h.side: h for h in hemispheres }
         self.spc = spc 
         self.pvs = [] 
         self.__vox_tri_mats = [] 
@@ -65,12 +74,30 @@ class Projector(object):
                     " space. Ensure they are in world-mm coordinates.")
 
             # Calculate the constituent matrices for projection with each hemi 
-            midsurf = calc_midsurf(hemi.inSurf, hemi.outSurf)
+            midsurf = hemi.midsurface()
             vox_tri = vox_tri_weights(hemi.inSurf, hemi.outSurf, 
                 spc, factor, ncores, ones)
             vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.__vox_tri_mats.append(vox_tri)
             self.__vtx_tri_mats.append(vtx_tri)
+
+    
+    @property
+    def iter_hemis(self):
+        """Iterator over hemispheres of projector, in L/R order"""
+        for s in SIDES:
+            if s in self.hemis:
+                yield self.hemis[s]
+
+    @property
+    def n_hemis(self):
+        return len(self.hemis)
+
+
+    # Direct access to the underlying surfaces via keys LPS, RWS etc. 
+    def __getitem__(self, surf_key):
+        side = surf_key[0]
+        return self.hemis[side].surf_dict[surf_key]
 
 
     # Calculation of the projection matrices involves rescaling the constituent
@@ -83,6 +110,22 @@ class Projector(object):
     @property
     def vtx_tri_mats(self): 
         return copy.deepcopy(self.__vtx_tri_mats)
+
+
+    @property
+    def n_surf_points(self):
+        return sum([ h.n_points for h in self.iter_hemis ])
+
+
+    def adjacency_matrix(self):
+        """
+        Overall adjacency matrix for all surface vertices of projector. 
+        If there are two hemispheres present, the matrix indices will 
+        be arranged L,R.  
+        """ 
+
+        mats = [ h.adjacency_matrix() for h in self.iter_hemis ]
+        return sparse.block_diag(mats, format="csr")
 
 
     def flat_pvs(self):
@@ -145,6 +188,7 @@ class Projector(object):
         v2v_mat = sparse.eye(self.spc.size.prod())
         v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
         return v2n_mat
+
 
     def surf2vol_matrix(self, pv_weight):
         """
@@ -291,15 +335,6 @@ class Projector(object):
                 " total nodes in ImageSpace (voxels+vertices)")
         return n2v_mat.dot(ndata)
         
-def calc_midsurf(in_surf, out_surf):
-    """
-    Midsurface between two Surfaces
-    """
-
-    vec = out_surf.points - in_surf.points 
-    points =  in_surf.points + (0.5 * vec)
-    return Surface.manual(points, in_surf.tris)
-
 
 def assemble_vol2surf(vox_tri, vtx_tri):
     """
