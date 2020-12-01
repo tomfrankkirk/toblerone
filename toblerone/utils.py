@@ -542,5 +542,34 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 def is_symmetric(a, tol=1e-9): 
     return not (np.abs(a - a.T) > tol).max()
 
+
 def is_nsd(a):
     return not (sparse.linalg.eigs(a)[0] > 0).any()
+
+
+def calc_midsurf(in_surf, out_surf):
+    """
+    Midsurface between two Surfaces
+    """
+    from .classes import Surface
+    vec = out_surf.points - in_surf.points 
+    points =  in_surf.points + (0.5 * vec)
+    return Surface.manual(points, in_surf.tris)
+
+
+def slice_sparse(mat, slice0, slice1):
+    """
+    Slice a block out of a sparse matrix, ie mat[slice0,slice1]. 
+    Scipy sparse matrices do not support slicing in this manner (unlike numpy)
+
+    Args: 
+        mat (sparse): of any form 
+        slice0 (bool,array): mask to apply on axis 0 (rows)
+        slice1 (bool,array): mask to apply on axis 1 (columns)
+
+    Returns: 
+        CSR matrix
+    """
+    
+    out = mat.tocsc()[:,slice1]
+    return out.tocsr()[slice0,:]
