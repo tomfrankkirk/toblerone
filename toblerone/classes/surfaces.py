@@ -26,7 +26,7 @@ except ImportError as e:
 
 from .image_space import ImageSpace
 from .. import utils, core
-from ..utils import NP_FLOAT
+from ..utils import NP_FLOAT, calc_midsurf
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -149,7 +149,7 @@ class Surface(object):
 
         from textwrap import dedent
         return dedent(f"""\
-            Surface with {self.points.shape[0]} points and {self.tris.shape[0]} triangles. 
+            Surface with {self.n_points} points and {self.tris.shape[0]} triangles. 
             min (X,Y,Z):  {self.points.min(0)}
             mean (X,Y,Z): {self.points.mean(0)}
             max (X,Y,Z):  {self.points.max(0)}
@@ -177,12 +177,17 @@ class Surface(object):
         return s
     
 
+    @property
+    def n_points(self):
+        return self.points.shape[0]
+
+
     def save_metric(self, data, path):
         """
         Save vertex-wise data as a .func.gii at path
         """
 
-        if not self.points.shape[0] == data.size:
+        if not self.n_points == data.shape[0]:
             raise RuntimeError("Incorrect data shape")
 
         if not path.endswith('.func.gii'):
@@ -766,40 +771,53 @@ class Hemisphere(object):
         side: 'L' or 'R' 
     """
 
-    def __init__(self, inpath, outpath, side=''):
+    def __init__(self, insurf, outsurf, side):
 
+        if not side in ['L', 'R']:
+            raise ValueError("Side must be either 'L' or 'R'")
         self.side = side 
-        self.inSurf = Surface(inpath, name=side+'WS') 
-        self.outSurf = Surface(outpath, name=side+'PS')
+
+        if not isinstance(insurf, Surface):
+            self.inSurf = Surface(insurf, name=side+'WS') 
+        else: 
+            self.inSurf = copy.deepcopy(insurf)
+        if not isinstance(insurf, Surface):
+            self.outSurf = Surface(outsurf, name=side+'PS')
+        else: 
+            self.outSurf = copy.deepcopy(outsurf)    
+            
+        if (self.inSurf.tris != self.outSurf.tris).any(): 
+            raise ValueError("Inner and outer surface must have same triangulation")
+
         self.PVs = None 
         return
-
-    @classmethod
-    def manual(cls, insurf, outsurf, side):
-        """
-        Manual hemisphere constructor
-        """
-
-        if not (isinstance(insurf, Surface) and isinstance(outsurf, Surface)):
-            raise RuntimeError("Initialise with surface objects")
-
-        h = cls.__new__(cls)
-        h.inSurf = copy.deepcopy(insurf)
-        h.outSurf = copy.deepcopy(outsurf)
-        h.PVs = None 
-        h.side = side 
-        return h 
 
     @property
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
         return [self.inSurf, self.outSurf]
 
+    @property
     def surf_dict(self):
         """Return surfs as dict with appropriate keys (eg LPS)"""
         return {self.side + 'WS': self.inSurf, 
             self.side+'PS': self.outSurf}
 
-    
     def apply_transform(self, mat):
         [ s.applyTransform(mat) for s in self.surfs ]
+
+    def midsurface(self):
+        """
+        Midsurface between inner and outer cortex
+        """
+        return calc_midsurf(self.inSurf, self.outSurf)
+
+    def adjacency_matrix(self):
+        """
+        Adjacency matrix of inner surface (which is the sane as the outer)
+        """
+        return self.inSurf.adjacency_matrix()
+
+    @property
+    def n_points(self):
+        return self.inSurf.n_points
