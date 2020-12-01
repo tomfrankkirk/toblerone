@@ -1117,7 +1117,7 @@ def vtx_tri_weights(surf, cores=mp.cpu_count()):
                                     edges, edge_lengths)
 
     if cores > 1: 
-        worker_lists = utils._distributeObjects(range(points.shape[0]), cores)
+        worker_lists = utils._distributeObjects(range(surf.n_points), cores)
         with mp.Pool(cores) as p: 
             results = p.map(worker_func, worker_lists)
 
@@ -1127,7 +1127,7 @@ def vtx_tri_weights(surf, cores=mp.cpu_count()):
             vtx_tri_weights += r 
 
     else: 
-        vtx_tri_weights = worker_func(range(points.shape[0]))
+        vtx_tri_weights = worker_func(range(surf.n_points))
 
     assert (vtx_tri_weights.data > 0).all(), 'Zero areas returned'
     return vtx_tri_weights 
