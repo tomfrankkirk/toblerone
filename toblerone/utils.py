@@ -254,7 +254,7 @@ def affine_transform(points, affine):
     transfd = np.matmul(affine, transfd.T).astype(NP_FLOAT)
     return np.squeeze(transfd[0:3,:].T)
 
-
+# TODO: remove?
 def _coordinatesForGrid(ofSize):
     """Produce N x 3 array of all voxel indices (eg [10, 18, 2]) within
     a grid of size ofSize, 0-indexed and in integer form. 
@@ -557,6 +557,18 @@ def calc_midsurf(in_surf, out_surf):
     return Surface.manual(points, in_surf.tris)
 
 
+def calculateXprods(points, tris):
+    """
+    Normal vectors for points,triangles array. 
+    For triangle vertices ABC, this is calculated as (C - A) x (B - A). 
+    """
+
+    return np.cross(
+        points[tris[:,2],:] - points[tris[:,0],:], 
+        points[tris[:,1],:] - points[tris[:,0],:], 
+        axis=1)
+
+
 def slice_sparse(mat, slice0, slice1):
     """
     Slice a block out of a sparse matrix, ie mat[slice0,slice1]. 
@@ -573,3 +585,56 @@ def slice_sparse(mat, slice0, slice1):
     
     out = mat.tocsc()[:,slice1]
     return out.tocsr()[slice0,:]
+
+
+def rebase_triangles(points, tris, tri_inds):
+    """
+    Re-express a patch of a larger surface as a new points and triangle
+    matrix pair, indexed from 0. Useful for reducing computational 
+    complexity when working with a small patch of a surface where only 
+    a few nodes in the points array are required by the triangles matrix. 
+
+    Args: 
+        points (np.array): surface vertices, P x 3
+        tris (np.array): surface triangles, T x 3
+        tri_inds (np.array): row indices into triangles array, to rebase
+    
+    Returns: 
+        (points, tris) tuple of re-indexed points/tris. 
+    """
+
+    ps = np.empty((0, 3), dtype=NP_FLOAT)
+    ts = np.empty((len(tri_inds), 3), dtype=np.int32)
+    pointsLUT = []
+
+    for t in range(len(tri_inds)):
+        for v in range(3):
+
+            # For each vertex of each tri, check if we
+            # have already processed it in the LUT
+            vtx = tris[tri_inds[t],v]
+            idx = np.argwhere(pointsLUT == vtx)
+
+            # If not in the LUT, then add it and record that
+            # as the new position. Write the missing vertex
+            # into the local points array
+            if not idx.size:
+                pointsLUT.append(vtx)
+                idx = len(pointsLUT) - 1
+                ps = np.vstack([ps, points[vtx,:]])
+
+            # Update the local triangle
+            ts[t,v] = idx
+
+    return (ps, ts)
+
+
+def space_encloses_surface(space, points_vox):
+
+    if np.round(np.min(points_vox)) < 0: 
+        raise RuntimeError("Surface has negative voxel coordinate")
+
+    if (np.round(np.max(points_vox, axis=0)) >= space.size).any(): 
+        raise RuntimeError("Surface has voxel coordinate greater than space size")
+
+    return True 

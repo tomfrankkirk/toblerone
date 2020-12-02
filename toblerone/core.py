@@ -149,6 +149,39 @@ def _separatePointClouds(tris):
     return groups 
 
 
+def form_associations(points_vox, tris, space, cores=mp.cpu_count()):
+    """
+    Identify which triangles of a surface intersect each voxel. This 
+    reduces the number of operations that need be performed later. The 
+    results will be stored on the surface object (ie, self)
+
+    Returns: 
+        None, but associations (sparse CSR matrix of size (voxs, tris)
+        and assocs_keys (array of voxel indices containint the surface)
+        will be set on the calling object. 
+    """
+
+    assert utils.space_encloses_surface(space, points_vox)
+    workerFunc = functools.partial(_formAssociationsWorker, 
+                                    tris, points_vox, space.size)
+
+    if cores > 1:
+        chunks = utils._distributeObjects(range(tris.shape[0]), cores)
+        with mp.Pool(cores) as p:
+            worker_assocs = p.map(workerFunc, chunks, chunksize=1)
+
+        assocs = worker_assocs[0]
+        for a in worker_assocs[1:]:
+            assocs += a 
+
+    else:
+        assocs = workerFunc(range(tris.shape[0]))
+
+    # Assocs keys is a list of all voxels touched by any triangle
+    assocs_keys = np.flatnonzero(assocs.sum(1).A)
+    return assocs, assocs_keys
+
+
 def _formAssociationsWorker(tris, points, grid_size, triInds):
     """
     Worker function for use with multiprocessing. See formAssociations
@@ -205,7 +238,7 @@ def _findRayTriangleIntersections2D(testPnt, patch, axis):
     # And find the multipliers for those that do intersect 
     if np.any(fltr):
         mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:],
-            patch.xProds[fltr,:], testPnt, ray)
+            patch.xprods[fltr,:], testPnt, ray)
     else:
         mus = np.array([])
 
@@ -287,7 +320,7 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # For those trianglest that passed, calculate multiplier to point of 
     # intersection
     mus = _findRayTriPlaneIntersections(patch.points[patch.tris[fltr,0],:], 
-        patch.xProds[fltr,:], testPnt, ray)
+        patch.xprods[fltr,:], testPnt, ray)
     
     return mus
 
@@ -566,7 +599,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     subVoxVol = np.prod(subvox_size).astype(NP_FLOAT)
 
     # Rebase triangles and points for this voxel
-    voxCentFlag = surf.voxelised[voxIdx]
+    voxCentFlag = surf.indexed.voxelised[voxIdx]
     patch = surf.to_patch(voxIdx)
 
     # Test all subvox centres now and store the results for later
@@ -710,13 +743,13 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         vector of size prod(FoV)
     """
 
-    size = surf._index_space.size 
-
+    size = surf.indexed.space
     supersampler = np.squeeze(np.array(supersampler, dtype=np.int16))
 
     # Compute all voxel centres, prepare a partial function application for 
     # use with the parallel pool map function 
-    workerChunks = utils._distributeObjects(range(surf.assocs_keys.size), 60)
+    workerChunks = utils._distributeObjects(
+                                range(surf.indexed.assocs_keys.size), 50)
     estimatePartial = functools.partial(_estimateFractionsWorker, 
         surf, supersampler)
 
@@ -759,8 +792,8 @@ def _estimateFractionsWorker(surf, supersampler, chunk):
     # pool the exception will not be raised)
     try:
         pvs = np.zeros(len(chunk), dtype=NP_FLOAT)
-        vox_inds = surf.assocs_keys[chunk]
-        vox_ijks = np.array(np.unravel_index(vox_inds, surf._index_space.size),
+        vox_inds = surf.indexed.assocs_keys[chunk]
+        vox_ijks = np.array(np.unravel_index(vox_inds, surf.indexed.space.size),
             dtype=NP_FLOAT).T
 
         for idx in range(len(chunk)):
@@ -785,10 +818,10 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
             voxel grid, recording the D1 D2 coordinates of their origin
     """
 
-    size = surf._index_space.size
+    size = surf.indexed.space.size
     dim = np.argmax(size)
     other_dims = list({0,1,2} - {dim})
-    mask_size = copy.copy(size)
+    mask_size = copy.deepcopy(size)
     mask_size[other_dims[0]] = len(dim_range)
     mask = np.zeros(mask_size.prod(), dtype=bool)
 
