@@ -720,6 +720,7 @@ class Hemisphere(object):
             raise ValueError("Side must be either 'L' or 'R'")
         self.side = side 
 
+        # Create surfaces from path or make our own copy 
         if not isinstance(insurf, Surface):
             self.inSurf = Surface(insurf, name=side+'WS') 
         else: 
@@ -730,7 +731,7 @@ class Hemisphere(object):
             self.outSurf = copy.deepcopy(outsurf)    
             
         if (self.inSurf.tris != self.outSurf.tris).any(): 
-            raise ValueError("Inner and outer surface must have same triangulation")
+            raise ValueError("Both surfaces must have same triangles array")
 
         self.PVs = None 
         return
@@ -738,13 +739,15 @@ class Hemisphere(object):
     @property
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
+
         return [self.inSurf, self.outSurf]
 
     @property
     def surf_dict(self):
         """Return surfs as dict with appropriate keys (eg LPS)"""
-        return {self.side + 'WS': self.inSurf, 
-            self.side+'PS': self.outSurf}
+
+        return { self.side + 'WS': self.inSurf, 
+                 self.side + 'PS': self.outSurf}
 
     def apply_transform(self, mat):
         """Apply affine transformation to each surface."""
@@ -752,9 +755,7 @@ class Hemisphere(object):
         [ s.apply_transform(mat) for s in self.surfs ]
 
     def midsurface(self):
-        """
-        Midsurface between inner and outer cortex
-        """
+        """Midsurface between inner and outer cortex"""
         return calc_midsurf(self.inSurf, self.outSurf)
 
     def adjacency_matrix(self):
@@ -765,4 +766,13 @@ class Hemisphere(object):
 
     @property
     def n_points(self):
+        """Number of vertices on either cortical surface"""
+
         return self.inSurf.n_points
+
+    def mesh_laplacian(self, distance_weight=1):
+        """
+        Mesh Laplacian on cortical midsurface, inverse distance weighting of power N
+        """
+        mid = self.midsurface()
+        return mid.mesh_laplacian(distance_weight)

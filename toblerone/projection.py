@@ -120,6 +120,16 @@ class Projector(object):
         return sparse.block_diag(mats, format="csr")
 
 
+    def mesh_laplacian(self, distance_weight=1):
+        """
+        Overall mesh Laplacian matrix for all surface vertices of projector. 
+        If there are two hemispheres present, the matrix indices will be 
+        arranged L/R
+        """
+        mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
+        return sparse.block_diag(mats, format="csr")
+
+
     def flat_pvs(self):
         """
         Combine PV estimates from one or both hemispheres (if available) into 
