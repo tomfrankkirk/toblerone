@@ -254,16 +254,6 @@ def affine_transform(points, affine):
     transfd = np.matmul(affine, transfd.T).astype(NP_FLOAT)
     return np.squeeze(transfd[0:3,:].T)
 
-# TODO: remove?
-def _coordinatesForGrid(ofSize):
-    """Produce N x 3 array of all voxel indices (eg [10, 18, 2]) within
-    a grid of size ofSize, 0-indexed and in integer form. 
-    """
-
-    I, J, K = np.unravel_index(np.arange(np.prod(ofSize)), ofSize)
-    cents = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
-    return cents.astype(np.int32)
-
 
 def _distributeObjects(objs, ngroups):
     """Distribute a set of objects into n groups.
