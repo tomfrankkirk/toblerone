@@ -231,7 +231,7 @@ def _runFAST(struct, dir):
     os.chdir(pwd)
 
 
-def affineTransformPoints(points, affine):
+def affine_transform(points, affine):
     """Apply affine transformation to set of points.
 
     Args: 

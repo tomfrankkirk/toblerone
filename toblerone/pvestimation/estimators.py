@@ -35,7 +35,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     surfs = [ s for h in loc_hemispheres for s in h.surfs ]
 
     for s in surfs: 
-        s.index_on(space, struct2ref, cores)
+        s.apply_transform(struct2ref)
 
     # Estimate PV fractions for each surface
     for h in loc_hemispheres:
@@ -108,7 +108,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
 
     # Create our own local copy of inputs 
     loc_surf = copy.deepcopy(surf)
-    loc_surf.index_on(space, struct2ref, cores)
+    loc_surf.apply_transform(struct2ref)
     loc_surf._estimate_fractions(supersampler, cores, ones)
     
     return loc_surf.output_pvs(space)

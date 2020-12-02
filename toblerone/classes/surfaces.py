@@ -134,7 +134,7 @@ class Surface(object):
                 ps[:,0] = ((struct_spc.size[0]) - 1) - ps[:,0]
 
             # Finally, convert from voxel coords to world mm 
-            ps = utils.affineTransformPoints(ps, struct_spc.vox2world)
+            ps = utils.affine_transform(ps, struct_spc.vox2world)
 
         self.points = ps.astype(NP_FLOAT)
         self.tris = ts.astype(np.int32)
@@ -435,19 +435,10 @@ class Surface(object):
             return dest_inds[fltr]
 
 
-    def calculateXprods(self):
-        """Calculate and store surface element normals"""
+    def apply_transform(self, transform):
+        """Apply affine transformation to surface vertices"""
 
-        self.xProds = np.cross(
-            self.points[self.tris[:,2],:] - self.points[self.tris[:,0],:], 
-            self.points[self.tris[:,1],:] - self.points[self.tris[:,0],:], 
-            axis=1)
-
-
-    def applyTransform(self, transform):
-        """Apply affine transformation (4x4 array) to surface coordinates"""
-
-        self.points = (utils.affineTransformPoints(
+        self.points = (utils.affine_transform(
             self.points, transform).astype(NP_FLOAT))
 
 
@@ -804,7 +795,9 @@ class Hemisphere(object):
             self.side+'PS': self.outSurf}
 
     def apply_transform(self, mat):
-        [ s.applyTransform(mat) for s in self.surfs ]
+        """Apply affine transformation to each surface."""
+
+        [ s.apply_transform(mat) for s in self.surfs ]
 
     def midsurface(self):
         """
