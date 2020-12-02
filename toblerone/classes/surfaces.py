@@ -363,22 +363,84 @@ class Surface(object):
             assocs_keys=assocs_keys, 
             xprods=xprods,
         )
+
+
+    @ensure_derived_space
+    def voxelise(self, space, cores=mp.cpu_count()):
+        """
+        Voxelise a surface within an ImageSpace. This requires the surface to 
+        have been indexed on the same ImageSpace first. 
+
+        Args:
+            space (ImageSpace): voxel grid to test against surface
+            cores (int): CPU cores to use
+
+        Returns
+            (np.bool): flat array of voxels contained within surface
+        """
+
+        if self.indexed is None: 
+            raise RuntimeError("Surface must be indexed before calling this function")
+
+        # We will project rays along the longest dimension and split the 
+        # grid along the first of the other two. 
+        size = self.indexed.space.size
+        dim = np.argmax(size)
+        other_dims = list({0,1,2} - {dim})
+        
+        # Get the voxel IJKs for every voxel intersecting the surface
+        # Group these according to their ray number, and then strip out
+        # repeats to get the minimal set of rays that need to be projected
+        # For voxel IJK, and projection along dimension Y, the ray number
+        # is given by I,K within a grid of size XZ. Ray D1D2 is an Nx2 array
+        # holding the unique ray coords in dimensions XZ. 
+        allIJKs = np.array(np.unravel_index(self.indexed.assocs_keys, size)).T
+        ray_numbers = np.ravel_multi_index(allIJKs[:,other_dims].T, 
+            size[other_dims])
+        _, uniq_rays = np.unique(ray_numbers, return_index=True)
+        rayD1D2 = allIJKs[uniq_rays,:]
+        rayD1D2 = rayD1D2[:,other_dims]
+
+        worker = functools.partial(core._voxelise_worker, self)
+
+        if cores > 1: 
+
+            # Share out the rays and subset of the overall dimension range
+            # amongst pool workers
+            sub_ranges = utils._distributeObjects(range(size[other_dims[0]]), cores)
+            subD1D2s = [ 
+                rayD1D2[(rayD1D2[:,0] >= sub.start) & (rayD1D2[:,0] < sub.stop),:]
+                for sub in sub_ranges ] 
+
+            # Check tasks were shared out completely, zip them together for pool
+            assert sum([s.shape[0] for s in subD1D2s]) == rayD1D2.shape[0]
+            assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
+            worker_args = zip(sub_ranges, subD1D2s)
+
+            with mp.Pool(cores) as p: 
+                submasks = p.starmap(worker, worker_args)
+            src_mask = np.concatenate(submasks, axis=other_dims[0])
+
         else: 
-            overall = encl_space.world2vox
+            src_mask = worker(range(size[other_dims[0]]), rayD1D2)
 
-        # Map surface points into this space via struct2ref
-        self.applyTransform(overall)
-        maxFoV = self.points.max(0).round()
-        minFoV = self.points.min(0).round()
-        if np.any(minFoV < -1) or np.any(maxFoV > encl_space.size -1):
-            raise RuntimeError("Space should be large enough to enclose surface")
+        assert src_mask.any(), 'no voxels filled'
+        src_mask = src_mask.flatten()
 
-        # Update surface attributes
-        self._index_space = encl_space 
-        self.form_associations(cores)
-        self.calculateXprods()
-        self.voxelise(cores)
+        # If the space provided is not the same as the space used for indexing 
+        # (because we reduced the FoV when indexing), we need to map results 
+        # from the indexing space into the destination space. See index_on()
+        # for more info. 
+        # Else, we can just return the mask as-is. 
+        if space != self.indexed.space: 
+            src_inds, dest_inds = self.reindexing_filter(space, False)
+            mask = np.zeros(space.size.prod(), dtype=np.bool)
+            mask[dest_inds] = src_mask[src_inds]    
+        else: 
+            mask = src_mask 
 
+        return src_mask 
+    
 
     @ensure_derived_space
     def reindexing_filter(self, dest_space, as_bool=False):
@@ -503,65 +565,6 @@ class Surface(object):
         else: 
             return None
 
-
-    def voxelise(self, cores=mp.cpu_count()):
-        """
-        Voxelise surface within its current index space. A flat boolean 
-        mask will be stored on the calling object as .voxelised. 
-
-        Args:
-            cores: number of cores to use 
-        """
-
-        if self._index_space is None:
-            raise RuntimeError("Surface must be indexed for voxelisation")
-
-        # We will project rays along the longest dimension and split the 
-        # grid along the first of the other two. 
-        size = self._index_space.size 
-        dim = np.argmax(size)
-        other_dims = list({0,1,2} - {dim})
-        other_size = size[other_dims]
-        
-        # Get the voxel IJKs for every voxel intersecting the surface
-        # Group these according to their ray number, and then strip out
-        # repeats to get the minimal set of rays that need to be projected
-        # For voxel IJK, and projection along dimension Y, the ray number
-        # is given by I,K within a grid of size XZ. Ray D1D2 is an Nx2 array
-        # holding the unique ray coords in dimensions XZ. 
-        allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
-        ray_numbers = np.ravel_multi_index(allIJKs[:,other_dims].T, 
-            size[other_dims])
-        _, uniq_rays = np.unique(ray_numbers, return_index=True)
-        rayD1D2 = allIJKs[uniq_rays,:]
-        rayD1D2 = rayD1D2[:,other_dims]
-
-        worker = functools.partial(core._voxelise_worker, self)
-
-        if (cores > 1) and (self._use_mp): 
-
-            # Share out the rays and subset of the overall dimension range
-            # amongst pool workers
-            sub_ranges = utils._distributeObjects(
-                range(size[other_dims[0]]), cores)
-            subD1D2s = [ 
-                rayD1D2[(rayD1D2[:,0] >= sub.start) & (rayD1D2[:,0] < sub.stop),:]
-                for sub in sub_ranges ] 
-
-            # Check tasks were shared out completely, zip them together for pool
-            assert sum([s.shape[0] for s in subD1D2s]) == rayD1D2.shape[0]
-            assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
-            worker_args = zip(sub_ranges, subD1D2s)
-
-            with mp.Pool(cores) as p: 
-                submasks = p.starmap(worker, worker_args)
-            mask = np.concatenate(submasks, axis=other_dims[0])
-
-        else: 
-            mask = worker(range(size[other_dims[0]]), rayD1D2)
-
-        assert mask.any(), 'no voxels filled'
-        self.voxelised = mask.reshape(-1)
 
     def to_polydata(self):
         """Return pyvista polydata object for this surface"""
