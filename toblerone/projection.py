@@ -48,7 +48,7 @@ class Projector(object):
                 raise ValueError("Hemisphere must have 'L' or 'R' side")
             hemispheres = [hemispheres]
             
-        self.hemis = { h.side: h for h in hemispheres }
+        self.hemis = { h.side: copy.deepcopy(h) for h in hemispheres }
         self.spc = spc 
         self.pvs = [] 
         self.__vox_tri_mats = [] 
@@ -66,17 +66,9 @@ class Projector(object):
                     ncores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
-            # Transform surfaces voxel coordinates, check for partial coverage
-            hemi.apply_transform(spc.world2vox)
-            if ((hemi.outSurf.points.min(0) < -1).any() or
-                (hemi.outSurf.points.max(0) > spc.size).any()): 
-                warnings.warn("Surfaces not fully containined within reference" +
-                    " space. Ensure they are in world-mm coordinates.")
-
             # Calculate the constituent matrices for projection with each hemi 
             midsurf = hemi.midsurface()
-            vox_tri = vox_tri_weights(hemi.inSurf, hemi.outSurf, 
-                spc, factor, ncores, ones)
+            vox_tri = vox_tri_weights(*hemi.surfs, spc, factor, ncores, ones)
             vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.__vox_tri_mats.append(vox_tri)
             self.__vtx_tri_mats.append(vtx_tri)

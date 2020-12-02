@@ -11,7 +11,7 @@
 
 import functools
 import itertools
-import multiprocessing as mp 
+import multiprocessing as mp
 from scipy import sparse
 import copy 
 
@@ -25,7 +25,7 @@ from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,
                                   _cytestManyRayTriangleIntersections,
                                   _quick_cross)
 from toblerone import utils 
-from toblerone.utils import NP_FLOAT
+from toblerone.utils import NP_FLOAT, space_encloses_surface
 
 
 # Module level constants ------------------------------------------------------
@@ -881,8 +881,8 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
         return mask.reshape(mask_size)
 
 
-def vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count(), 
-                     ones=False):     
+def vox_tri_weights(in_surf, out_surf, spc, factor=10, 
+                    cores=mp.cpu_count(), ones=False):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -901,9 +901,16 @@ def vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count(),
             NB this matrix is not normalised in any way!
     """
 
+    points_vox = []
+    for s in [in_surf, out_surf]:
+        p_v = utils.affine_transform(s.points, spc.world2vox)
+        assert space_encloses_surface(spc, p_v)
+        points_vox.append(p_v)
+
     n_tris = in_surf.tris.shape[0]
-    worker = functools.partial(_vox_tri_weights_worker, in_surf=in_surf, 
-        out_surf=out_surf, spc=spc, factor=factor, ones=ones)
+    worker = functools.partial(_vox_tri_weights_worker, 
+        inps_vox=points_vox[0], outps_vox=points_vox[1], 
+        tris=in_surf.tris, spc=spc, factor=factor, ones=ones)
     
     if cores > 1: 
         t_ranges = utils._distributeObjects(range(n_tris), cores)
@@ -920,7 +927,8 @@ def vox_tri_weights(in_surf, out_surf, spc, factor=10, cores=mp.cpu_count(),
     return vpmat / (factor ** 3)
 
 
-def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False):
+def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris, 
+                            spc, factor, ones=False):
     """
     Helper method for vox_tri_weights(). 
 
@@ -938,7 +946,7 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
     # Initialise a grid of sample points, sized by (factor) in each dimension. 
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
-        in_surf.tris.shape[0]), dtype=NP_FLOAT)
+        tris.shape[0]), dtype=NP_FLOAT)
     sampler = np.linspace(0, 1, 2*factor + 1, dtype=NP_FLOAT)[1:-1:2]
     samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
                .reshape(-1,3) - 0.5)
@@ -951,7 +959,7 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
         # vertices (note, NOT A SHUFFLE) such that the highest index is first 
         # (corresponding to A,a). The relative ordering of vertices remains the
         # same, so we use flagsum to check if B < C or C < B. 
-        tri = in_surf.tris[t,:]
+        tri = tris[t,:]
         tri_max = np.argmax(tri)
         tri_sort = [ tri[(tri_max + i) % 3] for i in range(3) ]
         flagsum = sum([ int(tri_sort[v] < tri_sort[(v + 1) % 3]) 
@@ -965,8 +973,8 @@ def _vox_tri_weights_worker(t_range, in_surf, out_surf, spc, factor, ones=False)
         else:
             tets = TETRA2
 
-        hull_ps = np.vstack((in_surf.points[tri_sort,:], 
-                             out_surf.points[tri_sort,:]))
+        hull_ps = np.vstack((inps_vox[tri_sort,:], 
+                             outps_vox[tri_sort,:]))
 
         # Get the neighbourhood of voxels through which this prism passes
         # in linear indices
