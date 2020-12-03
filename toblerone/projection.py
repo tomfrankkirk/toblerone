@@ -109,23 +109,36 @@ class Projector(object):
         return sum([ h.n_points for h in self.iter_hemis ])
 
 
-    def adjacency_matrix(self):
+    def adjacency_matrix(self, distance_weight=0):
         """
         Overall adjacency matrix for all surface vertices of projector. 
         If there are two hemispheres present, the matrix indices will 
         be arranged L,R.  
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
         """ 
 
-        mats = [ h.adjacency_matrix() for h in self.iter_hemis ]
+        mats = [ h.adjacency_matrix(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
 
-    def mesh_laplacian(self, distance_weight=1):
+    def mesh_laplacian(self, distance_weight=0):
         """
         Overall mesh Laplacian matrix for all surface vertices of projector. 
         If there are two hemispheres present, the matrix indices will be 
-        arranged L/R
+        arranged L/R. 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
         """
+        
         mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 

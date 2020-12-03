@@ -326,7 +326,7 @@ class Surface(object):
             cores (int): CPU cores for multiprocessing. 
 
         Updates: 
-            self.indexed (SimpleNamespace): with the following attributes; 
+            self.indexed (SimpleNamespace): with the following attributes
                 indexed.points_vox:  converted into voxel coordinates for the space
                 indexed.assocs:      sparse CSR bool matrix of size (voxs, tris)
                 indexed.assocs_keys: voxel indices that contain surface 
@@ -573,36 +573,25 @@ class Surface(object):
         tris[:,1:] = self.tris 
         return pyvista.PolyData(self.points, tris)
 
-    def adjacency_matrix(self):
+
+    def adjacency_matrix(self, distance_weight=0):
         """
         Adjacency matrix for the points of this surface, as a scipy sparse
         matrix of size P x P, with 1 denoting a shared edge between points. 
-        """
-
-        return igl.adjacency_matrix(self.tris)
-
-    def mesh_laplacian(self, distance_weight=None):
-        """
-        Mesh Laplacian operator for this surface, as a scipy sparse matrix 
-        of size n_points x n_points. Elements on the diagonal are negative 
-        and off-diagonal elements are positive. All neighbours are weighted 
-        with value 1 (ie, equal weighting ignoring distance). 
-
-        Args: 
+        
+        Args:
             distance_weight (int): apply inverse distance weighting, default 
-                None (do not weight, all values are unity), whereas positive
-                values will weight elements by 1 / d^n, where d is Euclidean 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
                 distance between vertices. 
-
-        Returns: 
-            sparse CSR matrix
         """
 
-        adj = self.adjacency_matrix().tocsr().astype(NP_FLOAT)
+        if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
+            raise ValueError("distance_weight must be int >= 0")
 
-        if distance_weight is not None: 
-            if not (isinstance(distance_weight, int) and (distance_weight > 0)):
-                raise ValueError("distance_weight must be a positive int")
+        adj = igl.adjacency_matrix(self.tris).tocsr().astype(NP_FLOAT)
+
+        if distance_weight > 0: 
             
             # Find all connected pairs of vertices in the upper triangle
             # of the adjacency matrix. By symmetry of the adjacency matrix, 
@@ -625,7 +614,28 @@ class Surface(object):
             adj[pairs[:,0], pairs[:,1]] = weight 
             adj[pairs[:,1], pairs[:,0]] = weight 
 
+        return adj 
+
+
+    def mesh_laplacian(self, distance_weight=0):
+        """
+        Mesh Laplacian operator for this surface, as a scipy sparse matrix 
+        of size n_points x n_points. Elements on the diagonal are negative 
+        and off-diagonal elements are positive. All neighbours are weighted 
+        with value 1 (ie, equal weighting ignoring distance). 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all values are unity), whereas positive
+                values will weight elements by 1 / d^n, where d is geometric 
+                distance between vertices. 
+
+        Returns: 
+            sparse CSR matrix
+        """
+
         # The diagonal is the negative sum of other elements 
+        adj = self.adjacency_matrix(distance_weight)
         dia = adj.sum(1).A.flatten()
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape))
         laplacian = adj - laplacian
@@ -634,6 +644,7 @@ class Surface(object):
         assert utils.is_nsd(laplacian), 'Not negative semi-definite'
         assert utils.is_symmetric(laplacian), 'Not symmetric'
         return laplacian
+
 
     def laplace_beltrami(self, area='mayer', cores=mp.cpu_count()):
         """
@@ -663,6 +674,7 @@ class Surface(object):
         lbo = (M.power(-1)).dot(L)
         assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
         return lbo
+
 
     def edges(self):
         """
@@ -758,21 +770,34 @@ class Hemisphere(object):
         """Midsurface between inner and outer cortex"""
         return calc_midsurf(self.inSurf, self.outSurf)
 
-    def adjacency_matrix(self):
+    def adjacency_matrix(self, distance_weight=0):
         """
-        Adjacency matrix of inner surface (which is the sane as the outer)
+        Adjacency matrix of any cortical surface (they necessarily share
+        the same triagulation, which is checked during initialisation). 
+
+        Args:
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
         """
-        return self.inSurf.adjacency_matrix()
+
+        return self.inSurf.adjacency_matrix(distance_weight)
 
     @property
     def n_points(self):
         """Number of vertices on either cortical surface"""
-
         return self.inSurf.n_points
 
-    def mesh_laplacian(self, distance_weight=1):
+    def mesh_laplacian(self, distance_weight=0):
         """
-        Mesh Laplacian on cortical midsurface, inverse distance weighting of power N
+        Mesh Laplacian on cortical midsurface. 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
         """
-        mid = self.midsurface()
-        return mid.mesh_laplacian(distance_weight)
+
+        return self.midsurface().mesh_laplacian(distance_weight)

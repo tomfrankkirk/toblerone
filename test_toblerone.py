@@ -160,26 +160,38 @@ def test_surf_edges():
 def test_adjacency():
     td = get_testdir()
     s = classes.Surface(op.join(td, 'in.surf.gii'))
-    adj = s.adjacency_matrix()
-    assert not (adj.data < 0).any(), 'negative value in adjacency matrix'
+    for w in range(4):
+        adj = s.adjacency_matrix(w)
+        assert not (adj.data < 0).any(), 'negative value in adjacency matrix'
+
+    try: 
+        s.adjacency_matrix(-1)
+    except Exception as e: 
+        assert isinstance(e, ValueError), 'negative distance weight should give ValueError'     
 
     outs = Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     hemi = toblerone.Hemisphere(s, outs, 'L')
     hemi2 = toblerone.Hemisphere(s, outs, 'R')
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
-    adj = proj.adjacency_matrix()
-
     n = proj.hemis['L'].n_points
-    assert not slice_sparse(adj, slice(0, n), slice(n, 2*n)).nnz
-    assert not slice_sparse(adj, slice(n, 2*n), slice(0, n)).nnz
+
+    for w in range(4):
+        adj = proj.adjacency_matrix(w)
+        assert not slice_sparse(adj, slice(0, n), slice(n, 2*n)).nnz
+        assert not slice_sparse(adj, slice(n, 2*n), slice(0, n)).nnz
 
 
 def test_mesh_laplacian():
     td = get_testdir()
     s = classes.Surface(op.join(td, 'in.surf.gii'))
 
-    for w in [None,1,2,3]:
+    try: 
+        s.mesh_laplacian(-1)
+    except Exception as e: 
+        assert isinstance(e, ValueError), 'negative distance weight should give ValueError'     
+
+    for w in range(4):
         lap = s.mesh_laplacian(distance_weight=w)
         assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
 
@@ -189,7 +201,7 @@ def test_mesh_laplacian():
     hemi2 = toblerone.Hemisphere(s, outs, 'R')
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
 
-    for w in [None,1,2,3]:
+    for w in range(4):
         lap = proj.mesh_laplacian(w)
         n = proj.hemis['L'].n_points
         assert not slice_sparse(lap, slice(0, n), slice(n, 2*n)).nnz
