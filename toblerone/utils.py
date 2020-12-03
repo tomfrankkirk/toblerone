@@ -497,11 +497,11 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 
     Args: 
         mat: sparse matrix to normalise 
-        axis: dimension along which sums should equal 1 (0 for col, 1 for row)
-        threshold: any row/col wuth sum < threshold will be set to zero  
+        axis: dimension for which sum should equal 1 (1 for row, 0 for col)
+        threshold: any row/col with sum < threshold will be set to zero  
 
     Returns: 
-        sparse matrix. either CSR (axis 0) or CSC (axis 1)
+        sparse matrix, same format as input. 
     """
 
     # Make local copy - otherwise this function will modify the caller's copy 
@@ -510,14 +510,13 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 
     if axis == 0:
         matrix = mat.tocsr()
-        norm = mat.sum(0).A.flatten()
     elif axis == 1: 
         matrix = mat.tocsc()
-        norm = mat.sum(1).A.flatten()
     else: 
-        raise RuntimeError("Axis must be 0 or 1")
+        raise ValueError("Axis must be 0 or 1")
 
     # Set threshold. Round any row/col below this to zeros 
+    norm = mat.sum(axis).A.flatten()
     fltr = (norm > threshold)
     normalise = np.zeros(norm.size)
     normalise[fltr] = 1 / norm[fltr]
@@ -525,7 +524,7 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
-    assert np.all(np.abs((sums[sums > 0] - 1)) < 1e-6), 'Did not normalise to 1'
+    assert np.all(np.abs((sums[sums > 0] - 1)) < threshold), 'Did not normalise to 1'
     return constructor(matrix)
 
 

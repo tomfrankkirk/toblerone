@@ -4,6 +4,7 @@ import os.path as op
 from numpy.lib.arraysetops import isin
 
 from numpy.lib.index_tricks import diag_indices
+from scipy import sparse
 
 from toblerone.classes.surfaces import Surface 
 import nibabel 
@@ -19,7 +20,7 @@ from toblerone import classes, projection, core
 from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
-from toblerone.utils import NP_FLOAT, slice_sparse
+from toblerone.utils import NP_FLOAT, slice_sparse, sparse_normalise
 
 cores = multiprocessing.cpu_count()
 
@@ -281,6 +282,13 @@ def test_cortex():
     # truth = np.squeeze(nibabel.load(op.join(td, 'truth.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
 
+def test_sparse_normalise():
+    mat = sparse.random(5000, 5000, 0.1)
+    thr = 1e-12
+    for axis in range(2):
+        normed = sparse_normalise(mat, axis, thr)
+        sums = normed.sum(axis).A.flatten()
+        assert (np.abs(sums[sums > 0] - 1) <= thr).all()
 
 if __name__ == "__main__":
-    test_projection()
+    test_sparse_normalise()
