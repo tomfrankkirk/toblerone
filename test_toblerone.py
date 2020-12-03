@@ -1,6 +1,7 @@
 """Toblerone tests"""
 
 import os.path as op
+from numpy.lib.arraysetops import isin
 
 from numpy.lib.index_tricks import diag_indices
 
@@ -73,28 +74,43 @@ def test_projection():
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
     vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
-    ndata = np.concatenate((vdata, sdata))
+    ndata = np.concatenate((sdata, vdata))
     projector = toblerone.projection.Projector(hemi, spc, 10, 1)
 
     # volume to surface 
     v2s = projector.vol2surf(vdata, False)
     v2s_edge = projector.vol2surf(vdata, True)
     assert (v2s <= v2s_edge).all(), "edge correction did not increase signal"
+    v2s = projector.vol2surf_matrix(False)
+    v2s_edge = projector.vol2surf_matrix(True)
+    assert (v2s_edge.data >= v2s.data).all(), 'egde correction: some weights should increase'
 
     # surface to volume 
     s2v = projector.surf2vol(sdata, False)
-    s2v_pv = projector.surf2vol(sdata, pv_weight=True)
+    s2v_pv = projector.surf2vol(sdata, True)
     assert (s2v_pv <= s2v).all(), "pv weighting did not reduce signal"
+    s2v = projector.surf2vol_matrix(False)
+    assert (s2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
+    s2v_pv = projector.surf2vol_matrix(False)
+    assert (s2v_pv.data <= s2v.data).all(), 'pv weighting should reduce voxel weights'
 
     # volume to node 
     v2n = projector.vol2node(vdata, False)
     v2n_edge = projector.vol2node(vdata, True)
     assert (v2n <= v2n_edge).all(), "edge correction did not increase signal"
+    v2n = projector.vol2node_matrix(False)
+    assert (v2n.sum(1).max() - 1) < 1e-6, 'total node weight > 1'
+    v2n_edge = projector.vol2node_matrix(True)
+    assert (v2n_edge.sum(1).max() - 1) > 1e-6, 'edge correction: node should have weight > 1'
 
     # node to volume 
     n2v = projector.node2vol(ndata, False)
     n2v_pv = projector.node2vol(ndata, True)
     assert (n2v_pv <= n2v).all(), "pv weighting did not reduce signal"
+    n2v = projector.node2vol_matrix(False)
+    assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
+    n2v_pv = projector.node2vol_matrix(True)
+    assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
     
 
 def test_subvoxels():
@@ -267,4 +283,4 @@ def test_cortex():
 
 
 if __name__ == "__main__":
-    test_cortex()
+    test_projection()
