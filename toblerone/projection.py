@@ -58,7 +58,7 @@ class Projector(object):
         self.__vtx_tri_mats = []
         ncores = cores if hemispheres[0].inSurf._use_mp else 1 
 
-        for hemi in hemispheres: 
+        for hemi in self.iter_hemis: 
 
             # If PV estimates are not present, then compute from scratch 
             if hasattr(hemi, 'pvs'): 
@@ -141,7 +141,7 @@ class Projector(object):
                 values will weight edges by 1 / d^n, where d is geometric 
                 distance between vertices. 
         """
-        
+
         mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
@@ -165,16 +165,16 @@ class Projector(object):
             return self.pvs[0]
 
 
-    def vol2surf_matrix(self, edge_correction):
+    def vol2surf_matrix(self, edge_scale):
         """
         Volume to surface projection matrix. 
 
         Args: 
-            edge_correction (bool):  upweight signal from voxels that are not
-                                     100% brain to account for 'missing' signal. 
-                                     Set True for quantities that scale with PVE 
-                                     (eg perfusion), set False otherwise 
-                                     (eg time quantities)
+            edge_scale (bool):  upweight signal from voxels that are not
+                                100% brain to account for 'missing' signal. 
+                                Set True for quantities that scale with PVE 
+                                (eg perfusion), set False otherwise 
+                                (eg time quantities)
 
         Returns: 
             sparse matrix sized (surface vertices x voxels). Surface vertices 
@@ -185,7 +185,7 @@ class Projector(object):
             for vox_tri, vtx_tri in zip(self.vox_tri_mats, self.vtx_tri_mats) ]
         v2s_mat = sparse.vstack(proj_mats, format="csr")
 
-        if edge_correction: 
+        if edge_scale: 
             brain_pv = self.flat_pvs()[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
             upweight = np.ones(brain_pv.shape)
@@ -195,35 +195,35 @@ class Projector(object):
         return v2s_mat 
 
 
-    def vol2node_matrix(self, edge_correction): 
+    def vol2node_matrix(self, edge_scale): 
         """
         Volume to node space projection matrix. 
 
         Args: 
-            edge_correction (bool):  upweight signal from voxels that are not
-                                     100% brain to account for 'missing' signal. 
-                                     Set True for quantities that scale with PVE 
-                                     (eg perfusion), set False otherwise 
-                                     (eg time quantities)
+            edge_scale (bool):  upweight signal from voxels that are not
+                                100% brain to account for 'missing' signal. 
+                                Set True for quantities that scale with PVE 
+                                (eg perfusion), set False otherwise 
+                                (eg time quantities)
 
         Returns: 
             sparse matrix sized ((surface vertices + voxels) x voxels)
         """
 
-        v2s_mat = self.vol2surf_matrix(edge_correction)
+        v2s_mat = self.vol2surf_matrix(edge_scale)
         v2v_mat = sparse.eye(self.spc.size.prod())
         v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
         return v2n_mat
 
 
-    def surf2vol_matrix(self, pv_scale):
+    def surf2vol_matrix(self, edge_scale):
         """
         Surface to volume projection matrix. 
 
         Args: 
-            pv_scale (bool): downweight signal by voxel-wise PV fraction. 
-                             Set True for data that scales with PVE (eg perfusion),
-                             set False for data that does not (eg time quantities). 
+            edge_scale (bool): downweight signal in voxels that are not 100% brain: 
+                               set True for data that scales with PVE (eg perfusion),
+                               set False for data that does not (eg time quantities). 
 
         Returns: 
             sparse matrix sized (surface vertices x voxels)
@@ -231,7 +231,7 @@ class Projector(object):
 
         proj_mats = []
 
-        if pv_scale: 
+        if edge_scale: 
             gm_weights = []
             if len(self.hemis) == 1: 
                 gm_weights.append(np.ones(self.spc.size.prod()))
@@ -264,57 +264,57 @@ class Projector(object):
 
         pvs = self.flat_pvs()
         s2v_mat = sparse.hstack(proj_mats, format="csc")
-        if pv_scale:
+        if edge_scale:
             s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
         return s2v_mat  
 
 
-    def node2vol_matrix(self, pv_scale): 
+    def node2vol_matrix(self, edge_scale): 
         """
         Node space to volume projection matrix. 
 
         Args: 
-            pv_scale (bool): downweight signal by voxel-wise PV fraction. 
-                             Set True for data that scales with PVE (eg perfusion),
-                             set False for data that does not (eg time quantities). 
+            edge_scale (bool): downweight signal in voxels that are not 100% brain: 
+                               set True for data that scales with PVE (eg perfusion),
+                               set False for data that does not (eg time quantities). 
 
         Returns: 
             sparse CSR matrix sized (voxels x (surface vertices + voxels))
         """
 
         # Assemble the matrices corresponding to cortex and subcortex individually. 
-        # Regardless of whether the overall projection should be pv_scaled or not, 
+        # Regardless of whether the overall projection should be edge_scaled or not, 
         # we want the balance between cortex and subcortex to be determined by the 
         # weight of GM and WM, which is why we scale both matrices accordingly. 
 
-        # If the final result should be pv_scaled, then we simply stack and return
+        # If the final result should be edge_scaled, then we simply stack and return
         # the result. If the final result should not be scaled, then we normalise 
         # so that each row sums to 1 to get a weighted-average projection. In both
         # cases, the weighting given to cortex/subcortex within the projection is 
         # determined by GM and WM PVs, only the scaling of the final matrix changes. 
 
         pvs = self.flat_pvs()
-        s2v_mat = self.surf2vol_matrix(pv_scale=True)
+        s2v_mat = self.surf2vol_matrix(edge_scale=True)
         v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
             shape=2*[self.spc.size.prod()])
         n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
 
-        if not pv_scale: 
+        if not edge_scale: 
             n2v_mat = sparse_normalise(n2v_mat, 1)
         return n2v_mat
 
 
-    def vol2surf(self, vdata, edge_correction):
+    def vol2surf(self, vdata, edge_scale):
         """
         Project data from volum to surface. 
 
         Args: 
-            vdata (np.array): sized n_voxels in first dimension
-            edge_correction (bool):  upweight signal from voxels that are not
-                                     100% brain to account for 'missing' signal. 
-                                     Set True for quantities that scale with PVE 
-                                     (eg perfusion), set False otherwise 
-                                     (eg time quantities)
+            vdata (np.array):   sized n_voxels in first dimension
+            edge_scale (bool):  upweight signal from voxels that are not
+                                100% brain to account for 'missing' signal. 
+                                Set True for quantities that scale with PVE 
+                                (eg perfusion), set False otherwise 
+                                (eg time quantities)
         
         Returns:
             np.array, sized n_vertices in first dimension 
@@ -323,70 +323,70 @@ class Projector(object):
         if vdata.shape[0] != self.spc.size.prod(): 
             raise RuntimeError("vdata must have the same number of rows as" +
                 " voxels in the reference ImageSpace")
-        v2s_mat = self.vol2surf_matrix(edge_correction)
+        v2s_mat = self.vol2surf_matrix(edge_scale)
         return v2s_mat.dot(vdata)
 
 
-    def surf2vol(self, sdata, pv_scale): 
+    def surf2vol(self, sdata, edge_scale): 
         """
         Project data from surface to volume. 
 
         Args: 
-            sdata (np.array): sized n_vertices in first dimension (arranged L,R)
-            pv_scale (bool): downweight signal by voxel-wise PV fraction. 
-                             Set True for data that scales with PVE (eg perfusion),
-                             set False for data that does not (eg time quantities). 
+            sdata (np.array):  sized n_vertices in first dimension (arranged L,R)
+            edge_scale (bool): downweight signal in voxels that are not 100% brain: 
+                               set True for data that scales with PVE (eg perfusion),
+                               set False for data that does not (eg time quantities). 
 
         Returns: 
             np.array, sized n_voxels in first dimension 
         """
 
-        s2v_mat = self.surf2vol_matrix(pv_scale)
+        s2v_mat = self.surf2vol_matrix(edge_scale)
         if sdata.shape[0] != s2v_mat.shape[1]: 
             raise RuntimeError("sdata must have the same number of rows as" +
                 " total surface nodes (were one or two hemispheres used?)")
         return s2v_mat.dot(sdata)
 
 
-    def vol2node(self, vdata, edge_correction):
+    def vol2node(self, vdata, edge_scale):
         """
         Project data from volume to node space. 
 
         Args: 
-            vdata (np.array):        sized n_voxels in first dimension 
-            edge_correction (bool):  upweight signal from voxels that are not
-                                     100% brain to account for 'missing' signal. 
-                                     Set True for quantities that scale with PVE 
-                                     (eg perfusion), set False otherwise 
-                                     (eg time quantities)
+            vdata (np.array):   sized n_voxels in first dimension 
+            edge_scale (bool):  upweight signal from voxels that are not
+                                100% brain to account for 'missing' signal. 
+                                Set True for quantities that scale with PVE 
+                                (eg perfusion), set False otherwise 
+                                (eg time quantities)
 
         Returns: 
             np.array, sized (n_vertices + n_voxels) in first dimension.
                 Surface vertices are arranged L then R. 
         """
 
-        v2n_mat = self.vol2node_matrix(edge_correction)
+        v2n_mat = self.vol2node_matrix(edge_scale)
         if vdata.shape[0] != v2n_mat.shape[1]: 
             raise RuntimeError("vdata must have the same number of rows as" +
                 " nodes (voxels+vertices) in the reference ImageSpace")
         return v2n_mat.dot(vdata)
 
 
-    def node2vol(self, ndata, pv_scale):
+    def node2vol(self, ndata, edge_scale):
         """
         Project data from node space to volume.
 
         Args: 
-            ndata (np.array): sized (n_vertices + n_voxels) in first dimension, 
-                Surface data should be arranged L then R in the first dim. 
-            pv_scale (bool): downweight signal by voxel-wise PV fraction. 
-                             Set True for data that scales with PVE (eg perfusion),
-                             set False for data that does not (eg time quantities). 
+            ndata (np.array):  sized (n_vertices + n_voxels) in first dimension, 
+                                   Surface data should be arranged L, R in the first dim. 
+            edge_scale (bool): downweight signal in voxels that are not 100% brain: 
+                               set True for data that scales with PVE (eg perfusion),
+                               set False for data that does not (eg time quantities). 
         Returns: 
             np.array, sized n_voxels in first dimension
         """
 
-        n2v_mat = self.node2vol_matrix(pv_scale)
+        n2v_mat = self.node2vol_matrix(edge_scale)
         if ndata.shape[0] != n2v_mat.shape[1]: 
             raise RuntimeError("ndata must have the same number of rows as" +
                 " total nodes in ImageSpace (voxels+vertices)")
