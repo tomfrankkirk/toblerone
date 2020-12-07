@@ -13,7 +13,7 @@ import copy
 import numpy as np 
 from fsl.wrappers import fsl_anat
 import regtricks as rt
-from scipy import sparse
+from scipy.sparse.linalg import eigs
 
 NP_FLOAT = np.float32
 
@@ -533,7 +533,7 @@ def is_symmetric(a, tol=1e-9):
 
 
 def is_nsd(a):
-    return not (sparse.linalg.eigs(a)[0] > 0).any()
+    return not (eigs(a)[0] > 0).any()
 
 
 def calc_midsurf(in_surf, out_surf):

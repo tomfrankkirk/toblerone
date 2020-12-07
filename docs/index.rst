@@ -4,6 +4,16 @@ Toblerone
 
 Surface-based analysis tools 
 
+Installation
+-----------------
+
+Cython needs to be installed prior to running pip: 
+```
+python -m pip install cython
+python -m pip install toblerone
+```
+
+
 Partial volume estimation 
 -----------------------------
 

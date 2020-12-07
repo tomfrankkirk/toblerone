@@ -12,7 +12,6 @@ import copy
 
 import numpy as np 
 import nibabel 
-import igl
 from scipy import sparse
 
 try: 
@@ -26,7 +25,7 @@ except ImportError as e:
 
 from .image_space import ImageSpace, BaseSpace
 from .. import utils, core
-from ..utils import NP_FLOAT, calc_midsurf
+from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
 
 
 @utils.cascade_attributes
@@ -589,32 +588,26 @@ class Surface(object):
         if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
             raise ValueError("distance_weight must be int >= 0")
 
-        adj = igl.adjacency_matrix(self.tris).tocsr().astype(NP_FLOAT)
+        edge_pairs = np.array([
+            np.concatenate((self.tris[:,0], self.tris[:,1], self.tris[:,2])), 
+            np.concatenate((self.tris[:,1], self.tris[:,2], self.tris[:,0]))
+        ])
+        row, col = edge_pairs
 
         if distance_weight > 0: 
-            
-            # Find all connected pairs of vertices in the upper triangle
-            # of the adjacency matrix. By symmetry of the adjacency matrix, 
-            # we don't need to consider the lower triangle. We use some 
-            # sneaky tricks on the CSR indexing of the adjacency matrix
-            # to work out which columns are non-zero 
-            pairs = []
-            for row in range(adj.shape[0]):
-                for col in adj[row,row:].indices + row:
-                    pairs.append((row,col))
+            weights = np.linalg.norm(self.points[row,:] - self.points[col,:], 
+                                        ord=2, axis=-1).flatten()
+            weights = 1 / (weights ** distance_weight)
+        else:
+            weights = np.ones(row.size, dtype=np.int8)
 
-            # Find the distance between connected pairs 
-            pairs = np.array(pairs)
-            dists = np.linalg.norm(self.points[pairs[:,0],:]
-                                    - self.points[pairs[:,1],:], axis=1, ord=2)
+        adj = sparse.coo_matrix((weights, (row, col)), shape=(self.n_points, self.n_points))
 
-            # Apply inverse distance weighting (eg, 1 / d^2), write
-            # them back into the matrix (symmetry again)
-            weight = 1 / (dists ** distance_weight)
-            adj[pairs[:,0], pairs[:,1]] = weight 
-            adj[pairs[:,1], pairs[:,0]] = weight 
+        if distance_weight == 0: 
+            assert adj.max() == 1
+        assert is_symmetric(adj), 'Adjacency should be symmetric'
 
-        return adj 
+        return adj.tocsr()
 
 
     def mesh_laplacian(self, distance_weight=0):
@@ -637,7 +630,7 @@ class Surface(object):
         # The diagonal is the negative sum of other elements 
         adj = self.adjacency_matrix(distance_weight)
         dia = adj.sum(1).A.flatten()
-        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape))
+        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
         laplacian = adj - laplacian
 
         assert np.abs(laplacian.sum(1)).max() < 1e-6, 'Unweighted laplacian'
@@ -646,34 +639,31 @@ class Surface(object):
         return laplacian
 
 
-    def laplace_beltrami(self, area='mayer', cores=mp.cpu_count()):
-        """
-        Laplace-Beltrami operator for this surface, as a scipy sparse matrix
-        of size n_points x n_points. Elements on the diagonal are negative 
-        and off-diagonal elements are positive. 
+    # def laplace_beltrami(self, cores=mp.cpu_count()):
+    #     """
+    #     Laplace-Beltrami operator for this surface, as a scipy sparse matrix
+    #     of size n_points x n_points. Elements on the diagonal are negative 
+    #     and off-diagonal elements are positive. 
 
-        Args: 
-            area (string): 'barycentric', 'voronoi', 'mayer'. Area calculation
-                used for mass matrix, default is 'mayer'. 
-        """
+    #     Areas are calculated according to the definition of A_mixed in "Discrete 
+    #     Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
+    #     M. Desbrun, P. Schroder, A.H. Barr.
 
-        if area == 'barycentric':
-            M = igl.massmatrix(self.points, self.tris, 
-                    igl.MASSMATRIX_TYPE_BARYCENTRIC)
-        elif area == 'voronoi':
-            M = igl.massmatrix(self.points, self.tris, 
-                    igl.MASSMATRIX_TYPE_VORONOI)
-        elif area == 'mayer':
-            ncores = cores if self._use_mp else 1 
-            M = core.vtx_tri_weights(self, ncores)
-            M = sparse.diags(np.squeeze(M.sum(1).A))
-        else: 
-            raise ValueError("Area must be barycentric/voronoi/mayer.")
+    #     Args: 
+    #         cores (int): CPU cores to use.
 
-        L = igl.cotmatrix(self.points, self.tris)
-        lbo = (M.power(-1)).dot(L)
-        assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
-        return lbo
+    #     Returns: 
+    #         sparse matrix 
+    #     """
+
+    #     ncores = cores if self._use_mp else 1 
+    #     M = core.vtx_tri_weights(self, ncores)
+    #     M = sparse.diags(np.squeeze(M.sum(1).A))
+
+    #     L = igl.cotmatrix(self.points, self.tris)
+    #     lbo = (M.power(-1)).dot(L)
+    #     assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
+    #     return lbo
 
 
     def edges(self):

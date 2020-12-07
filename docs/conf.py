@@ -39,7 +39,7 @@ extensions = [
 ]
 
 autodoc_member_order = 'bysource'
-autodoc_mock_imports = ['igl', 'Cython', 'fslpy', 'meshio', 'pyvista']
+autodoc_mock_imports = ['Cython', 'fslpy', 'meshio', 'pyvista']
 
 
 # Add any paths that contain templates here, relative to this directory.

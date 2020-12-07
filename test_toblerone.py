@@ -226,12 +226,12 @@ def test_mesh_laplacian():
         assert not (lap[diag_indices(2*n)] > 0).any()
 
 
-def test_lbo():
-    td = get_testdir()
-    s = classes.Surface(op.join(td, 'in.surf.gii'))
-    for area in ['barycentric', 'voronoi', 'mayer']:
-        lbo = s.laplace_beltrami(area)
-        assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
+# def test_lbo():
+#     td = get_testdir()
+#     s = classes.Surface(op.join(td, 'in.surf.gii'))
+#     for area in ['barycentric', 'voronoi', 'mayer']:
+#         lbo = s.laplace_beltrami(area)
+#         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
 
 def cmd_line():
@@ -291,4 +291,4 @@ def test_sparse_normalise():
         assert (np.abs(sums[sums > 0] - 1) <= thr).all()
 
 if __name__ == "__main__":
-    test_sparse_normalise()
+    test_mesh_laplacian()

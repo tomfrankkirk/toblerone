@@ -3,9 +3,8 @@
 Surface-based analysis tools. 
 
 ## Installation via pip and conda: 
-The IGL and Cython dependencies need to be installed separately, as follows: 
+Cython needs to be installed separately, as follows: 
 ```bash
-conda install igl -c conda-forge
 python -m pip install cython
 python -m pip install toblerone
 ```
