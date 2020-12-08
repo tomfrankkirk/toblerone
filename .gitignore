@@ -31,3 +31,5 @@ docs/.buildinfo
 scratch/*
 docs/_build/*
 pypi.sh 
+profstats
+profile_test.py

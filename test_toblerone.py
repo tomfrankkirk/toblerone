@@ -1,13 +1,14 @@
 """Toblerone tests"""
 
 import os.path as op
-from numpy.lib.arraysetops import isin
+import nibabel
 
 from numpy.lib.index_tricks import diag_indices
+from pyvista.utilities.features import voxelize
 from scipy import sparse
+from toblerone import pvestimation
 
 from toblerone.classes.surfaces import Surface 
-import nibabel 
 import pickle 
 from nibabel import test
 import numpy as np 
@@ -282,6 +283,31 @@ def test_cortex():
     # truth = np.squeeze(nibabel.load(op.join(td, 'truth.nii.gz')).get_fdata())
     np.testing.assert_array_almost_equal(fracs[...,0], truth, 2)
 
+
+def test_structure():
+    td = get_testdir()
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    ins = toblerone.Surface(op.join(td, 'in.surf.gii'), 'L')
+    s2r = np.identity(4)
+    fracs = pvestimation.structure(surf=ins, ref=spc, struct2ref=s2r, cores=1)
+
+    superfactor = 10
+    spc_high = spc.resize_voxels(1.0/superfactor)
+    voxelised = np.zeros(spc_high.size.prod(), dtype=NP_FLOAT)
+    ins.index_on(spc_high)
+    ins.indexed.voxelised = ins.voxelise(spc_high, 1)
+
+    reindex_in = ins.reindexing_filter(spc_high)
+    voxelised[reindex_in[1]] = (ins.indexed.
+                                    voxelised[reindex_in[0]]).astype(NP_FLOAT)
+
+    voxelised = voxelised.reshape(spc_high.size)
+    truth = sum_array_blocks(voxelised, 3 * [superfactor]) / superfactor**3
+
+    np.testing.assert_array_almost_equal(fracs, truth, 2)
+
+    
+
 def test_sparse_normalise():
     mat = sparse.random(5000, 5000, 0.1)
     thr = 1e-12
@@ -291,4 +317,4 @@ def test_sparse_normalise():
         assert (np.abs(sums[sums > 0] - 1) <= thr).all()
 
 if __name__ == "__main__":
-    test_cortex()
+    test_structure()
