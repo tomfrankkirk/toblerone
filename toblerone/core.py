@@ -598,7 +598,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     subvox_size = (1.0 / supersampler).astype(NP_FLOAT)
     subVoxVol = np.prod(subvox_size).astype(NP_FLOAT)
 
-    # Rebase triangles and points for this voxel
+    # Load patch for this voxel
     voxCentFlag = surf.indexed.voxelised[voxIdx]
     patch = surf.to_patch(voxIdx)
 

@@ -291,4 +291,4 @@ def test_sparse_normalise():
         assert (np.abs(sums[sums > 0] - 1) <= thr).all()
 
 if __name__ == "__main__":
-    test_mesh_laplacian()
+    test_cortex()
