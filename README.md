@@ -2,7 +2,12 @@
 
 Surface-based analysis tools. 
 
-Install latest version from PyPI: `pip install --upgrade toblerone`
+## Installation via pip and conda: 
+Cython needs to be installed separately, as follows: 
+```bash
+python -m pip install cython
+python -m pip install toblerone
+```
 
 Documentation: https://toblerone.readthedocs.io/en/latest/
 

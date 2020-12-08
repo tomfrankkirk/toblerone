@@ -5,3 +5,5 @@ scipy
 tqdm
 fslpy
 regtricks
+meshio[all]
+pyvista 

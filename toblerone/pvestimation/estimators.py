@@ -7,19 +7,19 @@ import copy
 
 import numpy as np
 
-from toblerone.utils import STRUCTURES
+from toblerone.utils import STRUCTURES, NP_FLOAT
 from toblerone.classes import Surface, Hemisphere
 
 def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 
 
     Args: 
-        hemispheres: either a single, or iterable list of, Hemisphere objects 
-        space: an ImageSpace within which to operate
-        struct2ref: 4x4 affine transformation from struct to surface space
-        supersampler: supersampling factor (3-vector) to use for estimation
-        cores: number of processor cores to use
-        ones: debug tool, write ones in all voxels containing triangles
+        hemispheres: either a single, or iterable list of, Hemisphere objects.
+        space: an ImageSpace within which to operate.
+        struct2ref: np.array affine transformation into reference space. 
+        supersampler: supersampling factor (3-vector) to use for estimation.
+        cores: number of processor cores to use.
+        ones: debug tool, write ones in all voxels containing triangles.
 
     Returns: 
         4D array, size equal to the reference image, with the PVs arranged 
@@ -35,7 +35,9 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     surfs = [ s for h in loc_hemispheres for s in h.surfs ]
 
     for s in surfs: 
-        s.index_on(space, struct2ref, cores)
+        s.apply_transform(struct2ref)
+        s.index_on(space, cores)
+        s.indexed.voxelised = s.voxelise(space, cores)
 
     # Estimate PV fractions for each surface
     for h in loc_hemispheres:
@@ -55,7 +57,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         out_pvs = h.outSurf.output_pvs(space).flatten()
 
         # Combine estimates from each surface into whole hemi PV estimates
-        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        hemiPVs = np.zeros((np.prod(space.size), 3), dtype=NP_FLOAT)
         hemiPVs[:,1] = in_pvs 
         hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
         hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
@@ -68,7 +70,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
 
     else:
         h1, h2 = loc_hemispheres
-        outPVs = np.zeros((np.prod(space.size), 3), dtype=np.float32)
+        outPVs = np.zeros((np.prod(space.size), 3), dtype=NP_FLOAT)
         outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
         outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
             h1.PVs[:,1] + h2.PVs[:,1])
@@ -97,6 +99,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
     Args: 
         surf: Surface object 
         space: ImageSpace to estimate within 
+        struct2ref: np.array affine transformation into reference space. 
         supersampler: supersampling factor (3-vector) to use for estimation
         ones: debug tool, write ones in voxels containing triangles 
         cores: number of processor cores to use
@@ -107,8 +110,9 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
 
     # Create our own local copy of inputs 
     loc_surf = copy.deepcopy(surf)
-
-    loc_surf.index_on(space, struct2ref, cores)
+    loc_surf.apply_transform(struct2ref)
+    loc_surf.index_on(space, cores)
+    loc_surf.indexed.voxelised = loc_surf.voxelise(space, cores)
     loc_surf._estimate_fractions(supersampler, cores, ones)
     
     return loc_surf.output_pvs(space)

@@ -2,6 +2,8 @@
 
 import os.path as op 
 import functools
+import copy
+import nibabel 
 
 import numpy as np 
 import tqdm
@@ -18,9 +20,9 @@ def cortex(ref, struct2ref, **kwargs):
     a single hemisphere, provide only surfaces for that side. 
 
     Required args: 
-        ref (str): path to reference image for which PVs are required. 
-        struct2ref (str/np.array): registration between space of  
-            surface and reference, use 'I' for identity. 
+        ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         fsdir (str): path to a FreeSurfer subject directory. 
         LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
             eg LWS = Left White surface, RPS = Right Pial surace. 
@@ -64,11 +66,16 @@ def cortex(ref, struct2ref, **kwargs):
     hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
         for s in sides ] 
 
-    ref_space = ImageSpace(ref)
+    # Either create local copy of ImageSpace object or init from path 
+    if isinstance(ref, ImageSpace):
+        ref_space = copy.deepcopy(ref)
+    else:
+        ref_space = ImageSpace(ref)
 
     # Set supersampler and estimate. 
     if kwargs.get('supersample') is None:
-        supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
+        supersampler = np.ceil(ref_space.vox_size.round(1) 
+                                / 0.75).astype(np.int8)
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
@@ -84,12 +91,13 @@ def structure(ref, struct2ref, **kwargs):
     All arguments are kwargs.
     
     Required args: 
-        ref (str): path to reference image for which PVs are required
-        struct2ref (str/np.array): registration between structural 
-            (surface) and reference space. Use 'I' for identity. 
+        ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         surf (str): path to surface (see space argument below)
 
     Optional args: 
+        flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
         space (str): space in which surface is defined: default is 'world' (mm coords),
             for FIRST surfaces set as 'first' and provide struct argument 
         struct (str): path to structural image from which surfaces were derived
@@ -121,10 +129,15 @@ def structure(ref, struct2ref, **kwargs):
     else: 
         surf = kwargs['surf']
         
-    ref_space = ImageSpace(ref)
+    # Either create local copy of ImageSpace object or init from path 
+    if isinstance(ref, ImageSpace):
+        ref_space = copy.deepcopy(ref)
+    else:
+        ref_space = ImageSpace(ref)
 
     if kwargs.get('supersample') is None:
-        supersampler = np.ceil(ref_space.vox_size / 0.75).astype(np.int8)
+        supersampler = np.ceil(ref_space.vox_size.round(1) 
+                                / 0.75).astype(np.int8)
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
@@ -147,9 +160,9 @@ def complete(ref, struct2ref, **kwargs):
     All arguments are kwargs.
 
     Required args: 
-        ref (str): path to reference image for which PVs are required
-        struct2ref (str/np.array): registration between structural 
-            (surface) and reference space. Use 'I' for identity. 
+        ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
+        struct2ref (str/np.array/rt.Registration): registration between space 
+            of surface and reference. Use 'I' for identity. 
         anat: path to augmented fsl_anat directory (see -fsl_fs_anat command).
             This REPLACES fsdir, firstdir, fastdir, LPS/RPS etc args 
 
@@ -161,6 +174,7 @@ def complete(ref, struct2ref, **kwargs):
         struct (str): path to structural image from which surfaces were dervied
 
     Optional args: 
+        flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
         space (str): space in which surface is defined: default is 'world' (mm coords),
             for FIRST surfaces set as 'first' and provide struct argument 
         struct (str): path to structural image from which surfaces were derived
@@ -172,7 +186,7 @@ def complete(ref, struct2ref, **kwargs):
             also the overall combined result ('stacked')
     """
 
-    print("Estimating PVs for", ref)
+    print("Estimating PVs for", ref.file_name)
 
     # If anat dir then various subdirs are loaded by @enforce_common_args
     # If not then direct load below 
@@ -186,10 +200,13 @@ def complete(ref, struct2ref, **kwargs):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
-    fasts = utils._loadFASTdir(kwargs['fastdir'])
-    s2r = rt.Registration(struct2ref)
-    output = { t: s2r.apply_to_image(fasts[t], ref, superlevel=2).get_data()
-        for t in ['FAST_WM', 'FAST_GM'] }
+    fast_paths = utils._loadFASTdir(kwargs['fastdir'])
+    fast_spc = fast_paths['FAST_GM']
+    fast = np.stack([
+        nibabel.load(fast_paths[f'FAST_{p}']).get_fdata() for p in ['GM', 'WM']
+    ], axis=-1)
+    fasts_transformed = rt.Registration(struct2ref).apply_to_array(fast, fast_spc, ref)
+    output = dict(FAST_GM=fasts_transformed[...,0], FAST_WM=fasts_transformed[...,1])
     output['FAST_CSF'] = np.maximum(0, 1 - (output['FAST_WM'] + output['FAST_GM']))
         
     # Process subcortical structures first. 

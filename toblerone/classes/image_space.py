@@ -10,6 +10,7 @@ import warnings
 
 import nibabel
 import numpy as np 
+from scipy import sparse
 from regtricks import ImageSpace as BaseSpace
 
 from toblerone import utils
@@ -19,7 +20,7 @@ class ImageSpace(BaseSpace):
     Voxel grid of an image, ignoring actual image data. 
 
     Args: 
-        path: path to image file
+        reference: path to image file, or regtricks ImageSpace object 
     
     Attributes: 
         size: array of voxel counts in each dimension 
@@ -30,13 +31,20 @@ class ImageSpace(BaseSpace):
     """
 
 
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, reference):
+        if type(reference) is str:
+            super().__init__(reference)
+        else: 
+            if not type(reference) is BaseSpace:
+                raise ValueError("Reference must be a path or regtricks ImageSpace")
+            for k,v in vars(reference).items():
+                setattr(self, k, copy.deepcopy(v))         
         self.offset = None
 
 
+
     @classmethod
-    def minimal_enclosing(cls, surfs, reference, affine):
+    def minimal_enclosing(cls, surfs, reference):
         """
         Return the minimal space required to enclose a set of surfaces. 
         This space will be based upon the reference, sharing its voxel 
@@ -47,10 +55,6 @@ class ImageSpace(BaseSpace):
         Args: 
             surfs: singular or list of surface objects 
             reference: ImageSpace object or path to image to use 
-            affine: 4x4 np.array, transformation INTO the reference space, 
-                in world-world mm terms (ie, not a FLIRT scaled-voxel 
-                matrix). See utils._FLIRT_to_world() for help. Pass None 
-                to represent identity 
 
         Returns: 
             ImageSpace object, with a shifted origin and potentially different
@@ -68,15 +72,10 @@ class ImageSpace(BaseSpace):
         else: 
             space = copy.deepcopy(reference)
 
-        if affine is not None: 
-            overall = space.world2vox @ affine 
-        else: 
-            overall = space.world2vox
-
         # Extract min and max vox coords in the reference space 
         min_max = np.empty((2*len(slist), 3))
         for sidx,s in enumerate(slist):
-            ps = utils.affineTransformPoints(s.points, overall)
+            ps = utils.affine_transform(s.points, space.world2vox)
             min_max[sidx*2,:] = ps.min(0)
             min_max[sidx*2 + 1,:] = ps.max(0)
 
@@ -87,7 +86,7 @@ class ImageSpace(BaseSpace):
         FoVoffset = -minFoV
     
         # Get a copy of the corresponding mm coords for checking later
-        min_max_mm = utils.affineTransformPoints(np.array([minFoV, maxFoV]),
+        min_max_mm = utils.affine_transform(np.array([minFoV, maxFoV]),
             space.vox2world)
 
         # Calculate new origin for the coordinate system and modify the 
@@ -96,7 +95,7 @@ class ImageSpace(BaseSpace):
         space.vox2world[0:3,3] = min_max_mm[0,:]
         space.offset = FoVoffset 
 
-        check = utils.affineTransformPoints(min_max_mm, space.world2vox)
+        check = utils.affine_transform(min_max_mm, space.world2vox)
         if (np.any(check[0,:].round() < 0) or 
             np.any(check[1,:].round() > size - 1)): 
             raise RuntimeError("New space does not enclose surfaces")
@@ -116,3 +115,4 @@ class ImageSpace(BaseSpace):
         offset_mm = parent.vox2world[0:3,3] - self.vox2world[0:3,3] 
         offset_mm2 = parent.vox2world[0:3,3] @ self.offset 
         return ((np.abs(det1 - det2) < 1e-9) and np.all(np.abs(offset_mm - offset_mm2) < 1e9))
+

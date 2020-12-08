@@ -4,24 +4,29 @@ Surface-related classes
 
 import itertools
 import os.path as op 
+from types import SimpleNamespace
 import functools
 import warnings 
 import multiprocessing as mp 
+import copy 
 
 import numpy as np 
 import nibabel 
+from scipy import sparse
 
 try: 
     import pyvista
     import meshio 
     _VTK_ENABLED = True 
 except ImportError as e: 
-    warnings.warn("Could not import VTK/meshio/pyvista: these are required to"
+    warnings.warn("Could not import meshio/pyvista: these are required to"
         " read/write VTK surfaces. VTK requires Python <=3.7 (as of May 2020)")
     _VTK_ENABLED = False 
 
-from .image_space import ImageSpace
+from .image_space import ImageSpace, BaseSpace
 from .. import utils, core
+from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
+
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -34,17 +39,30 @@ def ensure_derived_space(func):
     """
 
     def ensured(self, *args):
-        if not args: 
-            raise RuntimeError("Function must be called with ImageSpace argument")
-        if not self._index_space: 
+        if (not args) or (not isinstance(args[0], BaseSpace)): 
+            raise RuntimeError("Function must be called with ImageSpace argument first")
+        if self.indexed is None: 
             raise RuntimeError("Surface must be indexed prior to using this function" + 
             "Call surface.index_on()")
-        if not self._index_space.derives_from(args[0]):
+        if not self.indexed.space.derives_from(args[0]):
             raise RuntimeError(
                 "Target space is not derived from surface's current index space."+
                 "Call surface.index_on with the target space first")
         return func(self, *args)
     return ensured 
+
+
+@utils.cascade_attributes
+def assert_indexed(func): 
+    """
+    Decorator to ensure surface has been indexed prior to calling function. 
+    """
+    def asserted(self, *args, **kwargs):
+        if self.indexed is None: 
+            raise RuntimeError("Surface must be indexed before calling ",
+                                func.__name__)
+        return func(self, *args, **kwargs)
+    return asserted
 
 
 class Surface(object):
@@ -129,15 +147,23 @@ class Surface(object):
                 ps[:,0] = ((struct_spc.size[0]) - 1) - ps[:,0]
 
             # Finally, convert from voxel coords to world mm 
-            ps = utils.affineTransformPoints(ps, struct_spc.vox2world)
+            ps = utils.affine_transform(ps, struct_spc.vox2world)
 
-        self.points = ps.astype(np.float32)
+        self.points = ps.astype(NP_FLOAT)
         self.tris = ts.astype(np.int32)
-        self.xProds = None 
-        self.voxelised = None 
+        self.indexed = None 
         self.name = name
-        self.assocs = None 
-        self._index_space = None 
+        self._use_mp = (self.tris.shape[0] > 500)
+
+    def __repr__(self):
+
+        from textwrap import dedent
+        return dedent(f"""\
+            Surface with {self.n_points} points and {self.tris.shape[0]} triangles. 
+            min (X,Y,Z):  {self.points.min(0)}
+            mean (X,Y,Z): {self.points.mean(0)}
+            max (X,Y,Z):  {self.points.max(0)}
+            """)
 
 
     @classmethod
@@ -151,21 +177,25 @@ class Surface(object):
             raise RuntimeError("ts array should be 0-indexed")
 
         s = cls.__new__(cls)
-        s.points = ps.astype(np.float32)
-        s.tris = ts.astype(np.int32)
-        s.xProds = None 
-        s.voxelised = None 
+        s.points = copy.deepcopy(ps.astype(NP_FLOAT))
+        s.tris = copy.deepcopy(ts.astype(np.int32))
+        s.indexed = None 
         s.name = name
-        s._index_space = None 
+        s._use_mp = (s.tris.shape[0] > 500)
         return s
     
+
+    @property
+    def n_points(self):
+        return self.points.shape[0]
+
 
     def save_metric(self, data, path):
         """
         Save vertex-wise data as a .func.gii at path
         """
 
-        if not self.points.shape[0] == data.size:
+        if not self.n_points == data.shape[0]:
             raise RuntimeError("Incorrect data shape")
 
         if not path.endswith('.func.gii'):
@@ -174,7 +204,7 @@ class Surface(object):
 
         gii = nibabel.GiftiImage()
         gii.add_gifti_data_array(
-            nibabel.gifti.GiftiDataArray(data.astype(np.float32)))
+            nibabel.gifti.GiftiDataArray(data.astype(NP_FLOAT)))
         nibabel.save(gii, path)
 
 
@@ -251,18 +281,19 @@ class Surface(object):
     @ensure_derived_space
     def output_pvs(self, space):
         """
-        Express PVs in the voxel grid of space. Space must derive from the 
-        surface's current index_space. 
+        Express PVs in the voxel grid of space. Space must derive from that 
+        which the surface was indexed with (see ImageSpace.derives_from()). 
         """
 
-        pvs_curr = self.voxelised.astype(np.float32)
-        pvs_curr[self.assocs_keys] = self.fractions
-        out = np.zeros(np.prod(space.size), dtype=np.float32)
+        pvs_curr = self.indexed.voxelised.astype(NP_FLOAT)
+        pvs_curr[self.indexed.assocs_keys] = self.fractions
+        out = np.zeros(np.prod(space.size), dtype=NP_FLOAT)
         curr_inds, dest_inds = self.reindexing_filter(space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
 
 
+    @assert_indexed
     def _estimate_fractions(self, supersampler, cores, ones, desc=''):
         """
         Estimate interior/exterior fractions within current index_space. 
@@ -274,59 +305,141 @@ class Surface(object):
             desc: for use with progress bar 
         """
 
-        if self._index_space is None: 
-            raise RuntimeError("Surface must be indexed first")
-
         if ones: 
-            self.fractions = np.ones(self.assocs_keys.size, dtype=bool) 
+            self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=np.bool) 
         else: 
-            self.fractions = \
-                core._estimateFractions(self, supersampler, desc, cores)
+            self.fractions = core._estimateFractions(self, supersampler, 
+                                                        desc, cores)
 
 
-    def index_on(self, space, struct2ref, cores=mp.cpu_count()):
+    def index_on(self, space, cores=mp.cpu_count()):
         """
-        Index a surface to an ImageSpace. The space must enclose the surface 
-        completely (see ImageSpace.minimal_enclosing()). The surface will be 
-        transformed into voxel coordinates for the space, triangle/voxel 
-        associations calculated and stored on the surface's assocs 
-        attributes, surface normals calculated (triangle cross products) and
-        finally voxelised within the space (binary mask of voxels contained in 
-        the surface). See also Surface.reindex_for() method. 
-
+        Index a surface to an ImageSpace. This is a pre-processing step 
+        for PV estimation and produces a set of state variables that 
+        are specific to the space that the surface has been indexed on. 
+        Accordingly, these are all stored on the surface.indexed 
+        attribute to keep them clear of the original surface attributes. 
+        
         Args: 
-            space: ImageSpace object large enough to contain the surface
-            affine: 4x4 np.array representing transformation into the reference
-                space, in world-world mm terms (not FLIRT scaled-voxels). See
-                utils._FLIRT_to_world for help. Pass None to represent identity.
+            space (ImageSpace): voxel grid to index against. 
+            cores (int): CPU cores for multiprocessing. 
 
         Updates: 
-            self.points: converted into voxel coordinates for the space
-            self.assocs: sparse CSR bool matrix of size (voxs, tris)
-            self.assocs_keys: voxel indices that contain surface 
-            self.xProds: triangle cross products, voxel coordinates
+            self.indexed (SimpleNamespace): with the following attributes
+                indexed.points_vox:  converted into voxel coordinates for the space
+                indexed.assocs:      sparse CSR bool matrix of size (voxs, tris)
+                indexed.assocs_keys: voxel indices that contain surface 
+                indexed.xprods:      triangle cross products, voxel coordinates
+                indexed.space:       the minimal enclosing ImageSpace used for indexing
+                                      (NB this is not necessarily the same as the input space)
         """
 
-        # Smallest possible ImageSpace, based on space, that fully encloses surf 
-        encl_space = ImageSpace.minimal_enclosing(self, space, struct2ref)
-        if struct2ref is not None: 
-            overall = encl_space.world2vox @ struct2ref
+        # Smallest possible ImageSpace, based on space, that fully encloses surf. 
+        # This is necessary to deal with partial coverage (ie, the voxel grid
+        # does not enclose the surface, which in turn causes problems with 
+        # voxelisation). As such, the indexing space may not be the same as the 
+        # space passed in by the caller, but it will "derive from" that space. 
+        # Other functions that relate to ImageSpaces use the @ensure_derived_space
+        # decorator to check this holds. 
+        encl_space = ImageSpace.minimal_enclosing(self, space)
+
+        # Map surface points into this space
+        points_vox = utils.affine_transform(self.points, encl_space.world2vox)
+        assert utils.space_encloses_surface(space, points_vox)
+
+        # Calculate associations and cross products
+        cores = cores if self._use_mp else 1 
+        assocs, assocs_keys = core.form_associations(points_vox, self.tris, 
+                                                        encl_space, cores)
+        xprods = utils.calculateXprods(points_vox, self.tris)
+
+        # All the results of indexing are stored using the namedtuple 
+        # structure under the attribue self.indexed
+        self.indexed = SimpleNamespace(
+            points_vox=points_vox,
+            space=encl_space, 
+            assocs=assocs,
+            assocs_keys=assocs_keys, 
+            xprods=xprods,
+        )
+
+
+    @ensure_derived_space
+    def voxelise(self, space, cores=mp.cpu_count()):
+        """
+        Voxelise a surface within an ImageSpace. This requires the surface to 
+        have been indexed on the same ImageSpace first. 
+
+        Args:
+            space (ImageSpace): voxel grid to test against surface
+            cores (int): CPU cores to use
+
+        Returns
+            (np.bool): flat array of voxels contained within surface
+        """
+
+        if self.indexed is None: 
+            raise RuntimeError("Surface must be indexed before calling this function")
+
+        # We will project rays along the longest dimension and split the 
+        # grid along the first of the other two. 
+        size = self.indexed.space.size
+        dim = np.argmax(size)
+        other_dims = list({0,1,2} - {dim})
+        
+        # Get the voxel IJKs for every voxel intersecting the surface
+        # Group these according to their ray number, and then strip out
+        # repeats to get the minimal set of rays that need to be projected
+        # For voxel IJK, and projection along dimension Y, the ray number
+        # is given by I,K within a grid of size XZ. Ray D1D2 is an Nx2 array
+        # holding the unique ray coords in dimensions XZ. 
+        allIJKs = np.array(np.unravel_index(self.indexed.assocs_keys, size)).T
+        ray_numbers = np.ravel_multi_index(allIJKs[:,other_dims].T, 
+            size[other_dims])
+        _, uniq_rays = np.unique(ray_numbers, return_index=True)
+        rayD1D2 = allIJKs[uniq_rays,:]
+        rayD1D2 = rayD1D2[:,other_dims]
+
+        worker = functools.partial(core._voxelise_worker, self)
+
+        if cores > 1: 
+
+            # Share out the rays and subset of the overall dimension range
+            # amongst pool workers
+            sub_ranges = utils._distributeObjects(range(size[other_dims[0]]), cores)
+            subD1D2s = [ 
+                rayD1D2[(rayD1D2[:,0] >= sub.start) & (rayD1D2[:,0] < sub.stop),:]
+                for sub in sub_ranges ] 
+
+            # Check tasks were shared out completely, zip them together for pool
+            assert sum([s.shape[0] for s in subD1D2s]) == rayD1D2.shape[0]
+            assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
+            worker_args = zip(sub_ranges, subD1D2s)
+
+            with mp.Pool(cores) as p: 
+                submasks = p.starmap(worker, worker_args)
+            src_mask = np.concatenate(submasks, axis=other_dims[0])
+
         else: 
-            overall = encl_space.world2vox
+            src_mask = worker(range(size[other_dims[0]]), rayD1D2)
 
-        # Map surface points into this space via struct2ref
-        self.applyTransform(overall)
-        maxFoV = self.points.max(0).round()
-        minFoV = self.points.min(0).round()
-        if np.any(minFoV < -1) or np.any(maxFoV > encl_space.size -1):
-            raise RuntimeError("Space should be large enough to enclose surface")
+        assert src_mask.any(), 'no voxels filled'
+        src_mask = src_mask.flatten()
 
-        # Update surface attributes
-        self._index_space = encl_space 
-        self.form_associations(cores)
-        self.calculateXprods()
-        self.voxelise(cores)
+        # If the space provided is not the same as the space used for indexing 
+        # (because we reduced the FoV when indexing), we need to map results 
+        # from the indexing space into the destination space. See index_on()
+        # for more info. 
+        # Else, we can just return the mask as-is. 
+        if space != self.indexed.space: 
+            src_inds, dest_inds = self.reindexing_filter(space, False)
+            mask = np.zeros(space.size.prod(), dtype=np.bool)
+            mask[dest_inds] = src_mask[src_inds]    
+        else: 
+            mask = src_mask 
 
+        return src_mask 
+    
 
     @ensure_derived_space
     def reindexing_filter(self, dest_space, as_bool=False):
@@ -348,9 +461,9 @@ class Surface(object):
         """
 
         # Get the offset and size of the current index space 
-        src_space = self._index_space
+        src_space = self.indexed.space
         offset = src_space.offset 
-        size = self._index_space.size 
+        size = src_space.size 
 
         # List voxel indices in the current index space 
         # List corresponding voxel coordinates in the destination space 
@@ -381,7 +494,7 @@ class Surface(object):
         """Return a copy of LUT indices expressed in another space"""
 
         src_inds, dest_inds = self.reindexing_filter(space)
-        fltr = np.in1d(src_inds, self.assocs_keys, assume_unique=True)
+        fltr = np.in1d(src_inds, self.indexed.assocs_keys, assume_unique=True)
         return dest_inds[fltr]
 
 
@@ -400,12 +513,12 @@ class Surface(object):
             array of linear voxel indices 
         """
 
-        group_counts = np.array([len(core.separate_point_clouds(
-            self.tris[self.assocs[v,:].indices,:])) 
-            for v in self.assocs_keys ])
-        bridges = self.assocs_keys[group_counts > 1]
+        group_counts = np.array([len(core._separatePointClouds(
+            self.tris[self.indexed.assocs[v,:].indices,:])) 
+            for v in self.indexed.assocs_keys ])
+        bridges = self.indexed.assocs_keys[group_counts > 1]
 
-        if space is self._index_space:
+        if space == self.indexed.space:
             return bridges 
 
         else: 
@@ -414,101 +527,11 @@ class Surface(object):
             return dest_inds[fltr]
 
 
-    def calculateXprods(self):
-        """Calculate and store surface element normals"""
+    def apply_transform(self, transform):
+        """Apply affine transformation to surface vertices"""
 
-        self.xProds = np.cross(
-            self.points[self.tris[:,2],:] - self.points[self.tris[:,0],:], 
-            self.points[self.tris[:,1],:] - self.points[self.tris[:,0],:], 
-            axis=1)
-
-
-    def applyTransform(self, transform):
-        """Apply affine transformation (4x4 array) to surface coordinates"""
-
-        self.points = (utils.affineTransformPoints(
-            self.points, transform).astype(np.float32))
-
-
-    def form_associations(self, cores=mp.cpu_count()):
-        """
-        Identify which triangles of a surface intersect each voxel. This 
-        reduces the number of operations that need be performed later. The 
-        results will be stored on the surface object (ie, self)
-
-        Returns: 
-            None, but associations (sparse CSR matrix of size (voxs, tris)
-            and assocs_keys (array of voxel indices containint the surface)
-            will be set on the calling object. 
-        """
-
-        size = self._index_space.size 
-
-        # Check for negative coordinates: these should have been sripped. 
-        if np.round(np.min(self.points)) < 0: 
-            raise RuntimeError("formAssociations: negative coordinate found")
-
-        if np.any(np.round(np.max(self.points, axis=0)) >= size): 
-            raise RuntimeError("formAssociations: coordinate outside FoV")
-
-        workerFunc = functools.partial(core._formAssociationsWorker, 
-            self.tris, self.points, size)
-
-        if cores > 1:
-            chunks = utils._distributeObjects(range(self.tris.shape[0]), cores)
-            with mp.Pool(cores) as p:
-                worker_assocs = p.map(workerFunc, chunks, chunksize=1)
-
-            assocs = worker_assocs[0]
-            for a in worker_assocs[1:]:
-                assocs += a 
-
-        else:
-            assocs = workerFunc(range(self.tris.shape[0]))
-
-        # Assocs keys is a list of all voxels touched by triangles
-        self.assocs = assocs 
-        self.assocs_keys = np.flatnonzero(assocs.sum(1).A)
-
-
-    def rebaseTriangles(self, tri_inds):
-        """
-        Re-express a patch of a larger surface as a new points and triangle
-        matrix pair, indexed from 0. Useful for reducing computational 
-        complexity when working with a small patch of a surface where only 
-        a few nodes in the points array are required by the triangles matrix. 
-
-        Args: 
-            tri_inds: t x 1 list of triangle numbers to rebase. 
-        
-        Returns: 
-            (points, tris) tuple of re-indexed points/tris. 
-        """
-
-        points = np.empty((0, 3), dtype=np.float32)
-        tris = np.empty((len(tri_inds), 3), dtype=np.int32)
-        pointsLUT = []
-
-        for t in range(len(tri_inds)):
-            for v in range(3):
-
-                # For each vertex of each tri, check if we
-                # have already processed it in the LUT
-                vtx = self.tris[tri_inds[t],v]
-                idx = np.argwhere(pointsLUT == vtx)
-
-                # If not in the LUT, then add it and record that
-                # as the new position. Write the missing vertex
-                # into the local points array
-                if not idx.size:
-                    pointsLUT.append(vtx)
-                    idx = len(pointsLUT) - 1
-                    points = np.vstack([points, self.points[vtx,:]])
-
-                # Update the local triangle
-                tris[t,v] = idx
-
-        return (points, tris)
+        self.points = (utils.affine_transform(
+            self.points, transform).astype(NP_FLOAT))
 
 
     def to_patch(self, vox_idx):
@@ -518,10 +541,9 @@ class Surface(object):
         the points / surface normals as required. 
         """
 
-        tri_nums = self.assocs[vox_idx,:].indices
-        (ps, ts) = self.rebaseTriangles(tri_nums)
-
-        return Patch(ps, ts, self.xProds[tri_nums,:])
+        tri_nums = self.indexed.assocs[vox_idx,:].indices
+        (ps, ts) = utils.rebase_triangles(self.indexed.points_vox, self.tris, tri_nums)
+        return Patch(ps, ts, self.indexed.xprods[tri_nums,:])
 
     
     def to_patches(self, vox_inds):
@@ -532,75 +554,16 @@ class Surface(object):
         If no patches exist for this list of voxels return None.
         """
         
-        tri_nums = self.assocs[vox_inds,:].indices
+        tri_nums = self.indexed.assocs[vox_inds,:].indices
 
         if tri_nums.size:
             tri_nums = np.unique(tri_nums)
-            return Patch(self.points, self.tris[tri_nums,:], 
-                self.xProds[tri_nums,:])
+            return Patch(self.indexed.points_vox, self.tris[tri_nums,:], 
+                self.indexed.xprods[tri_nums,:])
 
         else: 
             return None
 
-
-    def voxelise(self, cores=mp.cpu_count()):
-        """
-        Voxelise surface within its current index space. A flat boolean 
-        mask will be stored on the calling object as .voxelised. 
-
-        Args:
-            cores: number of cores to use 
-        """
-
-        if self._index_space is None:
-            raise RuntimeError("Surface must be indexed for voxelisation")
-
-        # We will project rays along the longest dimension and split the 
-        # grid along the first of the other two. 
-        size = self._index_space.size 
-        dim = np.argmax(size)
-        other_dims = list({0,1,2} - {dim})
-        other_size = size[other_dims]
-        
-        # Get the voxel IJKs for every voxel intersecting the surface
-        # Group these according to their ray number, and then strip out
-        # repeats to get the minimal set of rays that need to be projected
-        # For voxel IJK, and projection along dimension Y, the ray number
-        # is given by I,K within a grid of size XZ. Ray D1D2 is an Nx2 array
-        # holding the unique ray coords in dimensions XZ. 
-        allIJKs = np.array(np.unravel_index(self.assocs_keys, size)).T
-        ray_numbers = np.ravel_multi_index(allIJKs[:,other_dims].T, 
-            size[other_dims])
-        _, uniq_rays = np.unique(ray_numbers, return_index=True)
-        rayD1D2 = allIJKs[uniq_rays,:]
-        rayD1D2 = rayD1D2[:,other_dims]
-
-        worker = functools.partial(core._voxelise_worker, self)
-
-        if cores > 1: 
-
-            # Share out the rays and subset of the overall dimension range
-            # amongst pool workers
-            sub_ranges = utils._distributeObjects(
-                range(size[other_dims[0]]), cores)
-            subD1D2s = [ 
-                rayD1D2[(rayD1D2[:,0] >= sub.start) & (rayD1D2[:,0] < sub.stop),:]
-                for sub in sub_ranges ] 
-
-            # Check tasks were shared out completely, zip them together for pool
-            assert sum([s.shape[0] for s in subD1D2s]) == rayD1D2.shape[0]
-            assert sum([len(s) for s in sub_ranges]) == size[other_dims[0]]
-            worker_args = zip(sub_ranges, subD1D2s)
-
-            with mp.Pool(cores) as p: 
-                submasks = p.starmap(worker, worker_args)
-            mask = np.concatenate(submasks, axis=other_dims[0])
-
-        else: 
-            mask = worker(range(size[other_dims[0]]), rayD1D2)
-
-        assert mask.any(), 'no voxels filled'
-        self.voxelised = mask.reshape(-1)
 
     def to_polydata(self):
         """Return pyvista polydata object for this surface"""
@@ -610,18 +573,126 @@ class Surface(object):
         return pyvista.PolyData(self.points, tris)
 
 
+    def adjacency_matrix(self, distance_weight=0):
+        """
+        Adjacency matrix for the points of this surface, as a scipy sparse
+        matrix of size P x P, with 1 denoting a shared edge between points. 
+        
+        Args:
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
+        """
+
+        if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
+            raise ValueError("distance_weight must be int >= 0")
+
+        edge_pairs = np.array([
+            np.concatenate((self.tris[:,0], self.tris[:,1], self.tris[:,2])), 
+            np.concatenate((self.tris[:,1], self.tris[:,2], self.tris[:,0]))
+        ])
+        row, col = edge_pairs
+
+        if distance_weight > 0: 
+            weights = np.linalg.norm(self.points[row,:] - self.points[col,:], 
+                                        ord=2, axis=-1).flatten()
+            weights = 1 / (weights ** distance_weight)
+        else:
+            weights = np.ones(row.size, dtype=np.int8)
+
+        adj = sparse.coo_matrix((weights, (row, col)), shape=(self.n_points, self.n_points))
+
+        if distance_weight == 0: 
+            assert adj.max() == 1
+        assert is_symmetric(adj), 'Adjacency should be symmetric'
+
+        return adj.tocsr()
+
+
+    def mesh_laplacian(self, distance_weight=0):
+        """
+        Mesh Laplacian operator for this surface, as a scipy sparse matrix 
+        of size n_points x n_points. Elements on the diagonal are negative 
+        and off-diagonal elements are positive. All neighbours are weighted 
+        with value 1 (ie, equal weighting ignoring distance). 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all values are unity), whereas positive
+                values will weight elements by 1 / d^n, where d is geometric 
+                distance between vertices. 
+
+        Returns: 
+            sparse CSR matrix
+        """
+
+        # The diagonal is the negative sum of other elements 
+        adj = self.adjacency_matrix(distance_weight)
+        dia = adj.sum(1).A.flatten()
+        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
+        laplacian = adj - laplacian
+
+        assert np.abs(laplacian.sum(1)).max() < 1e-6, 'Unweighted laplacian'
+        assert utils.is_nsd(laplacian), 'Not negative semi-definite'
+        assert utils.is_symmetric(laplacian), 'Not symmetric'
+        return laplacian
+
+
+    # def laplace_beltrami(self, cores=mp.cpu_count()):
+    #     """
+    #     Laplace-Beltrami operator for this surface, as a scipy sparse matrix
+    #     of size n_points x n_points. Elements on the diagonal are negative 
+    #     and off-diagonal elements are positive. 
+
+    #     Areas are calculated according to the definition of A_mixed in "Discrete 
+    #     Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
+    #     M. Desbrun, P. Schroder, A.H. Barr.
+
+    #     Args: 
+    #         cores (int): CPU cores to use.
+
+    #     Returns: 
+    #         sparse matrix 
+    #     """
+
+    #     ncores = cores if self._use_mp else 1 
+    #     M = core.vtx_tri_weights(self, ncores)
+    #     M = sparse.diags(np.squeeze(M.sum(1).A))
+
+    #     L = igl.cotmatrix(self.points, self.tris)
+    #     lbo = (M.power(-1)).dot(L)
+    #     assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
+    #     return lbo
+
+
+    def edges(self):
+        """
+        Edge matrix, sized as follows (tris, 3, 3), where the second dimension
+        contains the edges defined as (v1 - v0), (v2 - v0), (v2 - v1), and 
+        the final dimension contains the edge components in XYZ.  
+        """
+        edge_defns = [ list(e) for e in core.TRI_EDGE_INDEXING ]
+        edges = np.stack([
+            self.points[self.tris[:,e[0]],:] - self.points[self.tris[:,e[1]],:] 
+            for e in edge_defns
+        ], axis=1)
+
+        return edges 
+        
+
 class Patch(Surface):
     """
     Subclass of Surface that represents a small patch of surface. 
-    Points, triangles and xProds are all inherited from the parent surface. 
+    Points, triangles and xprods are all inherited from the parent surface. 
     This class should not be directly created but instead instantiated via
     the Surface.to_patch() / to_patches() methods. 
     """
 
-    def __init__(self, points, tris, xProds):
+    def __init__(self, points, tris, xprods):
         self.points = points 
         self.tris = tris
-        self.xProds = xProds 
+        self.xprods = xprods 
         
 
     def shrink(self, fltr):
@@ -630,7 +701,7 @@ class Patch(Surface):
         filter fltr to the calling objects tris and xprods matrices
         """
 
-        return Patch(self.points, self.tris[fltr,:], self.xProds[fltr,:])
+        return Patch(self.points, self.tris[fltr,:], self.xprods[fltr,:])
 
 
 class Hemisphere(object): 
@@ -645,41 +716,78 @@ class Hemisphere(object):
         side: 'L' or 'R' 
     """
 
-    def __init__(self, inpath, outpath, side=''):
+    def __init__(self, insurf, outsurf, side):
 
+        if not side in ['L', 'R']:
+            raise ValueError("Side must be either 'L' or 'R'")
         self.side = side 
-        self.inSurf = Surface(inpath, name=side+'WS') 
-        self.outSurf = Surface(outpath, name=side+'PS')
+
+        # Create surfaces from path or make our own copy 
+        if not isinstance(insurf, Surface):
+            self.inSurf = Surface(insurf, name=side+'WS') 
+        else: 
+            self.inSurf = copy.deepcopy(insurf)
+        if not isinstance(insurf, Surface):
+            self.outSurf = Surface(outsurf, name=side+'PS')
+        else: 
+            self.outSurf = copy.deepcopy(outsurf)    
+            
+        if (self.inSurf.tris != self.outSurf.tris).any(): 
+            raise ValueError("Both surfaces must have same triangles array")
+
         self.PVs = None 
         return
-
-    @classmethod
-    def manual(cls, insurf, outsurf, side):
-        """
-        Manual hemisphere constructor
-        """
-
-        if not (isinstance(insurf, Surface) and isinstance(outsurf, Surface)):
-            raise RuntimeError("Initialise with surface objects")
-
-        h = cls.__new__(cls)
-        h.inSurf = insurf
-        h.outSurf = outsurf
-        h.PVs = None 
-        h.side = side 
-        return h 
 
     @property
     def surfs(self):
         """Iterator over the inner/outer surfaces"""
+
         return [self.inSurf, self.outSurf]
 
-
+    @property
     def surf_dict(self):
         """Return surfs as dict with appropriate keys (eg LPS)"""
-        return {self.side + 'WS': self.inSurf, 
-            self.side+'PS': self.outSurf}
 
-    
+        return { self.side + 'WS': self.inSurf, 
+                 self.side + 'PS': self.outSurf}
+
     def apply_transform(self, mat):
-        [ s.applyTransform(mat) for s in self.surfs ]
+        """Apply affine transformation to each surface."""
+
+        [ s.apply_transform(mat) for s in self.surfs ]
+
+    def midsurface(self):
+        """Midsurface between inner and outer cortex"""
+        return calc_midsurf(self.inSurf, self.outSurf)
+
+    def adjacency_matrix(self, distance_weight=0):
+        """
+        Adjacency matrix of any cortical surface (they necessarily share
+        the same triagulation, which is checked during initialisation). 
+
+        Args:
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
+        """
+
+        return self.inSurf.adjacency_matrix(distance_weight)
+
+    @property
+    def n_points(self):
+        """Number of vertices on either cortical surface"""
+        return self.inSurf.n_points
+
+    def mesh_laplacian(self, distance_weight=0):
+        """
+        Mesh Laplacian on cortical midsurface. 
+
+        Args: 
+            distance_weight (int): apply inverse distance weighting, default 
+                0 (do not weight, all egdes are unity), whereas positive
+                values will weight edges by 1 / d^n, where d is geometric 
+                distance between vertices. 
+        """
+
+        return self.midsurface().mesh_laplacian(distance_weight)

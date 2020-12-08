@@ -13,9 +13,8 @@
 import os
 import sys
 
-# sys.path.insert(1, '..')
-from toblerone._version import __version__
-
+sys.path.insert(1, '..')
+from setup import get_version
 
 # -- Project information -----------------------------------------------------
 
@@ -24,7 +23,7 @@ copyright = '2020, Tom Kirk'
 author = 'Tom Kirk'
 
 # The full version, including alpha/beta/rc tags
-release = __version__
+release = get_version()
 
 
 # -- General configuration ---------------------------------------------------
@@ -36,9 +35,12 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'recommonmark',
+    'sphinx.ext.viewcode',
 ]
 
 autodoc_member_order = 'bysource'
+autodoc_mock_imports = ['Cython', 'fslpy', 'meshio', 'pyvista']
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

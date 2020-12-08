@@ -7,8 +7,10 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   toblerone.classes
    toblerone.pvestimation
+   toblerone.projection
+   toblerone.classes
+
 
 Submodules
 ----------

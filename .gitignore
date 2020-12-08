@@ -30,3 +30,4 @@ toblerone/ctoblerone/ctoblerone.c
 docs/.buildinfo
 scratch/*
 docs/_build/*
+pypi.sh 

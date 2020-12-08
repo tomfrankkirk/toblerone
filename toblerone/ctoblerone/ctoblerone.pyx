@@ -2,31 +2,9 @@ import numpy as np
 cimport numpy as np
 import cython
 
-from libc.math cimport fabs
-
-
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-cpdef char tribox_overlap(float[:] box_cent, 
-                    float[:] half_size, 
-                    float[:,:] verts) nogil:
-
-    """
-    Cython implementation of Tomas Akenine-Moller's triangle-box overlap test. 
-    Reproduced with original comments by Tom Kirk, 2020. 
-
-    AABB-triangle overlap test code                     
-    by Tomas Akenine-Möller                             
-    Function: int triBoxOverlap(float boxcenter[3],     
-             float boxhalfsize[3],float triverts[3][3]);
-    History:                                            
-      2001-03-05: released the code in its first version
-      2001-06-18: changed the order of the tests, faster
-                                                        
-    Acknowledgement: Many thanks to Pierre Terdiman for 
-    suggestions and discussions on how to optimize code.
-    Thanks to David Hunt for finding a ">="-bug!        
-    """
+# External function imports from ../src directory
+cdef extern from "tribox.h":
+    char triBoxOverlap(const float boxcenter[3], const float boxhalfsize[3], const float triverts[3][3])
 
     #use separating axis theorem to test overlap between triangle and box
     #need to test for overlap in these directions:
@@ -254,96 +232,84 @@ cpdef char tribox_overlap(float[:] box_cent,
         return 1
     return 0 
 
+@cython.boundscheck(False) 
+@cython.wraparound(False) 
+def _ctestTriangleVoxelIntersection(voxCent, halfSize, tri):
+    """
+    Test if triangle intersects voxel. 
+    WARNING: this function expects voxel half size, not full size, 
+    as is the case for _cyfilterTriangles()
+    """
+
+    cdef float[:] vC = voxCent.flatten()
+    cdef float[:] hS = halfSize.flatten()
+    cdef float verts[3][3]
+    for i in range(3):
+        verts[0][i] = tri[0,i]
+        verts[1][i] = tri[1,i]
+        verts[2][i] = tri[2,i]
+
+    return bool(triBoxOverlap(&vC[0], &hS[0], &verts[0]))
+
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cdef float dot(float a[3], float b[3]) nogil:
-    cdef float out = ((a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]))
-    return out 
-
-
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-cpdef filterTriangles(int[:,:] tris, 
-                         float[:,:] points, 
-                         float[:] vox_cent, 
-                         float[:] half_size):
+def _cyfilterTriangles(tris, points, vC, vS):
     """
     Test if multiple triangles intersect voxel defined
     by centre vox_cent and half_size 
     """
     
-    cdef Py_ssize_t t
-    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
-    verts_array = np.empty((3,3), dtype=np.float32)
-    cdef float[:,:] verts = verts_array
+    cdef Py_ssize_t t, a, b, c, i 
+    cdef np.ndarray[char, ndim=1, cast=True] fltr = \
+        np.zeros(tris.shape[0], dtype=bool)
+    
+    cdef np.ndarray[float, ndim=1] voxCent = vC.flatten() 
+    cdef np.ndarray[float, ndim=1] halfSize = vS.flatten() 
+    cdef float tri[3][3]
+    for i in range(3):
+        halfSize[i] = halfSize[i]/2 
 
     for t in range(tris.shape[0]):
-        with nogil:
-            verts[0,:] = points[tris[t,0],:]
-            verts[1,:] = points[tris[t,1],:]
-            verts[2,:] = points[tris[t,2],:]
-        fltr[t] = tribox_overlap(vox_cent, half_size, verts_array)   
+        a = tris[t,0]
+        b = tris[t,1]
+        c = tris[t,2]
+
+        for i in range(3):
+            tri[0][i] = points[a,i]
+            tri[1][i] = points[b,i]
+            tri[2][i] = points[c,i]
+
+        fltr[t] = triBoxOverlap(&voxCent[0], &halfSize[0], &tri[0])     
 
     return fltr 
 
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef test_ray_tris_intersection(int[:,:] tris, float[:,:] points, 
-                                float[:] start, int ax1, int ax2):
+def _cytestManyRayTriangleIntersections(int[:,:] tris, float[:,:] points, start, int ax1, int ax2):
     """
-    Test if a ray intersects a group of triangles. With thanks to 
-    Tim Coalson, this is a direct port of his HCP wb_command code. 
-
-    Args: 
-        tris (np.array): 2D array of int32 triangle indices. 
-        points (np.array): 2D array of float32 triangle points. 
-        start (np.array): 3-vector of float32, ray origin 
-        ax1 (int): one of the axes (X1, Y2, Z3) ray does not travel along
-        ax2 (int): the other axis ray does not travel along 
-
-    Returns: 
-        (np.array), 1D of bool, length equal to triangles
+    Test if a ray intersects triangles. The ray originates from the point 
+    defined by start and travels along the dimension NOT specified by ax1 
+    and ax2 (e.g 0 corresponds to X)
     """
-    
 
-    cdef np.ndarray[char, ndim=1, cast=True] fltr_array = \
-        np.zeros(tris.shape[0], dtype=np.bool)
-    cdef char[::] fltr = fltr_array
-    verts_array = np.empty((3,3), dtype=np.float32)
-    cdef float[:,:] verts = verts_array
-    cdef Py_ssize_t t,i,j,ti,tj 
-    cdef char intersection 
+    cdef np.ndarray[float, ndim=1] st = start.flatten()
+    cdef np.ndarray[char, ndim=1, cast=True] fltr = np.zeros(tris.shape[0], dtype=np.bool)
+    cdef Py_ssize_t t, a, b, c
+    cdef float tri[3][3]
 
-    with nogil: 
+    for t in range(tris.shape[0]):
+        a = tris[t,0]
+        b = tris[t,1]
+        c = tris[t,2]
 
-        for t in range(tris.shape[0]):
-            verts[0,:] = points[tris[t,0],:]
-            verts[1,:] = points[tris[t,1],:]
-            verts[2,:] = points[tris[t,2],:]
-            intersection = 0 
-            j = 2 
-            for i in range(3):
+        for i in range(3):
+            tri[0][i] = points[a,i]
+            tri[1][i] = points[b,i]
+            tri[2][i] = points[c,i]
 
-                # if one vertex is on one side of the point in the x direction, 
-                # and the other is on the other side (equal case is treated as greater)
-                if ((verts[i,ax1] < start[ax1]) != (verts[j,ax1] < start[ax1])): 
-
-                    #reorient the segment consistently to get a consistent answer
-                    if (verts[i,ax1] < verts[j,ax1]):
-                        ti = i; tj = j;
-                    else:
-                        ti = j; tj = i;
-
-                    # if the point on the line described by the two vertices with 
-                    # the same x coordinate is above (greater y) than the test point
-                    if (((verts[ti,ax2] - verts[tj,ax2]) / (verts[ti,ax1] - verts[tj,ax1])) 
-                        * (start[ax1] - verts[tj,ax1]) + verts[tj,ax2] > start[ax2]):
-                        intersection = not intersection # even/odd winding rule
-    
-                # consecutive vertices, does 2,0 then 0,1 then 1,2
-                j = i
+        fltr[t] = testRayTriangleIntersection(tri, &st[0], ax1, ax2)     
 
             fltr[t] = intersection 
 
@@ -351,14 +317,12 @@ cpdef test_ray_tris_intersection(int[:,:] tris, float[:,:] points,
 
 @cython.boundscheck(False) 
 @cython.wraparound(False) 
-cpdef quick_cross(float[::] a, float[::] b):
+def _quick_cross(float[::] a, float[::] b):
     """
     Unsafe (no bounds check) cross product of a,b
-
     Args:
         a (np.array): 3 elements
         b (np.array): 3 elements
-
     Returns: 
         np.array, 3 elements
     """
@@ -370,104 +334,3 @@ cpdef quick_cross(float[::] a, float[::] b):
         out[2] = (a[0]*b[1]) - (a[1]*b[0])
 
     return out 
-
-
-@cython.boundscheck(False) 
-@cython.wraparound(False) 
-def normal_to_vector(float[::] a):
-    """
-    Return a new vector normal to input 
-
-    Args: 
-        a (np.array): 3 elements (no bounds check)
-
-    Returns: 
-        (np.array): 3 elements 
-    """
-
-    cdef float[::] out = np.zeros(3, dtype=np.float32) 
-    with nogil:
-        if fabs(a[2]) < fabs(a[0]):
-            out[0] = a[1] 
-            out[1] = -a[0]
-        else:
-            out[1] = -a[2]
-            out[2] = a[1]
-
-    return out 
-
-
-def point_groups_intersect(list grps, np.ndarray[np.int32_t, ndim=2] tris):
-    """
-    Check if a group 
-    """
-
-    cdef Py_ssize_t g, h
-    for g in range(len(grps)):
-        for h in range(g + 1, len(grps)): 
-            if np.intersect1d(tris[grps[g],:], tris[grps[h],:]).any(): 
-                return True 
-
-    return False 
-
-
-def separate_point_clouds(np.ndarray[np.int32_t, ndim=2] tris):
-    """Separate patches of a surface that intersect a voxel into disconnected
-    groups, ie, point clouds. If the patch is cointguous within the voxel
-    a single group will be returned.
-    
-    Args: 
-        tris: n x 3 matrix of triangle indices into a points matrix
-
-    Returns: 
-        list of m arrays representing the point clouds, each of which is 
-        list of row numbers into the given tris matrix 
-    """
-
-    if not tris.shape[0]:
-        return [] 
-
-    cdef Py_ssize_t t, g, h
-    cdef list groups = [] 
-    cdef bint newGroupNeeded, didMerge
-
-    for t in range(tris.shape[0]):
-
-        # If any node of the triangle is contained within the existing
-        # groups, then append to that group. Assume new group needed
-        # until proven otherwise
-        newGroupNeeded = True 
-        for g in range(len(groups)):
-            if np.in1d(tris[t,:], tris[groups[g],:]).any():
-                newGroupNeeded = False
-                break 
-        
-        # Append triangle to existing group, using the break-value of g
-        if not newGroupNeeded:
-            groups[g].append(t)
-        
-        # New group needed
-        else: 
-            groups.append([t])
-
-    # Merge groups that intersect 
-    if len(groups) > 1: 
-        while point_groups_intersect(groups, tris): 
-            didMerge = False 
-
-            for g in range(len(groups)):
-                if didMerge: break 
-
-                for h in range(g + 1, len(groups)):
-                    if didMerge: break
-
-                    if np.intersect1d(tris[groups[g],:], tris[groups[h],:]).any():
-                        groups[g] = groups[g] + groups[h]
-                        groups.pop(h)
-                        didMerge = True  
-
-    # Check for empty groups 
-    for g in range(len(groups)):
-        assert len(groups[g]), 'Empty group remains after merging'
-    
-    return groups 

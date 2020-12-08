@@ -7,13 +7,15 @@ import subprocess
 import sys
 import shutil
 import warnings 
-import time
 import multiprocessing
+import copy 
 
 import numpy as np 
-import nibabel
 from fsl.wrappers import fsl_anat
-import regtricks as rt 
+import regtricks as rt
+from scipy.sparse.linalg import eigs
+
+NP_FLOAT = np.float32
 
 STRUCTURES = ['L_Accu', 'L_Amyg', 'L_Caud', 'L_Hipp', 'L_Pall', 'L_Puta', 
                 'L_Thal', 'R_Accu', 'R_Amyg', 'R_Caud', 'R_Hipp', 'R_Pall', 'R_Puta', 
@@ -229,42 +231,7 @@ def _runFAST(struct, dir):
     os.chdir(pwd)
 
 
-# Local function to read out an FSL-specific affine matrix from an image
-def _getFSLspace(imgPth):
-    obj = nibabel.load(imgPth)
-    if obj.header['dim'][0] < 3:
-        raise RuntimeError("Volume has less than 3 dimensions" +
-                                "cannot resolve space")
-
-    sform = obj.affine
-    det = np.linalg.det(sform[0:4, 0:4])
-    ret = np.identity(4)
-    pixdim = obj.header['pixdim'][1:4]
-    for d in range(3):
-        ret[d,d] = pixdim[d]
-
-    # Check the xyzt field to find the spatial units. 
-    xyzt = str(obj.header['xyzt_units'])
-    if xyzt == '01': 
-        multi = 1000
-    elif xyzt == '10':
-        multi = 1 
-    elif xyzt == '11':
-        multi = 1e-3
-    else: 
-        multi = 1
-        warnings.warn("Assuming mm units for transform")
-
-    if det > 0:
-        ret[0,0] = -pixdim[0]
-        ret[0,3] = (obj.header['dim'][1] - 1) * pixdim[0]
-
-    ret = ret * multi
-    ret[3,3] = 1
-    return ret
-
-
-def affineTransformPoints(points, affine):
+def affine_transform(points, affine):
     """Apply affine transformation to set of points.
 
     Args: 
@@ -284,18 +251,8 @@ def affineTransformPoints(points, affine):
     # then re-transpose and drop 4th column  
     transfd = np.ones((points.shape[0], 4))
     transfd[:,0:3] = points
-    transfd = np.matmul(affine, transfd.T).astype(np.float32)
+    transfd = np.matmul(affine, transfd.T).astype(NP_FLOAT)
     return np.squeeze(transfd[0:3,:].T)
-
-
-def _coordinatesForGrid(ofSize):
-    """Produce N x 3 array of all voxel indices (eg [10, 18, 2]) within
-    a grid of size ofSize, 0-indexed and in integer form. 
-    """
-
-    I, J, K = np.unravel_index(np.arange(np.prod(ofSize)), ofSize)
-    cents = np.vstack((I.flatten(), J.flatten(), K.flatten())).T
-    return cents.astype(np.int32)
 
 
 def _distributeObjects(objs, ngroups):
@@ -400,7 +357,7 @@ def enforce_and_load_common_arguments(func):
 
     Required args:
         ref: path to a reference image in which to operate 
-        struct2ref: path to file or 4x4 array representing transformation
+        struct2ref: path/np.array/Registration representing transformation
             between structural space (that of the surfaces) and reference. 
             If given as 'I', identity matrix will be used. 
 
@@ -419,14 +376,11 @@ def enforce_and_load_common_arguments(func):
         a modified copy of kwargs dictionary passed to the caller
     """
     
-    def enforcer(**kwargs):
+    def enforcer(ref, struct2ref, **kwargs):
 
         # Reference image path 
-        if not kwargs.get('ref'):
-            raise RuntimeError("Path to reference image must be given")
-
-        if (type(kwargs['ref']) is str) and not op.isfile(kwargs['ref']):
-            raise RuntimeError("Reference image %s does not exist" % kwargs['ref'])
+        if (not isinstance(ref, rt.ImageSpace)): 
+            ref = rt.ImageSpace(ref)
 
         # If given a anat_dir we can load the structural image in 
         if kwargs.get('anat'):
@@ -456,41 +410,38 @@ def enforce_and_load_common_arguments(func):
                     raise RuntimeError("Could not find T1.nii.gz in the anat dir")
 
  
-        # Structural to reference transformation. Either as array or path
-        # to file containing matrix
-        if not any([type(kwargs.get('struct2ref')) is str, 
-            type(kwargs.get('struct2ref')) is np.ndarray]):
-            raise RuntimeError("struct2ref transform must be given (either path", 
-                "or np.array object)")
+        # Structural to reference transformation. Either as array, path
+        # to file containing matrix, or regtricks Registration object 
+        if not any([type(struct2ref) is str, type(struct2ref) is np.ndarray,
+                    type(struct2ref) is rt.Registration ]):
+            raise RuntimeError("struct2ref transform must be given (either path,", 
+                " np.array or regtricks Registration object)")
 
         else:
-            s2r = kwargs['struct2ref']
+            s2r = struct2ref
 
             if (type(s2r) is str): 
                 if s2r == 'I':
                     matrix = np.identity(4)
                 else:
-                    _, matExt = op.splitext(kwargs['struct2ref'])
+                    _, matExt = op.splitext(s2r)
 
                     try: 
                         if matExt in ['.txt', '.mat']:
-                            matrix = np.loadtxt(kwargs['struct2ref'], 
-                                dtype=np.float32)
+                            matrix = np.loadtxt(s2r, 
+                                dtype=NP_FLOAT)
                         elif matExt in ['.npy', 'npz', '.pkl']:
-                            matrix = np.load(kwargs['struct2ref'])
+                            matrix = np.load(s2r)
                         else: 
-                            matrix = np.fromfile(kwargs['struct2ref'], 
-                                dtype=np.float32)
+                            matrix = np.fromfile(s2r, 
+                                dtype=NP_FLOAT)
 
                     except Exception as e:
                         warnings.warn("""Could not load struct2ref matrix. 
                             File should be any type valid with numpy.load().""")
                         raise e 
 
-                kwargs['struct2ref'] = matrix
-
-        if not kwargs['struct2ref'].shape == (4,4):
-            raise RuntimeError("struct2ref must be a 4x4 matrix")
+                struct2ref = matrix
 
         # If FLIRT transform we need to do some clever preprocessing
         # We then set the flirt flag to false again (otherwise later steps will 
@@ -501,9 +452,13 @@ def enforce_and_load_common_arguments(func):
                 raise RuntimeError("If using a FLIRT transform, the path to the"
                     " structural image must also be given")
             
-            kwargs['struct2ref'] = (rt.Registration.from_flirt(kwargs['struct2ref'], 
-                                        kwargs['struct'], kwargs['ref'])).src2ref
+            struct2ref = rt.Registration.from_flirt(struct2ref, 
+                                        kwargs['struct'], ref).src2ref
             kwargs['flirt'] = False 
+        elif isinstance(struct2ref, rt.Registration): 
+            struct2ref = struct2ref.src2ref 
+        
+        assert isinstance(struct2ref, np.ndarray), 'should have cast struc2ref to np.array'
 
         # Processor cores
         if not kwargs.get('cores'):
@@ -524,15 +479,151 @@ def enforce_and_load_common_arguments(func):
             except:
                 raise RuntimeError("-super must be a value or list of 3" + 
                     " values of int type")
-        
-            kwargs['super'] = sup.astype(np.int8)
-            print("Using manual supersampling factor", kwargs['super'])
 
-        return kwargs
+        return ref, struct2ref, kwargs
 
-    def common_args_enforced(**kwargs):
-        enforced = enforcer(**kwargs)
-        return func(**enforced)
+    def common_args_enforced(ref, struct2ref, **kwargs):
+        ref, struct2ref, enforced = enforcer(ref, struct2ref, **kwargs)
+        return func(ref, struct2ref, **enforced)
 
     return common_args_enforced
 
+
+def sparse_normalise(mat, axis, threshold=1e-6): 
+    """
+    Normalise a sparse matrix so that all rows (axis=1) or columns (axis=0)
+    sum to either 1 or zero. NB any rows or columns that sum to less than 
+    threshold will be rounded to zeros.
+
+    Args: 
+        mat: sparse matrix to normalise 
+        axis: dimension for which sum should equal 1 (1 for row, 0 for col)
+        threshold: any row/col with sum < threshold will be set to zero  
+
+    Returns: 
+        sparse matrix, same format as input. 
+    """
+
+    # Make local copy - otherwise this function will modify the caller's copy 
+    constructor = type(mat)
+    mat = copy.deepcopy(mat)
+
+    if axis == 0:
+        matrix = mat.tocsr()
+    elif axis == 1: 
+        matrix = mat.tocsc()
+    else: 
+        raise ValueError("Axis must be 0 or 1")
+
+    # Set threshold. Round any row/col below this to zeros 
+    norm = mat.sum(axis).A.flatten()
+    fltr = (norm > threshold)
+    normalise = np.zeros(norm.size)
+    normalise[fltr] = 1 / norm[fltr]
+    matrix.data *= np.take(normalise, matrix.indices)
+
+    # Sanity check
+    sums = matrix.sum(axis).A.flatten()
+    assert np.all(np.abs((sums[sums > 0] - 1)) < threshold), 'Did not normalise to 1'
+    return constructor(matrix)
+
+
+def is_symmetric(a, tol=1e-9): 
+    return not (np.abs(a - a.T) > tol).max()
+
+
+def is_nsd(a):
+    return not (eigs(a)[0] > 0).any()
+
+
+def calc_midsurf(in_surf, out_surf):
+    """
+    Midsurface between two Surfaces
+    """
+    from .classes import Surface
+    vec = out_surf.points - in_surf.points 
+    points =  in_surf.points + (0.5 * vec)
+    return Surface.manual(points, in_surf.tris)
+
+
+def calculateXprods(points, tris):
+    """
+    Normal vectors for points,triangles array. 
+    For triangle vertices ABC, this is calculated as (C - A) x (B - A). 
+    """
+
+    return np.cross(
+        points[tris[:,2],:] - points[tris[:,0],:], 
+        points[tris[:,1],:] - points[tris[:,0],:], 
+        axis=1)
+
+
+def slice_sparse(mat, slice0, slice1):
+    """
+    Slice a block out of a sparse matrix, ie mat[slice0,slice1]. 
+    Scipy sparse matrices do not support slicing in this manner (unlike numpy)
+
+    Args: 
+        mat (sparse): of any form 
+        slice0 (bool,array): mask to apply on axis 0 (rows)
+        slice1 (bool,array): mask to apply on axis 1 (columns)
+
+    Returns: 
+        CSR matrix
+    """
+    
+    out = mat.tocsc()[:,slice1]
+    return out.tocsr()[slice0,:]
+
+
+def rebase_triangles(points, tris, tri_inds):
+    """
+    Re-express a patch of a larger surface as a new points and triangle
+    matrix pair, indexed from 0. Useful for reducing computational 
+    complexity when working with a small patch of a surface where only 
+    a few nodes in the points array are required by the triangles matrix. 
+
+    Args: 
+        points (np.array): surface vertices, P x 3
+        tris (np.array): surface triangles, T x 3
+        tri_inds (np.array): row indices into triangles array, to rebase
+    
+    Returns: 
+        (points, tris) tuple of re-indexed points/tris. 
+    """
+
+    ps = np.empty((0, 3), dtype=NP_FLOAT)
+    ts = np.empty((len(tri_inds), 3), dtype=np.int32)
+    pointsLUT = []
+
+    for t in range(len(tri_inds)):
+        for v in range(3):
+
+            # For each vertex of each tri, check if we
+            # have already processed it in the LUT
+            vtx = tris[tri_inds[t],v]
+            idx = np.argwhere(pointsLUT == vtx)
+
+            # If not in the LUT, then add it and record that
+            # as the new position. Write the missing vertex
+            # into the local points array
+            if not idx.size:
+                pointsLUT.append(vtx)
+                idx = len(pointsLUT) - 1
+                ps = np.vstack([ps, points[vtx,:]])
+
+            # Update the local triangle
+            ts[t,v] = idx
+
+    return (ps, ts)
+
+
+def space_encloses_surface(space, points_vox):
+
+    if np.round(np.min(points_vox)) < 0: 
+        raise RuntimeError("Surface has negative voxel coordinate")
+
+    if (np.round(np.max(points_vox, axis=0)) >= space.size).any(): 
+        raise RuntimeError("Surface has voxel coordinate greater than space size")
+
+    return True 
