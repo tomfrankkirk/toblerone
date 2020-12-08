@@ -30,6 +30,8 @@ from toblerone.utils import NP_FLOAT, space_encloses_surface
 
 # Module level constants ------------------------------------------------------
 
+ZERO_3 = np.zeros(3, dtype=NP_FLOAT)
+
 # edge vectors for a single voxel 
 ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
     1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int8) - 1
@@ -310,11 +312,10 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
     onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(lmbda.size)], dtype=NP_FLOAT)
+        np.zeros(lmbda.size, dtype=NP_FLOAT)])
 
     # Now perform the test 
-    start = np.zeros(3, dtype=NP_FLOAT)
-    fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, start,
+    fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, ZERO_3,
         0, 1)
 
     # For those trianglest that passed, calculate multiplier to point of 
@@ -536,14 +537,14 @@ def _safeFormHull(points):
     elsewhere). For everything else, let the exception continue up. 
     """
 
-    if points.size > 3:
+    if points.size > 8:
         try:
             hull = ConvexHull(points)
             return hull.volume
         except QhullError: 
             return 0
-        except Exception: 
-            raise 
+        except Exception as e: 
+            raise e
     else: 
         return 0
         
