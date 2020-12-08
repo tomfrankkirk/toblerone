@@ -576,48 +576,6 @@ def slice_sparse(mat, slice0, slice1):
     return out.tocsr()[slice0,:]
 
 
-def rebase_triangles(points, tris, tri_inds):
-    """
-    Re-express a patch of a larger surface as a new points and triangle
-    matrix pair, indexed from 0. Useful for reducing computational 
-    complexity when working with a small patch of a surface where only 
-    a few nodes in the points array are required by the triangles matrix. 
-
-    Args: 
-        points (np.array): surface vertices, P x 3
-        tris (np.array): surface triangles, T x 3
-        tri_inds (np.array): row indices into triangles array, to rebase
-    
-    Returns: 
-        (points, tris) tuple of re-indexed points/tris. 
-    """
-
-    ps = np.empty((0, 3), dtype=NP_FLOAT)
-    ts = np.empty((len(tri_inds), 3), dtype=np.int32)
-    pointsLUT = []
-
-    for t in range(len(tri_inds)):
-        for v in range(3):
-
-            # For each vertex of each tri, check if we
-            # have already processed it in the LUT
-            vtx = tris[tri_inds[t],v]
-            idx = np.argwhere(pointsLUT == vtx)
-
-            # If not in the LUT, then add it and record that
-            # as the new position. Write the missing vertex
-            # into the local points array
-            if not idx.size:
-                pointsLUT.append(vtx)
-                idx = len(pointsLUT) - 1
-                ps = np.vstack([ps, points[vtx,:]])
-
-            # Update the local triangle
-            ts[t,v] = idx
-
-    return (ps, ts)
-
-
 def space_encloses_surface(space, points_vox):
 
     if np.round(np.min(points_vox)) < 0: 

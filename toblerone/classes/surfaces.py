@@ -537,13 +537,11 @@ class Surface(object):
     def to_patch(self, vox_idx):
         """
         Return a patch object specific to a voxel given by linear index.
-        Look up the triangles intersecting the voxel, and then load and rebase
-        the points / surface normals as required. 
         """
 
         tri_nums = self.indexed.assocs[vox_idx,:].indices
-        (ps, ts) = utils.rebase_triangles(self.indexed.points_vox, self.tris, tri_nums)
-        return Patch(ps, ts, self.indexed.xprods[tri_nums,:])
+        return Patch(self.indexed.points_vox, self.tris[tri_nums,:], 
+                        self.indexed.xprods[tri_nums,:])
 
     
     def to_patches(self, vox_inds):
