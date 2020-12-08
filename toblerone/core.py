@@ -589,9 +589,6 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
     verbose = False
     # print(voxIdx)
-
-    # Hardcode voxel size as we now work in voxel coords. Intialise results
-    vox_size = np.array([1,1,1], dtype=np.int8)
     inFraction = 0.0
 
     # Set up the subvoxel sizes and vols. 
@@ -743,7 +740,6 @@ def _estimateFractions(surf, supersampler, descriptor, cores):
         vector of size prod(FoV)
     """
 
-    size = surf.indexed.space
     supersampler = np.squeeze(np.array(supersampler, dtype=np.int16))
 
     # Compute all voxel centres, prepare a partial function application for 
