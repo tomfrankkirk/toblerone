@@ -265,10 +265,10 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = (normals * ray).sum(1)
-    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
+    dotRN = np.einsum('ij,j->i', normals, ray, casting='no')
+    mu = np.einsum('ij,ij->i', planePoints - testPnt, normals, casting='no')
 
-    return mu 
+    return mu / dotRN
 
 
 def _findRayTriangleIntersections3D(testPnt, ray, patch):
@@ -528,7 +528,7 @@ def _findVoxelSurfaceIntersections(patch, vertices):
                 fold = True
                 return (intersects, fold)
 
-            intPnts = pnt + (intMus[:,None] * edge[None,:])
+            intPnts = pnt + np.einsum('i,j->ij', intMus, edge, casting='no')
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)
