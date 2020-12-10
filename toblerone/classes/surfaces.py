@@ -345,7 +345,7 @@ class Surface(object):
 
         # Map surface points into this space
         points_vox = utils.affine_transform(self.points, encl_space.world2vox)
-        assert utils.space_encloses_surface(space, points_vox)
+        assert utils.space_encloses_surface(encl_space, points_vox)
 
         # Calculate associations and cross products
         cores = cores if self._use_mp else 1 
