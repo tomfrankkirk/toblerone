@@ -64,9 +64,10 @@ class Projector(object):
             if hasattr(hemi, 'pvs'): 
                 self.pvs.append(hemi.pvs.reshape(-1,3))
             else: 
-                supersample = np.ceil(spc.vox_size).astype(np.int8) 
-                pvs = estimators._cortex(hemi, spc, np.eye(4), supersample, 
-                    ncores, ones)
+                supersampler = np.maximum(np.floor(spc.vox_size.round(1)/0.75), 
+                                            1).astype(np.int8)                
+                pvs = estimators._cortex(hemi, spc, np.eye(4), supersampler, 
+                                        ncores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
             # Calculate the constituent matrices for projection with each hemi 

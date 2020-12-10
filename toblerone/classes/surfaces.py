@@ -345,7 +345,7 @@ class Surface(object):
 
         # Map surface points into this space
         points_vox = utils.affine_transform(self.points, encl_space.world2vox)
-        assert utils.space_encloses_surface(space, points_vox)
+        assert utils.space_encloses_surface(encl_space, points_vox)
 
         # Calculate associations and cross products
         cores = cores if self._use_mp else 1 
@@ -537,11 +537,13 @@ class Surface(object):
     def to_patch(self, vox_idx):
         """
         Return a patch object specific to a voxel given by linear index.
+        Look up the triangles intersecting the voxel, and then load and rebase
+        the points / surface normals as required. 
         """
 
         tri_nums = self.indexed.assocs[vox_idx,:].indices
-        return Patch(self.indexed.points_vox, self.tris[tri_nums,:], 
-                        self.indexed.xprods[tri_nums,:])
+        (ps, ts) = utils.rebase_triangles(self.indexed.points_vox, self.tris, tri_nums)
+        return Patch(ps, ts, self.indexed.xprods[tri_nums,:])
 
     
     def to_patches(self, vox_inds):
