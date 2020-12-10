@@ -60,7 +60,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         hemiPVs = np.zeros((np.prod(space.size), 3), dtype=NP_FLOAT)
         hemiPVs[:,1] = in_pvs 
         hemiPVs[:,0] = np.maximum(0.0, out_pvs - in_pvs)
-        hemiPVs[:,2] = 1.0 - np.sum(hemiPVs[:,0:2], axis=1)
+        hemiPVs[:,2] = 1.0 - (hemiPVs[:,0:2].sum(1))
         h.PVs = hemiPVs
 
     # Merge the hemispheres, giving priority to GM, then WM, then CSF.
@@ -74,7 +74,7 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
         outPVs[:,0] = np.minimum(1.0, h1.PVs[:,0] + h2.PVs[:,0])
         outPVs[:,1] = np.minimum(1.0 - outPVs[:,0],
             h1.PVs[:,1] + h2.PVs[:,1])
-        outPVs[:,2] = 1.0 - np.sum(outPVs[:,0:2], axis=1)
+        outPVs[:,2] = 1.0 - outPVs[:,0:2].sum(1)
 
     # Sanity checks
     if np.any(outPVs > 1.0): 
