@@ -265,10 +265,10 @@ def _findRayTriPlaneIntersections(planePoints, normals, testPnt, ray):
 
     # mu is defined as dot((p_plane - p_test), normal_tri_plane) ...
     #   / dot(ray, normal_tri_plane)
-    dotRN = (normals * ray).sum(1)
-    mu = ((planePoints - testPnt) * normals).sum(1) / dotRN 
+    dotRN = np.einsum('ij,j->i', normals, ray, casting='no')
+    mu = np.einsum('ij,ij->i', planePoints - testPnt, normals, casting='no')
 
-    return mu 
+    return mu / dotRN
 
 
 def _findRayTriangleIntersections3D(testPnt, ray, patch):
@@ -306,13 +306,16 @@ def _findRayTriangleIntersections3D(testPnt, ray, patch):
     # Calculate the projection of each point onto the direction vector of the
     # surface normal. Then subtract this component off each to leave their position
     # on the plane and shift coordinates so the test point is the origin.
-    lmbda = (patch.points * ray).sum(1)
-    onPlane = (patch.points - (lmbda[:,None] * ray[None,:])) - testPnt 
+    lmbda = np.einsum('ij,j->i', patch.points, ray, casting='no')
+    onPlane = (patch.points 
+                - np.einsum('i,j->ij', lmbda, ray, casting='no')
+                - testPnt)
 
     # Re-express the points in 2d planar coordiantes by evaluating dot products with
     # the d2 and d3 in-plane orthonormal unit vectors
-    onPlane2d = np.array([(onPlane * d1).sum(1), (onPlane * d2).sum(1),
-        np.zeros(lmbda.size, dtype=NP_FLOAT)])
+    onPlane2d = np.array([ np.einsum('ij,j->i', onPlane, d1, casting='no'),
+                           np.einsum('ij,j->i', onPlane, d2, casting='no'),
+                           np.zeros(lmbda.size, dtype=NP_FLOAT)])
 
     # Now perform the test 
     fltr = _cytestManyRayTriangleIntersections(patch.tris, onPlane2d.T, ZERO_3,
@@ -525,7 +528,7 @@ def _findVoxelSurfaceIntersections(patch, vertices):
                 fold = True
                 return (intersects, fold)
 
-            intPnts = pnt + (intMus[:,None] * edge[None,:])
+            intPnts = pnt + np.einsum('i,j->ij', intMus, edge, casting='no')
             intersects = np.vstack((intersects, intPnts[accept,:]))
 
     return (intersects, fold)

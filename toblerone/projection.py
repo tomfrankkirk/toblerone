@@ -159,7 +159,7 @@ class Projector(object):
             pvs = np.zeros((self.spc.size.prod(), 3))
             pvs[:,0] = np.minimum(1.0, self.pvs[0][:,0] + self.pvs[1][:,0])
             pvs[:,1] = np.minimum(1.0 - pvs[:,0], self.pvs[0][:,1] + self.pvs[1][:,1])
-            pvs[:,2] = 1.0 - np.sum(pvs[:,0:2], axis=1)
+            pvs[:,2] = 1.0 - pvs[:,0:2].sum(1)
             return pvs 
         else: 
             return self.pvs[0]
