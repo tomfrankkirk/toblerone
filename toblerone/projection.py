@@ -5,6 +5,7 @@ Toblerone surface-volume projection functions
 import multiprocessing as mp 
 import copy
 import os
+from textwrap import dedent
 
 import numpy as np 
 from scipy import sparse 
@@ -183,6 +184,17 @@ class Projector(object):
                 p.vtx_tri_mats.append(vtxtri.tocsr())
 
         return p 
+
+
+    def __repr__(self):
+        sides = ",".join(list(self.hemi_dict.keys()))
+        nverts = sum([ h.n_points for h in self.iter_hemis ])
+        spc = "\n".join(repr(self.spc).splitlines()[1:])
+        disp = dedent(f"""\
+        Projector for {sides} hemispheres, with {nverts} total vertices.
+        Reference voxel grid:""")
+        return disp + "\n" + spc 
+
 
     @property
     def iter_hemis(self):
