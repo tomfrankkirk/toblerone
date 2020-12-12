@@ -1,22 +1,18 @@
 """Toblerone tests"""
 
 import os.path as op
-import nibabel
-
-from numpy.lib.index_tricks import diag_indices
-from pyvista.utilities.features import voxelize
-from scipy import sparse
-from toblerone import pvestimation
-
-from toblerone.classes.surfaces import Surface 
 import pickle 
-from nibabel import test
-import numpy as np 
-import multiprocessing
 from pdb import set_trace
 import os 
+import multiprocessing
+
+import numpy as np
+from scipy import sparse
+from numpy.lib.index_tricks import diag_indices
 
 import toblerone
+from toblerone import pvestimation
+from toblerone.classes import Surface, Hemisphere
 from toblerone import classes, projection, core 
 from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
@@ -77,7 +73,7 @@ def test_projection():
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
     vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
     ndata = np.concatenate((sdata, vdata))
-    projector = toblerone.projection.Projector(hemi, spc, 10, 1)
+    projector = toblerone.projection.Projector(hemi, spc, 10)
 
     # volume to surface 
     v2s = projector.vol2surf(vdata, False)
@@ -130,9 +126,9 @@ def test_subvoxels():
 
 def test_convert(): 
     td = get_testdir()
-    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    s = Surface(op.join(td, 'in.surf.gii'))
     s.save('test.vtk')
-    s2 = classes.Surface('test.vtk')
+    s2 = Surface('test.vtk')
     assert np.allclose(s.points, s2.points)
     os.remove('test.vtk')
 
@@ -145,7 +141,7 @@ def test_proj_properties():
     hemi = toblerone.Hemisphere(ins, outs, 'L')
     proj = toblerone.projection.Projector(hemi, spc)
     assert proj.n_hemis == 1 
-    assert 'L' in proj.hemis
+    assert 'L' in proj.hemi_dict
     assert hemi.midsurface()
     assert proj['LPS']
 
@@ -153,7 +149,7 @@ def test_proj_properties():
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
     assert proj.n_hemis == 2 
     assert proj['RWS']
-    assert ('L' in proj.hemis) & ('R' in proj.hemis)
+    assert ('L' in proj.hemi_dict) & ('R' in proj.hemi_dict)
     for h,s in zip(proj.iter_hemis, ['L', 'R']):
         assert h.side == s 
 
@@ -177,7 +173,7 @@ def test_surf_edges():
 
 def test_adjacency():
     td = get_testdir()
-    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    s = Surface(op.join(td, 'in.surf.gii'))
     for w in range(4):
         adj = s.adjacency_matrix(w)
         assert not (adj.data < 0).any(), 'negative value in adjacency matrix'
@@ -192,7 +188,7 @@ def test_adjacency():
     hemi = toblerone.Hemisphere(s, outs, 'L')
     hemi2 = toblerone.Hemisphere(s, outs, 'R')
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
-    n = proj.hemis['L'].n_points
+    n = proj.hemi_dict['L'].n_points
 
     for w in range(4):
         adj = proj.adjacency_matrix(w)
@@ -202,7 +198,7 @@ def test_adjacency():
 
 def test_mesh_laplacian():
     td = get_testdir()
-    s = classes.Surface(op.join(td, 'in.surf.gii'))
+    s = Surface(op.join(td, 'in.surf.gii'))
 
     try: 
         s.mesh_laplacian(-1)
@@ -221,7 +217,7 @@ def test_mesh_laplacian():
 
     for w in range(4):
         lap = proj.mesh_laplacian(w)
-        n = proj.hemis['L'].n_points
+        n = proj.hemi_dict['L'].n_points
         assert not slice_sparse(lap, slice(0, n), slice(n, 2*n)).nnz
         assert not slice_sparse(lap, slice(n, 2*n), slice(0, n)).nnz
         assert not (lap[diag_indices(2*n)] > 0).any()
@@ -251,7 +247,7 @@ def test_cortex():
 
     ins = op.join(td, 'in.surf.gii')
     outs = op.join(td, 'out.surf.gii')
-    hemi = classes.Hemisphere(ins, outs, 'L')
+    hemi = Hemisphere(ins, outs, 'L')
     s2r = np.identity(4)
     supersampler = np.random.randint(3,6,3)
     fracs = estimators._cortex(hemi, spc, s2r, supersampler, 
@@ -259,7 +255,7 @@ def test_cortex():
     spc.save_image(fracs, f'{td}/fracs.nii.gz')
 
     # REFRESH the surfaces of the hemisphere before starting again - indexing! 
-    hemi = classes.Hemisphere(ins, outs, 'L')
+    hemi = Hemisphere(ins, outs, 'L')
     superfactor = 10
     spc_high = spc.resize_voxels(1.0/superfactor)
     voxelised = np.zeros(spc_high.size.prod(), dtype=NP_FLOAT)
@@ -316,5 +312,26 @@ def test_sparse_normalise():
         sums = normed.sum(axis).A.flatten()
         assert (np.abs(sums[sums > 0] - 1) <= thr).all()
 
+
+def test_projector_hdf5():
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    proj = toblerone.projection.Projector(hemi, spc)
+    proj.save('proj.h5')
+    proj2 = projection.Projector.load('proj.h5')
+
+    assert np.array_equiv(proj.pvs, proj2.pvs)
+    assert np.array_equiv(proj.spc, proj2.spc)
+    assert np.array_equiv(proj.vox_tri_mats[0].data, 
+                          proj2.vox_tri_mats[0].data)
+    assert np.array_equiv(proj.vtx_tri_mats[0].data, 
+                          proj2.vtx_tri_mats[0].data)
+
+    os.remove('proj.h5')
+
 if __name__ == "__main__":
-    test_structure()
+    # test_projection()
+    test_projector_hdf5()
