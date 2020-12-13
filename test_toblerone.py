@@ -5,6 +5,7 @@ import pickle
 from pdb import set_trace
 import os 
 import multiprocessing
+import sys 
 
 import numpy as np
 from scipy import sparse
@@ -13,11 +14,12 @@ from numpy.lib.index_tricks import diag_indices
 import toblerone
 from toblerone import pvestimation
 from toblerone.classes import Surface, Hemisphere
-from toblerone import classes, projection, core 
+from toblerone import core 
 from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
 from toblerone.utils import NP_FLOAT, slice_sparse, sparse_normalise
+from toblerone.__main__ import main
 
 cores = multiprocessing.cpu_count()
 
@@ -232,8 +234,6 @@ def test_mesh_laplacian():
 
 
 def cmd_line():
-    from toblerone.__main__ import main
-    import sys 
     anat = "/Users/tom/Data/pcasl2/1.anat"
     ref = anat + "/T1.nii.gz"
     cmd = f" -estimate_complete -ref {ref} -struct2ref I -anat {anat} -super 1"
@@ -319,9 +319,9 @@ def test_projector_hdf5():
     outs = op.join(td, 'out.surf.gii')
     hemi = toblerone.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    proj = toblerone.projection.Projector(hemi, spc)
+    proj = toblerone.Projector(hemi, spc)
     proj.save('proj.h5')
-    proj2 = projection.Projector.load('proj.h5')
+    proj2 = toblerone.Projector.load('proj.h5')
 
     assert np.array_equiv(proj.pvs, proj2.pvs)
     assert np.array_equiv(proj.spc, proj2.spc)
@@ -332,6 +332,19 @@ def test_projector_hdf5():
 
     os.remove('proj.h5')
 
+
+def test_projector_cmdline():
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    spc = op.join(td, 'ref.nii.gz')
+
+    cmd = f'-prepare_projector -ref {spc} -LPS {outs} -LWS {ins} -out proj'
+    sys.argv[1:] = cmd.split()
+    main()
+    os.remove('proj.h5')
+
+
 if __name__ == "__main__":
-    # test_projection()
-    test_projector_hdf5()
+    test_projector_cmdline()
+    # test_projector_hdf5()
