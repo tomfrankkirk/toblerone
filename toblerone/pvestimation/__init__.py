@@ -45,26 +45,7 @@ def cortex(ref, struct2ref, **kwargs):
         raise RuntimeError("Either a fsdir or paths to LWS/LPS etc"
             "must be given.")
 
-    # If subdir given, then get all the surfaces out of the surf dir
-    # If individual surface paths were given they will already be in scope
-    if kwargs.get('fsdir'):
-        surfdict = utils._loadSurfsToDict(kwargs['fsdir'])
-        kwargs.update(surfdict)
-
-    # What hemispheres are we working with?
-    sides = []
-    if np.all([ (kwargs.get(s) is not None) for s in ['LPS', 'LWS'] ]): 
-        sides.append('L')
-
-    if np.all([ kwargs.get(s) is not None for s in ['RPS', 'RWS'] ]): 
-        sides.append('R')
-
-    if not sides:
-        raise RuntimeError("At least one hemisphere (eg LWS/LPS required")
-
-    # Load reference ImageSpace object
-    hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
-        for s in sides ] 
+    hemispheres = utils.load_surfs_to_hemispheres(**kwargs)
 
     # Either create local copy of ImageSpace object or init from path 
     if isinstance(ref, ImageSpace):

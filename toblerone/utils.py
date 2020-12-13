@@ -627,3 +627,29 @@ def space_encloses_surface(space, points_vox):
         raise RuntimeError("Surface has voxel coordinate greater than space size")
 
     return True 
+
+
+def load_surfs_to_hemispheres(**kwargs):
+
+    from .classes import Hemisphere
+    # If subdir given, then get all the surfaces out of the surf dir
+    # If individual surface paths were given they will already be in scope
+    if kwargs.get('fsdir'):
+        surfdict = _loadSurfsToDict(kwargs['fsdir'])
+        kwargs.update(surfdict)
+
+    # What hemispheres are we working with?
+    sides = []
+    if np.all([ (kwargs.get(s) is not None) for s in ['LPS', 'LWS'] ]): 
+        sides.append('L')
+
+    if np.all([ kwargs.get(s) is not None for s in ['RPS', 'RWS'] ]): 
+        sides.append('R')
+
+    if not sides:
+        raise RuntimeError("At least one hemisphere (eg LWS/LPS) required")
+
+    hemispheres = [ Hemisphere(kwargs[s+'WS'], kwargs[s+'PS'], s) 
+        for s in sides ] 
+
+    return hemispheres
