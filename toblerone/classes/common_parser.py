@@ -14,19 +14,85 @@ class CommonParser(argparse.ArgumentParser):
     normal. 
     """
 
-    def __init__(self):
-        super().__init__()
-        self.add_argument('-ref', type=str, required=True)
-        self.add_argument('-struct2ref', type=str, required=True) 
-        self.add_argument('-flirt', action='store_true', required=False)
-        self.add_argument('-struct', type=str, required=False)
-        self.add_argument('-cores', type=int, required=False)
-        self.add_argument('-out', type=str, required=False)
-        self.add_argument('-super', nargs='+', required=False)
+    def __init__(self, *args_to_add, **kwargs):
+        super().__init__(**kwargs)
+
+        general = self.add_argument_group("general arguments")
+        if 'ref' in args_to_add: 
+            general.add_argument('-ref', required=True, 
+                help="path to reference image that defines voxel grid")
+
+        if 'struct2ref' in args_to_add: 
+            general.add_argument('-struct2ref', required=True,
+                help="""path to registration from the source image of 
+                    the surfaces to the reference image. Use 'I' to 
+                    denote identity transform.""")
+    
+        if 'flirt' in args_to_add: 
+            general.add_argument('-flirt', action='store_true', required=False,
+                help="set if struct2ref transform was produced by FSL FLIRT")
+
+        if 'struct' in args_to_add: 
+            general.add_argument('-struct', required=False, 
+                help=("""if -struct2ref is FLIRT transform, or -firstdir has 
+                    been set, provide a path to the structural image used 
+                    to generate the surfaces"""))
+
+        if 'out' in args_to_add: 
+            general.add_argument('-out', required=True, 
+                help="path to save output at")            
 
 
-    def parse(self, args):
-        return vars(super().parse_args(args))
+
+        fsgroup = self.add_argument_group("cortical surfaces")
+        if 'fsdir' in args_to_add: 
+            fsgroup.add_argument('-fsdir', required=False,
+                help="path to FreeSurfer subject directory, from which /surf "
+                "will be loaded, or provide LPS/LWS/RPS/RWS")
+
+        if 'LWS' in args_to_add: 
+            fsgroup.add_argument('-LWS', required=False,
+                help="alternative to -fsdir, path to left white surface")
+
+        if 'LPS' in args_to_add: 
+            fsgroup.add_argument('-LPS', required=False,
+                help="alternative to -fsdir, path to left pial surface")
+
+        if 'RWS' in args_to_add: 
+            fsgroup.add_argument('-RWS', required=False,
+                help="alternative to -fsdir, path to right whtie surface")
+
+        if 'RPS' in args_to_add: 
+            fsgroup.add_argument('-RPS', required=False,
+                help="alternative to -fsdir, path to right pial surface")
 
 
+        anatgroup = self.add_argument_group("subcortical surfaces and segmentations")
+        if 'fslanat' in args_to_add: 
+            anatgroup.add_argument('-fslanat', type=str, required=False, 
+                help="path to fslanat dir (replaces firstdir/fastdir")
 
+        if 'firstdir' in args_to_add:
+            anatgroup.add_argument('-firstdir', type=str, required=False, 
+                help=("""replaces -fslanat, path to FSL FIRST directory 
+                    (all .vtk surfaces will be loaded)"""))
+        
+        if 'fastdir' in args_to_add: 
+            anatgroup.add_argument('-fastdir', type=str, required=False,
+                help="""replaces -fslanat, path to directory with
+                    FAST outputs.""")
+
+
+        misc = self.add_argument_group("other arguments")
+        if 'super' in args_to_add: 
+            misc.add_argument('-super', nargs='+', required=False,
+                type=int, help="""voxel subdivision factor, a single value 
+                    or one for each dimension""")
+
+        if 'cores' in args_to_add: 
+            misc.add_argument('-cores', type=int, required=False,
+                help="number of CPU cores to use (default is max available)")
+
+        if 'ones' in args_to_add: 
+            misc.add_argument('-ones', action='store_true', 
+                help="debug tool (whole voxel PV assignment)")

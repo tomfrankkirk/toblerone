@@ -73,12 +73,12 @@ class Surface(object):
     
     Args: 
         path:   path to file (.gii/FS binary/meshio compatible)
-        space:  'world' (default) or 'first'; coordinate system of surface
-        struct: if in 'first' space, then path to structural image used by FIRST
+        coords:  'world' (default) or 'fsl'; coordinate system of surface
+        struct: if in 'fsl' coords, then path to structural image used by FIRST
         name: optional, can be useful for progress bars 
     """
 
-    def __init__(self, path, space='world', struct=None, name=None):
+    def __init__(self, path, coords='world', struct=None, name=None):
 
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
@@ -87,9 +87,9 @@ class Surface(object):
             raise NotImplementedError("VTK/meshio must be available to "
                 "save VTK surfaces (requires Python <=3.7")    
 
-        if (path.count('first')) and (space == 'world'):
-            print("Warning: surface seems to be from FIRST but space was set" +
-                " as 'world'. See the docs.")
+        if (path.count('first')) and (coords == 'world'):
+            print(f"Warning: surface {path} seems to be from FSL FIRST but "
+                "space was set as 'world'. See the docs.")
 
         surfExt = op.splitext(path)[-1]
         if surfExt == '.gii':
@@ -132,7 +132,7 @@ class Surface(object):
         if (np.max(ts) != ps.shape[0]-1) or (np.min(ts) != 0):
             raise RuntimeError("Incorrect points/triangle indexing")
 
-        if space == 'first':
+        if coords == 'fsl':
             
             if struct is None: 
                 raise RuntimeError("Path to structural image required with FIRST surfs")

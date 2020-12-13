@@ -22,7 +22,7 @@ def cortex(ref, struct2ref, **kwargs):
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
         struct2ref (str/np.array/rt.Registration): registration between space 
-            of surface and reference. Use 'I' for identity. 
+            of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
         fsdir (str): path to a FreeSurfer subject directory. 
         LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
             eg LWS = Left White surface, RPS = Right Pial surace. 
@@ -74,13 +74,13 @@ def structure(ref, struct2ref, **kwargs):
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
         struct2ref (str/np.array/rt.Registration): registration between space 
-            of surface and reference. Use 'I' for identity. 
-        surf (str): path to surface (see space argument below)
+            of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
+        surf (str): path to surface (see coords argument below)
 
     Optional args: 
         flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
-        space (str): space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set as 'first' and provide struct argument 
+        coords (str): convention by which surface is defined: default is 'world' 
+            (mm coords), for FIRST surfaces set as 'fsl' and provide struct argument 
         struct (str): path to structural image from which surfaces were derived
         cores (int): number of cores to use, default 8 
         supersample (int/array): single or 3 values, supersampling factor
@@ -93,15 +93,13 @@ def structure(ref, struct2ref, **kwargs):
     if not bool(kwargs.get('surf')):
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
-    if not kwargs.get('space'): 
-        kwargs['space'] = 'world'
-
-    if kwargs['space'] == 'first' and not kwargs.get('struct'):
+    coords = kwargs.get('coords', 'world')
+    if coords == 'fsl' and not kwargs.get('struct'):
         raise RuntimeError("Structural image must be supplied for FIRST surfs")
 
     if type(kwargs['surf']) is str: 
 
-        surf = Surface(kwargs['surf'], kwargs['space'], kwargs.get('struct'), 
+        surf = Surface(kwargs['surf'], coords, kwargs.get('struct'), 
             op.split(kwargs['surf'])[1])
     
     elif type(kwargs['surf']) is not Surface: 
@@ -143,21 +141,18 @@ def complete(ref, struct2ref, **kwargs):
     Required args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
         struct2ref (str/np.array/rt.Registration): registration between space 
-            of surface and reference. Use 'I' for identity. 
-        anat: path to augmented fsl_anat directory (see -fsl_fs_anat command).
-            This REPLACES fsdir, firstdir, fastdir, LPS/RPS etc args 
-
-    Alternatvies to anat argument (all required): 
-        fsdir (str): FreeSurfer subject directory, OR: 
-        LWS/LPS/RWS/RPS (str): paths to individual surfaces (L/R white/pial)
+            of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
+        fslanat: path to fslanat directory. This REPLACES firstdir/fastdir/struct. 
         firstdir (str): FIRST directory in which .vtk surfaces are located
         fastdir (str): FAST directory in which _pve_0/1/2 are located 
-        struct (str): path to structural image from which surfaces were dervied
+        struct (str): path to structural image from which FIRST surfaces were dervied
+        fsdir (str): FreeSurfer subject directory, OR: 
+        LWS/LPS/RWS/RPS (str): paths to individual surfaces (L/R white/pial)
 
     Optional args: 
         flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
-        space (str): space in which surface is defined: default is 'world' (mm coords),
-            for FIRST surfaces set as 'first' and provide struct argument 
+        coords (str): convention by which surface is defined: default is 'world' 
+            (mm coords), for FIRST surfaces set as 'fsl' and provide struct argument 
         struct (str): path to structural image from which surfaces were derived
         cores (int): number of cores to use, default 8 
         supersample (int/array): single or 3 values, supersampling factor
@@ -171,12 +166,12 @@ def complete(ref, struct2ref, **kwargs):
 
     # If anat dir then various subdirs are loaded by @enforce_common_args
     # If not then direct load below 
-    if not bool(kwargs.get('anat')):
-        if not bool(kwargs.get('fsdir')):
-            if not all([ bool(kwargs.get(k)) for k in ['LWS','LPS','RWS','RPS'] ]):
-                raise RuntimeError("If fsdir not given, " + 
-                    "provide paths for LWS,LPS,RWS,RPS")
-        
+    if not bool(kwargs.get('fsdir')):
+        if not all([ bool(kwargs.get(k)) for k in ['LWS','LPS','RWS','RPS'] ]):
+            raise RuntimeError("If fsdir not given, " + 
+                "provide paths for LWS,LPS,RWS,RPS")
+
+    if not bool(kwargs.get('fslanat')):
         if not (bool(kwargs.get('fastdir')) and bool(kwargs.get('firstdir'))):
             raise RuntimeError("If not using anat dir, fastdir/firstdir required")
    
@@ -192,7 +187,7 @@ def complete(ref, struct2ref, **kwargs):
         
     # Process subcortical structures first. 
     FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])
-    structures = [ Surface(surf, 'first', kwargs['struct'], name) 
+    structures = [ Surface(surf, 'fsl', kwargs['struct'], name) 
         for name, surf in FIRSTsurfs.items() ]
     print("Structures found: ", end=' ')
     [ print(s.name, end=' ') for s in structures ]

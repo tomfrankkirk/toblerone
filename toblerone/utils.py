@@ -46,10 +46,9 @@ def _mp_call_attribute(obj, method_name, args=None):
 
 
 def check_anat_dir(dir):
-    """Check that dir contains output from FIRST, FAST and FreeSurfer"""
+    """Check that dir contains output from FIRST and FAST"""
 
     return all([
-        op.isdir(op.join(dir, 'fs', 'surf')), 
         op.isdir(op.join(dir, 'first_results')), 
         op.isfile(op.join(dir, 'T1_fast_pve_0.nii.gz')), 
     ])
@@ -278,74 +277,6 @@ def _distributeObjects(objs, ngroups):
     return chunks 
 
 
-def _clipArray(arr, mini=0.0, maxi=1.0):
-    """Clip array values into range [mini, maxi], default [0 1]"""
-
-    arr[arr < mini] = mini 
-    arr[arr > maxi] = maxi 
-    return arr 
-
-
-def fsl_fs_anat(**kwargs):
-    """
-    Run fsl_anat (FAST & FIRST) and augment output with FreeSurfer
-
-    Args: 
-        anat: (optional) path to existing fsl_anat dir to augment
-        struct: (optional) path to T1 NIFTI to create a fresh fsl_anat dir
-        out: output path (default alongside input, named input.anat)
-    """
-
-    # We are either adding to an existing dir, or we are creating 
-    # a fresh one 
-    if (not bool(kwargs.get('anat'))) and (not bool(kwargs.get('struct'))):
-        raise RuntimeError("Either a structural image or a path to an " + 
-            "existing fsl_anat dir must be given")
-
-    if kwargs.get('struct') and (not op.isfile(kwargs['struct'])):
-        raise RuntimeError("No struct image given, or does not exist")
-
-    if kwargs.get('anat') and (not op.isdir(kwargs['anat'])):
-        raise RuntimeError("fsl_anat dir does not exist")
-
-    debug = bool(kwargs.get('debug'))
-    anat_exists = bool(kwargs.get('anat'))
-    struct = kwargs['struct']
-
-    # Run fsl_anat if needed. Either use user-supplied name or default
-    if not anat_exists:
-        outname = kwargs.get('out')
-        if not outname:
-            outname = _splitExts(kwargs['struct'])[0]
-            outname = op.dirname(kwargs['struct']) + outname
-        print("Preparing an fsl_anat dir at %s" % outname)
-        if outname.endswith('.anat'):
-            outname = outname[:-5]
-        fsl_anat(struct, outname)
-        outname += '.anat'
-
-    else:
-        outname = kwargs['anat']
-    
-    # Run the surface steps if reqd. 
-    # Check the fullfov T1 exists within anat_dir
-    if not op.isdir(op.join(outname, 'fs', 'surf')):
-        fullfov = op.join(outname, 'T1_fullfov.nii.gz')
-
-        if not op.isfile(fullfov):
-            raise RuntimeError("Could not find T1_fullfov.nii.gz within anat_dir %s" 
-                    % outname)
-
-        print("Adding FreeSurfer to fsl_anat dir at %s" % outname)
-        _runFreeSurfer(fullfov, outname, debug)
-
-    if not check_anat_dir(outname): 
-        raise RuntimeError("fsl_anat dir should be complete with surfaces") 
-
-    print("fsl_anat dir at %s is now complete with surfaces" % outname)
-    return outname 
-
-
 @cascade_attributes
 def enforce_and_load_common_arguments(func):
     """
@@ -362,7 +293,7 @@ def enforce_and_load_common_arguments(func):
             If given as 'I', identity matrix will be used. 
 
     Optional args: 
-        anat: a fsl_anat directory (created/augmented by make_surf_anat_dir)
+        fslanat: a fslanat directory
         flirt: bool denoting that the struct2ref is a FLIRT transform.
             This means it requires special treatment. If set, then it will be
             pre-processed in place by this function, and then the flag will 
@@ -382,32 +313,31 @@ def enforce_and_load_common_arguments(func):
         if (not isinstance(ref, rt.ImageSpace)): 
             ref = rt.ImageSpace(ref)
 
-        # If given a anat_dir we can load the structural image in 
-        if kwargs.get('anat'):
-            if not check_anat_dir(kwargs['anat']):
-                raise RuntimeError("anat is not complete: it must contain " 
-                    "fast, fs and first subdirectories")
+        # If given a fslanat dir we can load the structural image in 
+        if kwargs.get('fslanat'):
+            if not check_anat_dir(kwargs['fslanat']):
+                raise RuntimeError("fslanat is not complete: it must contain " 
+                    "FAST output and a first_results subdirectory")
 
-            kwargs['fastdir'] = kwargs['anat']
-            kwargs['fsdir'] = op.join(kwargs['anat'], 'fs')
-            kwargs['firstdir'] = op.join(kwargs['anat'], 'first_results')
+            kwargs['fastdir'] = kwargs['fslanat']
+            kwargs['firstdir'] = op.join(kwargs['fslanat'], 'first_results')
 
             # If no struct image given, try and pull it out from the anat dir
             # But, if it has been cropped relative to original T1, then give
             # warning (as we will not be able to convert FLIRT to world-world)
             if not kwargs.get('struct'): 
                 if kwargs.get('flirt'):
-                    matpath = glob.glob(op.join(kwargs['anat'], '*nonroi2roi.mat'))[0]
+                    matpath = glob.glob(op.join(kwargs['fslanat'], '*nonroi2roi.mat'))[0]
                     nonroi2roi = np.loadtxt(matpath)
                     if np.any(np.abs(nonroi2roi[0:3,3])):
                         print("Warning: T1 was cropped relative to T1_orig within" + 
-                            " fsl_fs_anat dir.\n Please ensure the struct2ref FLIRT" +
+                            " fslanat dir.\n Please ensure the struct2ref FLIRT" +
                             " matrix is referenced to T1, not T1_orig.")
 
-                s = op.join(kwargs['anat'], 'T1.nii.gz')
+                s = op.join(kwargs['fslanat'], 'T1.nii.gz')
                 kwargs['struct'] = s
                 if not op.isfile(s):
-                    raise RuntimeError("Could not find T1.nii.gz in the anat dir")
+                    raise RuntimeError("Could not find T1.nii.gz in the fslanat dir")
 
  
         # Structural to reference transformation. Either as array, path
