@@ -982,9 +982,9 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
         bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
                            np.minimum(spc.size, hull_ps.max(0)+1)))
                            .round().astype(np.int32))
-        hood = (np.stack(np.meshgrid(
-                *[ range(*bbox[:,d]) for d in range(3) ]), axis=-1)
-                .reshape(-1,3).astype(np.int32))             
+        hood = np.array(list(itertools.product(
+                range(*bbox[:,0]), range(*bbox[:,1]), range(*bbox[:,2])
+            )), dtype=np.int32)           
         hood_vidx = np.ravel_multi_index(hood.T, spc.size)
 
         # Debug mode: just stick ones in all candidate voxels and continue 
