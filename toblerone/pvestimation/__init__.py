@@ -98,10 +98,11 @@ def structure(ref, struct2ref, **kwargs):
         raise RuntimeError("Structural image must be supplied for FIRST surfs")
 
     if type(kwargs['surf']) is str: 
+        surf = Surface(kwargs['surf'], name=op.split(kwargs['surf'])[1])
+        if kwargs.get('flirt'):
+            struct_spc = ImageSpace(kwargs['struct'])
+            surf.apply_transform(struct_spc.FSL2world)
 
-        surf = Surface(kwargs['surf'], coords, kwargs.get('struct'), 
-            op.split(kwargs['surf'])[1])
-    
     elif type(kwargs['surf']) is not Surface: 
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
@@ -187,26 +188,31 @@ def complete(ref, struct2ref, **kwargs):
         
     # Process subcortical structures first. 
     FIRSTsurfs = utils._loadFIRSTdir(kwargs['firstdir'])
-    structures = [ Surface(surf, 'fsl', kwargs['struct'], name) 
-        for name, surf in FIRSTsurfs.items() ]
-    print("Structures found: ", end=' ')
-    [ print(s.name, end=' ') for s in structures ]
-    print('Cortex')
-    desc = 'Subcortical structures'
+    subcortical = []
+    struct_spc = ImageSpace(kwargs['struct'])
+    for name, surf in FIRSTsurfs.items(): 
+        s = Surface(surf, name)
+        s.apply_transform(struct_spc.FSL2world)
+        subcortical.append(s)
+    
+    disp = "Structures found: " + ", ".join([ 
+        s.name for s in subcortical ] + ['Cortex'])
+    print(disp)
 
     # To estimate against each subcortical structure, we apply the following
     # partial func to each using a map() call. Carry kwargs from this func 
+    desc = 'Subcortical structures'
     estimator = functools.partial(__structure_wrapper, 
                                   ref=ref, struct2ref=struct2ref, **kwargs)
 
-    # This is equivalent to a map(estimator, structures) call
+    # This is equivalent to a map(estimator, subcortical) call
     # All the extra stuff (tqdm etc) is used for progress bar
     results = [ pv for _, pv in 
-        tqdm.tqdm(enumerate(map(estimator, structures)), 
-        total=len(structures), desc=desc, bar_format=core.BAR_FORMAT, 
+        tqdm.tqdm(enumerate(map(estimator, subcortical)), 
+        total=len(subcortical), desc=desc, bar_format=core.BAR_FORMAT, 
         ascii=True) ] 
 
-    output.update(dict(zip([s.name for s in structures], results)))
+    output.update(dict(zip([s.name for s in subcortical], results)))
 
     # Now do the cortex, then stack the whole lot 
     ctx  = cortex(ref=ref, struct2ref=struct2ref, **kwargs)

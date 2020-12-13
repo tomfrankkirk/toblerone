@@ -78,7 +78,7 @@ class Surface(object):
         name: optional, can be useful for progress bars 
     """
 
-    def __init__(self, path, coords='world', struct=None, name=None):
+    def __init__(self, path, name=None):
 
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
@@ -86,10 +86,6 @@ class Surface(object):
         if path.endswith('.vtk') and (not _VTK_ENABLED):
             raise NotImplementedError("VTK/meshio must be available to "
                 "save VTK surfaces (requires Python <=3.7")    
-
-        if (path.count('first')) and (coords == 'world'):
-            print(f"Warning: surface {path} seems to be from FSL FIRST but "
-                "space was set as 'world'. See the docs.")
 
         surfExt = op.splitext(path)[-1]
         if surfExt == '.gii':
@@ -131,23 +127,6 @@ class Surface(object):
 
         if (np.max(ts) != ps.shape[0]-1) or (np.min(ts) != 0):
             raise RuntimeError("Incorrect points/triangle indexing")
-
-        if coords == 'fsl':
-            
-            if struct is None: 
-                raise RuntimeError("Path to structural image required with FIRST surfs")
-
-            # Convert from FSL coordinates to structural voxel coords 
-            struct_spc = ImageSpace(struct)
-            ps /= struct_spc.vox_size
-
-            # Flip the X dimension if reqd (according to FSL convention)
-            # Remap from 0, 1, ... N-2, N-1 to N-1, N-2, ..., 1, 0
-            if np.linalg.det(struct_spc.vox2world) > 0:
-                ps[:,0] = ((struct_spc.size[0]) - 1) - ps[:,0]
-
-            # Finally, convert from voxel coords to world mm 
-            ps = utils.affine_transform(ps, struct_spc.vox2world)
 
         self.points = ps.astype(NP_FLOAT)
         self.tris = ts.astype(np.int32)

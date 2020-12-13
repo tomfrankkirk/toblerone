@@ -233,13 +233,14 @@ def test_mesh_laplacian():
 #         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
 
 
-def cmd_line():
-    anat = "/Users/tom/Data/pcasl2/1.anat"
-    ref = anat + "/T1.nii.gz"
-    cmd = f" -estimate_complete -ref {ref} -struct2ref I -anat {anat} -super 1"
+def cmdline_complete():
+    fslanat = "/Users/tom/Data/pcasl2/1.anat"
+    ref = fslanat + "/T1.nii.gz"
+    fsdir = fslanat + "/fs"
+    cmd = f""" -estimate-complete -ref {ref} -struct2ref I 
+                -fslanat {fslanat} -fsdir {fsdir} -out delete"""
     sys.argv[1:] = cmd.split()
     main()     
-
 
 def test_cortex():
     td = get_testdir()
@@ -283,9 +284,10 @@ def test_cortex():
 def test_structure():
     td = get_testdir()
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    ins = toblerone.Surface(op.join(td, 'in.surf.gii'), 'L')
+    ins = Surface(op.join(td, 'in.surf.gii'), name='L')
     s2r = np.identity(4)
-    fracs = pvestimation.structure(surf=ins, ref=spc, struct2ref=s2r, cores=1)
+
+    fracs = pvestimation.structure(surf=op.join(td, 'in.surf.gii'), ref=spc, struct2ref=s2r, cores=1, flirt=True, coords='fsl', struct=op.join(td, 'ref.nii.gz'))
 
     superfactor = 10
     spc_high = spc.resize_voxels(1.0/superfactor)
@@ -339,12 +341,15 @@ def test_projector_cmdline():
     outs = op.join(td, 'out.surf.gii')
     spc = op.join(td, 'ref.nii.gz')
 
-    cmd = f'-prepare_projector -ref {spc} -LPS {outs} -LWS {ins} -out proj'
+    cmd = f'-prepare-projector -ref {spc} -LPS {outs} -LWS {ins} -out proj'
     sys.argv[1:] = cmd.split()
     main()
     os.remove('proj.h5')
 
+def cmdline(): 
+    sys.argv[1:] = ['-estimate-cortex']
+    main()
 
 if __name__ == "__main__":
-    test_projector_cmdline()
+    cmdline_complete()
     # test_projector_hdf5()
