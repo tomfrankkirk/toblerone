@@ -881,7 +881,7 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
         return mask.reshape(mask_size)
 
 
-def vox_tri_weights(in_surf, out_surf, spc, factor=10, 
+def vox_tri_weights(in_surf, out_surf, spc, factor, 
                     cores=mp.cpu_count(), ones=False):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
@@ -924,7 +924,7 @@ def vox_tri_weights(in_surf, out_surf, spc, factor=10,
     else: 
         vpmat = worker(range(n_tris))
          
-    return vpmat / (factor ** 3)
+    return vpmat / factor.prod()
 
 
 def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris, 
@@ -947,8 +947,9 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
     # We then shift the samples into each individual voxel. 
     vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
         tris.shape[0]), dtype=NP_FLOAT)
-    sampler = np.linspace(0, 1, 2*factor + 1, dtype=NP_FLOAT)[1:-1:2]
-    samples = (np.stack(np.meshgrid(sampler, sampler, sampler), axis=-1)
+    samplers = [ np.linspace(0, 1, 2*f + 1, dtype=NP_FLOAT)[1:-1:2] 
+                    for f in factor ]
+    samples = (np.stack(np.meshgrid(*samplers), axis=-1)
                .reshape(-1,3) - 0.5)
 
     for t in t_range: 

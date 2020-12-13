@@ -30,11 +30,11 @@ class Projector(object):
     Args: 
         hemispheres: single or list of two (L/R) Hemisphere objects 
         spc: ImageSpace to project from/to 
-        factor: voxel subdivision factor (default 10)
+        factor: voxel subdivision factor (default 2x voxel size)
         cores: number of processor cores to use (default max)
     """
 
-    def __init__(self, hemispheres, spc, factor=10, cores=mp.cpu_count(), 
+    def __init__(self, hemispheres, spc, factor=None, cores=mp.cpu_count(), 
                  ones=False):
 
         print("Initialising projector (will take some time)")
@@ -58,6 +58,10 @@ class Projector(object):
         self.vox_tri_mats = [] 
         self.vtx_tri_mats = []
         ncores = cores if hemispheres[0].inSurf._use_mp else 1 
+
+        if factor is None:
+            factor = np.ceil(2 * spc.vox_size)
+        factor = (factor * np.ones(3)).astype(np.int8)
 
         for hemi in self.iter_hemis: 
 
