@@ -3,13 +3,10 @@
 # called when the module is invoked eg python3 -m toblerone
 
 import argparse
-import sys 
 import os.path as op
 import os
 
-import numpy as np
-
-from toblerone import utils, pvestimation
+from toblerone import utils, pvestimation, projection
 from toblerone.classes import CommonParser, ImageSpace, Surface
 
 suffix = (
@@ -233,6 +230,7 @@ def fsl_fs_anat_cmd(*args):
     kwargs = vars(parser.parse_args(args))
     utils.fsl_fs_anat(**kwargs)
 
+
 def convert_surface_cmd(*args):
     """
     Convert a surface file (.white/.pial/.vtk/.surf.gii). NB FreeSurfer files
@@ -242,3 +240,45 @@ def convert_surface_cmd(*args):
     insurf = Surface(args[0])
     insurf.save(args[1])
 
+
+def prepare_projector_cmd(*args):
+    """
+    CLI for making a Projector
+    """
+
+    parser = argparse.ArgumentParser(
+        description=("Prepare a projector for a reference voxel grid and set "
+            "of surfaces; and save in HDF5 format. This is a pre-processing "
+            "step for performing surface-based analysis of volumetric data."))
+    parser.add_argument('-ref', required=True, 
+        help="path to reference image that defines voxel grid")
+    parser.add_argument('-fsdir', required=False,
+        help="path to FreeSurfer subject directory, from which /surf will be loaded")
+    parser.add_argument('-LWS', required=False,
+        help="alternative to -fsdir, left white surface")
+    parser.add_argument('-LPS', required=False,
+        help="alternative to -fsdir, left pial surface")
+    parser.add_argument('-RWS', required=False,
+        help="alternative to -fsdir, right whtie surface")
+    parser.add_argument('-RPS', required=False,
+        help="alternative to -fsdir, right pial surface")
+    parser.add_argument('-out', required=True,
+        help="path to save output at (default extension is .h5")
+    parser.add_argument('-superfactor', type=int,
+        help="voxel supersampling factor, default 2x voxel size")
+    parser.add_argument('-ones', action='store_true',
+        help="debug tool, dummy PV estimation")
+    args = parser.parse_args(args)
+
+    # Set up the hemispheres, reference ImageSpace, and prepare projector.
+    hemispheres = utils.load_surfs_to_hemispheres(**vars(args))
+    spc = ImageSpace(args.ref)
+    proj = projection.Projector(hemispheres, spc)
+
+    # Add default .h5 extension if needed, make outdir, save. 
+    outdir, outname = op.split(args.out)
+    outbase, outext = op.splitext(outname)
+    if not outext: outext = '.h5'
+    if outdir: os.makedirs(outdir, exist_ok=True)
+    out = op.join(outdir, outbase + outext)
+    proj.save(out)

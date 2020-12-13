@@ -2,7 +2,7 @@ import sys
 
 from toblerone.commandline import (estimate_complete_cmd, estimate_cortex_cmd, 
                                    estimate_structure_cmd, convert_surface_cmd, 
-                                   fsl_fs_anat_cmd, suffix)
+                                   fsl_fs_anat_cmd, prepare_projector_cmd, suffix)
 
 def main():
 
@@ -22,14 +22,18 @@ Usage:
                             step for other Toblerone functions)
 
 -convert_surface        convert a surface file (.white/.pial/.vtk/.surf.gii). Note that FS 
-                            surfaces will have the C_ras shift applied automatically.     
+                            surfaces will have the C_ras shift applied automatically.  
+
+-prepare_projector      prepare a projector for surface-based analysis of
+                            volumetric data. 
 """)
 
 
     funcs = [estimate_complete_cmd, estimate_cortex_cmd,
-        estimate_structure_cmd, fsl_fs_anat_cmd, convert_surface_cmd]
+        estimate_structure_cmd, fsl_fs_anat_cmd, convert_surface_cmd,
+        prepare_projector_cmd]
     names = ['-estimate_complete', '-estimate_cortex', '-estimate_structure', 
-        '-fsl_fs_anat', '-convert_surface']
+        '-fsl_fs_anat', '-convert_surface', '-prepare_projector']
 
     args = sys.argv
 
