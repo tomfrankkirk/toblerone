@@ -18,9 +18,10 @@ University of Oxford, 2018
 
 
 def estimate_cortex():
+    """
+    CLI for estimating PVs from cortex (either L,R, or both)
+    """
 
-    # Parse the common arguments and store as kwargs
-    # Then run the parser specific to this function and add those in
     parser = CommonParser('ref', 'struct2ref', 'fsdir', 'LPS', 'RPS', 'RWS', 
         'LWS', 'flirt', 'struct', 'cores', 'out', 'ones', 'super', 
         description="Estimate PVs for L/R cortical hemispheres")
@@ -49,17 +50,13 @@ def estimate_cortex():
 
 
 def estimate_structure():
+    """
+    CLI for estimating PVs from a single surface
+    """
 
-    # Parse the common arguments and store as kwargs
-    # Then run the parser specific to this function and add those in
     parser = CommonParser('ref', 'struct2ref', 'flirt', 'struct', 'super', 'out',
+        'surf', 'coords',
         description="Estimate PVs for a structure defined by a single surface.")
-
-    parser.add_argument('-surf', type=str, required=True,
-        help="path to surface (see -space argument below)")
-    parser.add_argument('-coords', required=True,
-        help=("""coordinates in which surface is defined, either 'world' 
-            (mm coords) or 'fsl' (FSL convention, eg FIRST surfaces)"""))
     kwargs = vars(parser.parse_args())
 
     ext = '.nii.gz'
@@ -84,8 +81,7 @@ def estimate_structure():
 
 def estimate_complete():
     """
-    Estimate PVs for cortex and all structures identified by FIRST within 
-    a reference image space. Use FAST to fill in non-surface PVs. 
+    CLI for estimating PVs for L/R cortex and subcortex
     """
     
     parser = CommonParser('ref', 'struct2ref', 'fslanat', 'fsdir', 'firstdir',
@@ -138,21 +134,14 @@ def estimate_complete():
 
 
 def convert_surface():
+    """
+    CLI for converting surface formats 
+    """
 
-    parser = argparse.ArgumentParser(description=
-            """Convert a surface file (.white/.pial/.vtk/.surf.gii). 
+    parser = CommonParser('surf', 'coords', 'struct', 'out',
+            description="""Convert a surface file (.white/.pial/.vtk/.surf.gii). 
             NB FreeSurfer files will have the c_ras offset automatically 
             applied during conversion.""")
-
-    parser.add_argument('surf', help='path to surface')
-    parser.add_argument('-coords', default='world',
-        help=("""coordinates in which surface is defined, either 'world' 
-            (mm coords) or 'fsl' (FSL convention, eg FIRST surfaces)"""))
-    parser.add_argument('-struct', 
-        help=("""if -coords is 'fsl', provide a path to the structural
-        image used to derive the surface to apply a conversion to 
-        world-mm coordinates"""))        
-    parser.add_argument('out', help='path to save output, with extension')
     parsed = parser.parse_args()
 
     if parsed.coords == 'fsl' and parsed.struct:
@@ -168,13 +157,11 @@ def prepare_projector():
     """
 
     parser = CommonParser('ref', 'fsdir', 'LPS', 'LWS', 'RPS', 'RWS', 
-        'cores', 'ones', 'out',
+        'cores', 'ones', 'out', 'super',
         description=("Prepare a projector for a reference voxel grid and set "
             "of surfaces, and save in HDF5 format. This is a pre-processing "
             "step for performing surface-based analysis of volumetric data."))
 
-    parser.add_argument('-superfactor', type=int,
-        help="voxel supersampling factor, default 2x voxel size")
     args = parser.parse_args()
 
     # Set up the hemispheres, reference ImageSpace, and prepare projector.

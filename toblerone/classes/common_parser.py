@@ -22,6 +22,16 @@ class CommonParser(argparse.ArgumentParser):
             general.add_argument('-ref', required=True, 
                 help="path to reference image that defines voxel grid")
 
+        if 'surf' in args_to_add:
+            general.add_argument('-surf', type=str, required=True,
+                help="path to surface (see -coords argument below)")
+
+        if 'coords' in args_to_add:
+            general.add_argument('-coords', required=True, 
+                choices=['fsl', 'world'], default='world',
+                help="""coordinates in which surface is defined, either 'world' 
+                (mm coords) or 'fsl' (FSL convention, eg FIRST surfaces)""")
+            
         if 'struct2ref' in args_to_add: 
             general.add_argument('-struct2ref', required=True,
                 help="""path to registration from the source image of 
