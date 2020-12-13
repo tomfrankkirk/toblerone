@@ -4,6 +4,7 @@ to parse arguments that are common to many pvtools functions
 """
 
 import argparse
+import multiprocessing as mp 
 
 class CommonParser(argparse.ArgumentParser):
     """
@@ -100,7 +101,8 @@ class CommonParser(argparse.ArgumentParser):
                     or one for each dimension""")
 
         if 'cores' in args_to_add: 
-            misc.add_argument('-cores', type=int, required=False,
+            misc.add_argument('-cores', type=int, required=False, 
+                default=mp.cpu_count(), 
                 help="number of CPU cores to use (default is max available)")
 
         if 'ones' in args_to_add: 

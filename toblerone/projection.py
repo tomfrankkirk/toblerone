@@ -28,9 +28,11 @@ class Projector(object):
     may be calculated directly from the object. 
 
     Args: 
-        hemispheres: single or list of two (L/R) Hemisphere objects 
+        hemispheres: single or list of two (L/R) Hemisphere objects. Note 
+            that the surfaces of the hemispheres must be in alignment with 
+            the reference space (ie, apply any transformations beforehand).
         spc: ImageSpace to project from/to 
-        factor: voxel subdivision factor (default 2x voxel size)
+        factor: voxel subdivision factor (default 3x voxel size)
         cores: number of processor cores to use (default max)
     """
 
@@ -60,7 +62,7 @@ class Projector(object):
         ncores = cores if hemispheres[0].inSurf._use_mp else 1 
 
         if factor is None:
-            factor = np.ceil(2 * spc.vox_size)
+            factor = np.ceil(3 * spc.vox_size)
         factor = (factor * np.ones(3)).astype(np.int8)
 
         for hemi in self.iter_hemis: 

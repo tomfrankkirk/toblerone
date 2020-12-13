@@ -6,6 +6,8 @@ import argparse
 import os.path as op
 import os
 
+import regtricks as rt 
+
 from toblerone import utils, pvestimation, projection
 from toblerone.classes import CommonParser, ImageSpace, Surface
 
@@ -156,18 +158,28 @@ def prepare_projector():
     CLI for making a Projector
     """
 
-    parser = CommonParser('ref', 'fsdir', 'LPS', 'LWS', 'RPS', 'RWS', 
-        'cores', 'ones', 'out', 'super',
+    parser = CommonParser('ref', 'struct2ref', 'flirt', 'struct', 'fsdir', 
+        'LPS', 'LWS', 'RPS', 'RWS', 'cores', 'ones', 'out', 'super',
         description=("Prepare a projector for a reference voxel grid and set "
             "of surfaces, and save in HDF5 format. This is a pre-processing "
             "step for performing surface-based analysis of volumetric data."))
 
     args = parser.parse_args()
 
+    if args.flirt: 
+        struct2ref = rt.Registration.from_flirt(args.struc2ref, args.struct, 
+                                args.ref).src2ref
+    elif args.struct2ref == "I":
+        struct2ref = rt.Registration.identity().src2ref
+    else: 
+        struct2ref = rt.Registration(args.struct2ref).src2ref
+
     # Set up the hemispheres, reference ImageSpace, and prepare projector.
-    hemispheres = utils.load_surfs_to_hemispheres(**vars(args))
     spc = ImageSpace(args.ref)
-    proj = projection.Projector(hemispheres, spc)
+    hemispheres = utils.load_surfs_to_hemispheres(**vars(args))
+    for h in hemispheres: h.apply_transform(struct2ref)
+    proj = projection.Projector(hemispheres, spc, args.super, 
+        args.cores, args.ones)
 
     # Add default .h5 extension if needed, make outdir, save. 
     outdir, outname = op.split(args.out)

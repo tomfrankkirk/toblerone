@@ -341,7 +341,8 @@ def test_projector_cmdline():
     outs = op.join(td, 'out.surf.gii')
     spc = op.join(td, 'ref.nii.gz')
 
-    cmd = f'-prepare-projector -ref {spc} -LPS {outs} -LWS {ins} -out proj'
+    cmd = f"""-prepare-projector -ref {spc} -LPS {outs} 
+        -LWS {ins} -out proj -struct2ref I"""
     sys.argv[1:] = cmd.split()
     main()
     os.remove('proj.h5')
@@ -351,5 +352,5 @@ def cmdline():
     main()
 
 if __name__ == "__main__":
-    cmdline_complete()
+    test_projector_cmdline()
     # test_projector_hdf5()
