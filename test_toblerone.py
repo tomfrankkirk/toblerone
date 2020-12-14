@@ -14,7 +14,7 @@ from numpy.lib.index_tricks import diag_indices
 import toblerone
 from toblerone import pvestimation
 from toblerone.classes import Surface, Hemisphere
-from toblerone import core 
+from toblerone import core, utils
 from toblerone.ctoblerone import _cyfilterTriangles
 from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
@@ -44,6 +44,20 @@ def test_indexing():
     assert np.all(space.size == truthspace.size)
     assert np.all(space.offset == truthspace.offset)
     assert np.array_equal(surf.indexed.voxelised, truth.voxelised)
+
+
+def test_enclosing_space(): 
+    td = get_testdir()
+    surf = toblerone.Surface(op.join(td, 'out.surf.gii'))
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    surf.index_on(spc, 1)
+    assert utils.space_encloses_surface(spc, surf.indexed.points_vox)
+
+    spc2 = spc.resize([5,5,5], [5,5,5])
+    surf2 = toblerone.Surface(op.join(td, 'out.surf.gii'))
+    surf2.index_on(spc2, 1)
+    assert not utils.space_encloses_surface(spc2, surf2.indexed.points_vox)
+    assert surf.indexed.space == surf2.indexed.space
 
 
 def test_vox_tri_intersection():
@@ -352,5 +366,5 @@ def cmdline():
     main()
 
 if __name__ == "__main__":
-    test_projector_cmdline()
+    test_enclosing_space()
     # test_projector_hdf5()

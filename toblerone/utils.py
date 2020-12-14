@@ -551,11 +551,9 @@ def rebase_triangles(points, tris, tri_inds):
 def space_encloses_surface(space, points_vox):
 
     if np.round(np.min(points_vox)) < 0: 
-        raise RuntimeError("Surface has negative voxel coordinate")
-
+        return False 
     if (np.round(np.max(points_vox, axis=0)) >= space.size).any(): 
-        raise RuntimeError("Surface has voxel coordinate greater than space size")
-
+        return False 
     return True 
 
 
