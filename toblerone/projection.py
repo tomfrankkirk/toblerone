@@ -142,54 +142,58 @@ class Projector(object):
         cortical surfaces.
         """
         
-        f = h5py.File(path, 'r')
-        p = cls.__new__(cls)
+        try: 
+            f = h5py.File(path, 'r')
+            p = cls.__new__(cls)
 
-        # Recreate the reference ImageSpace first 
-        p.spc = ImageSpace.manual(f['ref_spc_vox2world'][()],
-                                  f['ref_spc_size'][()])
-        if 'ref_spc_fname' in f: p.spc.fname = f['ref_spc_fname'][()]
-        n_vox = p.spc.size.prod()
+            # Recreate the reference ImageSpace first 
+            p.spc = ImageSpace.manual(f['ref_spc_vox2world'][()],
+                                    f['ref_spc_size'][()])
+            if 'ref_spc_fname' in f: p.spc.fname = f['ref_spc_fname'][()]
+            n_vox = p.spc.size.prod()
 
-        # Now read out hemisphere specific properties 
-        p.pvs = [] 
-        p.vox_tri_mats = [] 
-        p.vtx_tri_mats = []
-        p.hemi_dict = {} 
+            # Now read out hemisphere specific properties 
+            p.pvs = [] 
+            p.vox_tri_mats = [] 
+            p.vtx_tri_mats = []
+            p.hemi_dict = {} 
 
-        for s in SIDES: 
-            hemi_key = f"{s}_hemi"
-            if hemi_key in f: 
+            for s in SIDES: 
+                hemi_key = f"{s}_hemi"
+                if hemi_key in f: 
 
-                # Read out the surfaces, create the Hemisphere 
-                ins, outs = [ Surface.manual(
-                    f[hemi_key][f'{s}{n}S_points'][()], 
-                    f[hemi_key][f'{s}{n}S_tris'][()], f'{s}{n}S')
-                    for n in ['W', 'P'] ]
-                p.hemi_dict[s] = Hemisphere(ins, outs, s)
+                    # Read out the surfaces, create the Hemisphere 
+                    ins, outs = [ Surface.manual(
+                        f[hemi_key][f'{s}{n}S_points'][()], 
+                        f[hemi_key][f'{s}{n}S_tris'][()], f'{s}{n}S')
+                        for n in ['W', 'P'] ]
+                    p.hemi_dict[s] = Hemisphere(ins, outs, s)
 
-                # Read out the PVs array for the hemi 
-                p.pvs.append(f[hemi_key][f"{s}_pvs"][()])
+                    # Read out the PVs array for the hemi 
+                    p.pvs.append(f[hemi_key][f"{s}_pvs"][()])
 
-                # Recreate the sparse voxtri and vtxtri matrices. 
-                # They are stored as a 3 x N array, where top row 
-                # is row indices, second is column, then data 
-                voxtri = f[hemi_key][f"{s}_vox_tri"][()]
-                assert voxtri.shape[0] == 3, 'expected 3 rows'
-                voxtri = sparse.coo_matrix(
-                    (voxtri[2,:], (voxtri[0,:], voxtri[1,:])),
-                    shape=(n_vox, ins.tris.shape[0]))
-                p.vox_tri_mats.append(voxtri.tocsr())
+                    # Recreate the sparse voxtri and vtxtri matrices. 
+                    # They are stored as a 3 x N array, where top row 
+                    # is row indices, second is column, then data 
+                    voxtri = f[hemi_key][f"{s}_vox_tri"][()]
+                    assert voxtri.shape[0] == 3, 'expected 3 rows'
+                    voxtri = sparse.coo_matrix(
+                        (voxtri[2,:], (voxtri[0,:], voxtri[1,:])),
+                        shape=(n_vox, ins.tris.shape[0]))
+                    p.vox_tri_mats.append(voxtri.tocsr())
 
-                # Same convention as above
-                vtxtri = f[hemi_key][f"{s}_vtx_tri"][()]
-                assert vtxtri.shape[0] == 3, 'expected 3 rows'
-                vtxtri = sparse.coo_matrix(
-                    (vtxtri[2,:], (vtxtri[0,:], vtxtri[1,:])),
-                    shape=(ins.n_points, ins.tris.shape[0]))
-                p.vtx_tri_mats.append(vtxtri.tocsr())
+                    # Same convention as above
+                    vtxtri = f[hemi_key][f"{s}_vtx_tri"][()]
+                    assert vtxtri.shape[0] == 3, 'expected 3 rows'
+                    vtxtri = sparse.coo_matrix(
+                        (vtxtri[2,:], (vtxtri[0,:], vtxtri[1,:])),
+                        shape=(ins.n_points, ins.tris.shape[0]))
+                    p.vtx_tri_mats.append(vtxtri.tocsr())
 
-        return p 
+            return p 
+    
+        except Exception as e: 
+            print(f"Error loading Projector from file: {e}")
 
 
     def __repr__(self):
