@@ -1,16 +1,27 @@
 import sys
 import argparse
+from textwrap import dedent
 
 from toblerone import commandline
+from toblerone._version import __version__
+
+suffix = (
+f"""
+version {__version__}
+Tom Kirk, thomas.kirk@eng.ox.ac.uk
+Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging,
+University of Oxford, 2018
+""")
+
 
 def main():
 
     args = sys.argv
 
-    parser = argparse.ArgumentParser(
-        description="""TOBLERONE Surface-based analysis tools.
-            Run any command with -h for help.""", 
-        epilog=commandline.suffix)
+    parser = argparse.ArgumentParser(prog='toblerone', 
+        formatter_class=argparse.RawDescriptionHelpFormatter, epilog=suffix,
+        usage='toblerone -command-name <options>',
+        description=dedent("TOBLERONE Surface-based analysis tools. Run any command with -h for help."))
         
     parser.add_argument('-estimate-complete', action='store_true',
         help=("estimate PVs across the brain, for both cortical and "

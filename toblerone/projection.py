@@ -18,8 +18,6 @@ from toblerone.core import vtx_tri_weights, vox_tri_weights
 
 SIDES = ['L', 'R']
 
-# TODO: save projector in hdf5 format?
-
 class Projector(object):
     """
     Use to perform projection between volume, surface and node space. 
@@ -34,6 +32,7 @@ class Projector(object):
         spc: ImageSpace to project from/to 
         factor: voxel subdivision factor (default 3x voxel size)
         cores: number of processor cores to use (default max)
+        ones: debug tool, whole voxel PV assignment. 
     """
 
     def __init__(self, hemispheres, spc, factor=None, cores=mp.cpu_count(), 

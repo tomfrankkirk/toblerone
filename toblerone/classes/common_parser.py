@@ -16,7 +16,12 @@ class CommonParser(argparse.ArgumentParser):
     """
 
     def __init__(self, *args_to_add, **kwargs):
-        super().__init__(**kwargs)
+        from ..__main__ import suffix
+
+        super().__init__(prog='toblerone', epilog=suffix,
+            usage='toblerone -command-name <options>', 
+            formatter_class=argparse.RawDescriptionHelpFormatter, 
+            **kwargs)
 
         general = self.add_argument_group("general arguments")
         if 'ref' in args_to_add: 

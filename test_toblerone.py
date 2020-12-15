@@ -362,9 +362,9 @@ def test_projector_cmdline():
     os.remove('proj.h5')
 
 def cmdline(): 
-    sys.argv[1:] = ['-estimate-cortex']
+    # sys.argv[1:] = ['-estimate-cortex']
     main()
 
 if __name__ == "__main__":
-    test_enclosing_space()
+    cmdline()
     # test_projector_hdf5()

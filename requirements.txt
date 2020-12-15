@@ -7,3 +7,4 @@ fslpy
 regtricks
 meshio[all]
 pyvista 
+h5py

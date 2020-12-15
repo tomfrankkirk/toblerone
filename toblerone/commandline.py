@@ -11,13 +11,6 @@ import regtricks as rt
 from toblerone import utils, pvestimation, projection
 from toblerone.classes import CommonParser, ImageSpace, Surface
 
-suffix = (
-"""
-Tom Kirk, thomas.kirk@eng.ox.ac.uk
-Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging,
-University of Oxford, 2018
-""")
-
 
 def estimate_cortex():
     """
