@@ -7,15 +7,22 @@ Surface-based analysis tools
 Installation
 -----------------
 
-Cython needs to be installed prior to running pip: 
-```
-python -m pip install cython
-python -m pip install toblerone
-```
+Cython and numpy need to be installed prior to running pip: 
+
+.. code-block:: python
+
+    python -m pip install cython numpy
+    python -m pip install toblerone
 
 
-Partial volume estimation 
------------------------------
+Usage from command line
+-------------------------
+
+Run ``toblerone -h`` to see available commands and help info. 
+
+
+Usage from Python: PV estimation
+----------------------------------
 
 Toblerone can estimate partial volumes (PVs) across the brain using surface segmentations (for example, those from FreeSurfer and FSL FIRST). This can be used as a direct replacement for tools such as FSL FAST. 
 The following functions are available in :mod:`toblerone.pvestimation`: 
@@ -28,10 +35,10 @@ The following functions are available in :mod:`toblerone.pvestimation`:
 Parial volume correction 
 ----------------------------
 
-Link to oxasl_surfpvc here. 
+Toblerone has been integrated with `oxasl` to provide PV correction via the spatial Variational Bayesian method. See [oxasl](#https://github.com/ibme-qubic/oxasl) and [oxasl_surfpvc](#https://github.com/ibme-qubic/oxasl_surfpvc). 
 
-Projection 
--------------
+Usage from Python: PV estimation
+------------------------------------
 
 This is work in progress. 
 
