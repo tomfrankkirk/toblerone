@@ -35,15 +35,15 @@ def test_indexing():
     surf.indexed.voxelised = surf.voxelise(spc, 1)
 
     truth = pickle.load(open(op.join(td, 'out_indexed.pkl'), 'rb'))
-    truthspace = truth._index_space
+    truthspace = truth.indexed.space
     space = surf.indexed.space
     assocs = surf.indexed.assocs
-    assert (np.array_equal(truth.assocs.indices, assocs.indices) and 
-            (np.array_equal(truth.assocs.data, assocs.data)))
+    assert (np.array_equal(truth.indexed.assocs.indices, assocs.indices) and 
+            (np.array_equal(truth.indexed.assocs.data, assocs.data)))
     assert np.all(space.bbox_origin == truthspace.bbox_origin)
     assert np.all(space.size == truthspace.size)
     assert np.all(space.offset == truthspace.offset)
-    assert np.array_equal(surf.indexed.voxelised, truth.voxelised)
+    assert np.array_equal(surf.indexed.voxelised, truth.indexed.voxelised)
 
 
 def test_enclosing_space(): 
@@ -51,13 +51,25 @@ def test_enclosing_space():
     surf = toblerone.Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     surf.index_on(spc, 1)
-    assert utils.space_encloses_surface(spc, surf.indexed.points_vox)
+    assert utils.space_encloses_surface(surf.indexed.space, surf.indexed.points_vox)
 
     spc2 = spc.resize([5,5,5], [5,5,5])
     surf2 = toblerone.Surface(op.join(td, 'out.surf.gii'))
     surf2.index_on(spc2, 1)
     assert not utils.space_encloses_surface(spc2, surf2.indexed.points_vox)
     assert surf.indexed.space == surf2.indexed.space
+
+    surf = toblerone.Surface(op.join(td, 'out.surf.gii'))
+    start = surf.points.min(0)
+    end = surf.points.max(0)
+    vsize = (start - end) / 10
+    spc = toblerone.ImageSpace.create_axis_aligned(
+           start, end, vsize 
+    )
+    surf.index_on(spc, 1)
+    assert utils.space_encloses_surface(surf.indexed.space, surf.indexed.points_vox)
+
+    
 
 
 def test_vox_tri_intersection():
@@ -366,5 +378,5 @@ def cmdline():
     main()
 
 if __name__ == "__main__":
-    cmdline()
+    test_indexing()
     # test_projector_hdf5()

@@ -80,8 +80,8 @@ class ImageSpace(BaseSpace):
             min_max[sidx*2 + 1,:] = ps.max(0)
 
         # Fix the offset relative to reference and minimal size 
-        minFoV = min_max.min(0).round().astype(np.int16)
-        maxFoV = min_max.max(0).round().astype(np.int16)
+        minFoV = np.floor(min_max.min(0)).astype(np.int16)
+        maxFoV = np.ceil(min_max.max(0)).astype(np.int16)
         size = maxFoV - minFoV + 1
         FoVoffset = -minFoV
     
