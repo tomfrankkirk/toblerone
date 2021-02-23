@@ -223,7 +223,6 @@ class Projector(object):
         return self.hemi_dict[side].surf_dict[surf_key]
 
 
-
     @property
     def n_surf_points(self):
         return sum([ h.n_points for h in self.iter_hemis ])

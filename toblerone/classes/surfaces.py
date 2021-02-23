@@ -210,9 +210,6 @@ class Surface(object):
             if self.name is None: 
                 self.name = 'Other'
 
-            common = {'Description': 'Surface has been transformed into' +
-                      'a reference image space for PV estimation'}
-
             m0 = {'GeometricType': 'Anatomical'}
 
             if self.name in ['LWS', 'LPS', 'RWS', 'RPS']:
@@ -232,7 +229,6 @@ class Surface(object):
             
             # Points matrix
             # 1 corresponds to NIFTI_XFORM_SCANNER_ANAT
-            m0.update(common)
             ps = nibabel.gifti.GiftiDataArray(self.points, 
                 intent='NIFTI_INTENT_POINTSET', 
                 coordsys=nibabel.gifti.GiftiCoordSystem(1,1),  
@@ -241,7 +237,6 @@ class Surface(object):
 
             # Triangles matrix 
             m1 = {'TopologicalType': 'Closed'}
-            m1.update(common)
             ts = nibabel.gifti.GiftiDataArray(self.tris, 
                 intent='NIFTI_INTENT_TRIANGLE', 
                 coordsys=nibabel.gifti.GiftiCoordSystem(0,0), 
@@ -506,11 +501,12 @@ class Surface(object):
             return dest_inds[fltr]
 
 
-    def apply_transform(self, transform):
-        """Apply affine transformation to surface vertices"""
+    def transform(self, transform):
+        """Apply affine transformation to surface vertices, return new Surface"""
 
-        self.points = (utils.affine_transform(
-            self.points, transform).astype(NP_FLOAT))
+        points = utils.affine_transform(
+                    self.points, transform).astype(NP_FLOAT)
+        return Surface.manual(points, self.tris, self.name)
 
 
     def to_patch(self, vox_idx):
@@ -730,10 +726,13 @@ class Hemisphere(object):
         return { self.side + 'WS': self.inSurf, 
                  self.side + 'PS': self.outSurf}
 
-    def apply_transform(self, mat):
-        """Apply affine transformation to each surface."""
+    def transform(self, mat):
+        """
+        Apply affine transformation to each surface. Returns a new Hemisphre.
+        """
 
-        [ s.apply_transform(mat) for s in self.surfs ]
+        surfs = [ s.transform(mat) for s in self.surfs ]
+        return Hemisphere(*surfs, self.side)
 
     def midsurface(self):
         """Midsurface between inner and outer cortex"""

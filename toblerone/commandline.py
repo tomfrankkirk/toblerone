@@ -170,7 +170,7 @@ def prepare_projector():
     # Set up the hemispheres, reference ImageSpace, and prepare projector.
     spc = ImageSpace(args.ref)
     hemispheres = utils.load_surfs_to_hemispheres(**vars(args))
-    for h in hemispheres: h.apply_transform(struct2ref)
+    hemispheres = [ h.transform(struct2ref) for h in hemispheres ]
     proj = projection.Projector(hemispheres, spc, args.super, 
         args.cores, args.ones)
 

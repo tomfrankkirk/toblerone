@@ -101,7 +101,7 @@ def structure(ref, struct2ref, **kwargs):
         surf = Surface(kwargs['surf'], name=op.split(kwargs['surf'])[1])
         if kwargs.get('flirt'):
             struct_spc = ImageSpace(kwargs['struct'])
-            surf.apply_transform(struct_spc.FSL2world)
+            surf = surf.transform(struct_spc.FSL2world)
 
     elif type(kwargs['surf']) is not Surface: 
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
@@ -192,7 +192,7 @@ def complete(ref, struct2ref, **kwargs):
     struct_spc = ImageSpace(kwargs['struct'])
     for name, surf in FIRSTsurfs.items(): 
         s = Surface(surf, name)
-        s.apply_transform(struct_spc.FSL2world)
+        s = s.transform(struct_spc.FSL2world)
         subcortical.append(s)
     
     disp = "Structures found: " + ", ".join([ 

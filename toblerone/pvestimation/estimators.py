@@ -31,11 +31,12 @@ def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
 
     if not isinstance(loc_hemispheres, list):
         loc_hemispheres = [loc_hemispheres]
-        
-    surfs = [ s for h in loc_hemispheres for s in h.surfs ]
 
+    for h in loc_hemispheres: 
+        h.inSurf, h.outSurf = [ s.transform(struct2ref) for s in h.surfs ]
+
+    surfs = [ s for h in loc_hemispheres for s in h.surfs ]
     for s in surfs: 
-        s.apply_transform(struct2ref)
         s.index_on(space, cores)
         s.indexed.voxelised = s.voxelise(space, cores)
 
@@ -110,7 +111,7 @@ def _structure(surf, space, struct2ref, supersampler, ones, cores):
 
     # Create our own local copy of inputs 
     loc_surf = copy.deepcopy(surf)
-    loc_surf.apply_transform(struct2ref)
+    loc_surf = loc_surf.transform(struct2ref)
     loc_surf.index_on(space, cores)
     loc_surf.indexed.voxelised = loc_surf.voxelise(space, cores)
     loc_surf._estimate_fractions(supersampler, cores, ones)
