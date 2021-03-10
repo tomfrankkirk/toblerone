@@ -328,6 +328,13 @@ class Projector(object):
 
         v2s_mat = self.vol2surf_matrix(edge_scale)
         v2v_mat = sparse.eye(self.spc.size.prod())
+        if edge_scale: 
+            brain_pv = self.flat_pvs()[:,:2].sum(1)
+            brain = (brain_pv > 1e-3)
+            upweight = np.ones(brain_pv.shape)
+            upweight[brain] = 1 / brain_pv[brain]
+            v2v_mat.data *= upweight
+
         v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
         return v2n_mat
 
