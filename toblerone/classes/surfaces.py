@@ -574,7 +574,7 @@ class Surface(object):
                                         ord=2, axis=-1).flatten()
             weights = 1 / (weights ** distance_weight)
         else:
-            weights = np.ones(row.size, dtype=np.int8)
+            weights = np.ones(row.size, dtype=np.int32)
 
         adj = sparse.coo_matrix((weights, (row, col)), shape=(self.n_points, self.n_points))
 
@@ -604,6 +604,7 @@ class Surface(object):
 
         # The diagonal is the negative sum of other elements 
         adj = self.adjacency_matrix(distance_weight)
+        adj = np.around(adj, 12)
         dia = adj.sum(1).A.flatten()
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
         laplacian = adj - laplacian

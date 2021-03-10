@@ -34,9 +34,9 @@ ZERO_3 = np.zeros(3, dtype=NP_FLOAT)
 
 # edge vectors for a single voxel 
 ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
-    1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int8) - 1
+    1, 1, 1, 8, 8, 8, 2, 2, 3, 4, 4, 6], dtype=np.int32) - 1
 ENDS = np.array([2, 3, 5, 8, 2, 3, 6, 7, 6, 7, 2, 3, 8, 7, 6, 5,
-    6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int8) - 1
+    6, 4, 7, 5, 3, 2, 3, 5, 5, 6, 7, 7], dtype=np.int32) - 1
 
 # iterating over dimensions xyz, xyz 
 DIMS = np.array([0,1,2,0,1,2])
@@ -58,12 +58,12 @@ SUBVOXCORNERS = (np.array([
 TETRA1 = np.array([[0,3,4,5],   # aABC
                    [0,1,2,4],   # abcB
                    [0,2,4,5]],  # acBC
-                   dtype=np.int8)  
+                   dtype=np.int32)  
 
 TETRA2 = np.array([[0,3,4,5],   # aABC
                    [0,1,2,5],   # abcC
                    [0,1,4,5]],  # abBC
-                   dtype=np.int8) 
+                   dtype=np.int32) 
 
 # For defining the edges of triangle within a mesh
 TRI_EDGE_INDEXING = [{1,0}, {2,0}, {2,1}]
@@ -989,7 +989,7 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
 
         # Debug mode: just stick ones in all candidate voxels and continue 
         if ones: 
-            vox_tri_samps[hood_vidx,t] = factor ** 3
+            vox_tri_samps[hood_vidx,t] = factor.prod()
             continue
 
         for vidx, ijk in zip(hood_vidx, hood.astype(NP_FLOAT)):

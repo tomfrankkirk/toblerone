@@ -56,7 +56,7 @@ def cortex(ref, struct2ref, **kwargs):
     # Set supersampler and estimate. 
     if kwargs.get('supersample') is None:
         supersampler = np.maximum(np.floor(ref_space.vox_size.round(1) 
-                                / 0.75), 1).astype(np.int8)
+                                / 0.75), 1).astype(np.int32)
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
@@ -117,7 +117,7 @@ def structure(ref, struct2ref, **kwargs):
 
     if kwargs.get('supersample') is None:
         supersampler = np.maximum(np.floor(ref_space.vox_size.round(1) 
-                                / 0.75), 1).astype(np.int8)
+                                / 0.75), 1).astype(np.int32)
     else: 
         supersampler = kwargs.get('supersample') * np.ones(3)
 
