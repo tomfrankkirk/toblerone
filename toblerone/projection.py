@@ -10,6 +10,7 @@ from textwrap import dedent
 import numpy as np 
 from scipy import sparse 
 import h5py
+import regtricks as rt 
 
 from toblerone import utils 
 from toblerone.pvestimation import estimators
@@ -62,26 +63,59 @@ class Projector(object):
 
         if factor is None:
             factor = np.ceil(3 * spc.vox_size)
-        factor = (factor * np.ones(3)).astype(np.int8)
+        factor = (factor * np.ones(3)).astype(np.int32)
 
         for hemi in self.iter_hemis: 
 
             # If PV estimates are not present, then compute from scratch 
             if hasattr(hemi, 'pvs'): 
+                print("WARNING: PVs should ideally be recalculated from scratch")
                 self.pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersampler = np.maximum(np.floor(spc.vox_size.round(1)/0.75), 
-                                            1).astype(np.int8)                
+                                            1).astype(np.int32)                
                 pvs = estimators._cortex(hemi, spc, np.eye(4), supersampler, 
                                         ncores, ones)
                 self.pvs.append(pvs.reshape(-1,3))
 
+        self._assemble_vtx_vox_mats(factor, ncores, ones)
+
+
+    def _assemble_vtx_vox_mats(self, factor, ncores, ones): 
+
+        for hemi in self.iter_hemis: 
             # Calculate the constituent matrices for projection with each hemi 
             midsurf = hemi.midsurface()
-            vox_tri = vox_tri_weights(*hemi.surfs, spc, factor, ncores, ones)
+            vox_tri = vox_tri_weights(*hemi.surfs, self.spc, factor, ncores, ones)
             vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.vox_tri_mats.append(vox_tri)
             self.vtx_tri_mats.append(vtx_tri)
+
+    
+    def transform(self, trans, spc=None, factor=None, cores=mp.cpu_count(), ones=False):
+        
+        if spc is None: spc = self.spc 
+        t = rt.Registration(trans)
+        new_pvs = [ t.apply_to_array(pv.reshape(*spc.size,3), 
+                                     self.spc, spc, cores=cores, 
+                                     order=1
+                                    ).reshape(-1,3)
+                    for pv in self.pvs ]
+
+        if factor is None:
+            factor = np.ceil(3 * spc.vox_size)
+        factor = (factor * np.ones(3)).astype(np.int32)
+
+        proj = Projector.__new__(Projector)
+        proj.hemi_dict = { h.side: h.transform(trans) for h in self.iter_hemis }
+        proj.spc = spc 
+        proj.pvs = new_pvs
+        proj.vox_tri_mats = [] 
+        proj.vtx_tri_mats = []
+        ncores = cores if any([ h.inSurf._use_mp for h in self.iter_hemis ]) else 1 
+
+        proj._assemble_vtx_vox_mats(factor, ncores, ones)
+        return proj 
 
 
     def save(self, path):

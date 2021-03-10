@@ -373,10 +373,26 @@ def test_projector_cmdline():
     main()
     os.remove('proj.h5')
 
+
+def test_transform_projector():
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    proj = toblerone.Projector(hemi, spc)
+
+    # proj = toblerone.Projector.load('temp.h5')
+    trans = np.eye(4)
+    trans[:3,3] = 0.4 * np.random.rand(3)
+    proj2 = proj.transform(trans, spc)
+
+    assert (proj.surf2vol_matrix(False) != proj2.surf2vol_matrix(False)).A.any()
+
 def cmdline(): 
     # sys.argv[1:] = ['-estimate-cortex']
     main()
 
 if __name__ == "__main__":
-    test_indexing()
+    test_projection()
     # test_projector_hdf5()
