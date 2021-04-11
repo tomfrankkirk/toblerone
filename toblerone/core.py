@@ -903,8 +903,7 @@ def vox_tri_weights(in_surf, out_surf, spc, factor,
 
     points_vox = []
     for s in [in_surf, out_surf]:
-        p_v = utils.affine_transform(s.points, spc.world2vox)
-        assert space_encloses_surface(spc, p_v)
+        p_v = utils.affine_transform(s.points, spc.world2vox)   
         points_vox.append(p_v)
 
     n_tris = in_surf.tris.shape[0]
@@ -978,13 +977,17 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
                              outps_vox[tri_sort,:]))
 
         # Get the neighbourhood of voxels through which this prism passes
-        # in linear indices
+        # in linear indices (note the +1 on the upper bound)
         bbox = (np.vstack((np.maximum(0, hull_ps.min(0)),
                            np.minimum(spc.size, hull_ps.max(0)+1)))
                            .round().astype(np.int32))
         hood = np.array(list(itertools.product(
                 range(*bbox[:,0]), range(*bbox[:,1]), range(*bbox[:,2])
-            )), dtype=np.int32)           
+                )), dtype=np.int32)
+
+        # The bbox may not intersect any voxels within the FoV at all, skip
+        if not hood.size:
+            continue 
         hood_vidx = np.ravel_multi_index(hood.T, spc.size)
 
         # Debug mode: just stick ones in all candidate voxels and continue 
