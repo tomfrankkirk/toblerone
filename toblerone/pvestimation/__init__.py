@@ -99,7 +99,7 @@ def structure(ref, struct2ref, **kwargs):
 
     if type(kwargs['surf']) is str: 
         surf = Surface(kwargs['surf'], name=op.split(kwargs['surf'])[1])
-        if kwargs.get('flirt'):
+        if kwargs.get('coords', 'world') == 'fsl':
             struct_spc = ImageSpace(kwargs['struct'])
             surf = surf.transform(struct_spc.FSL2world)
 

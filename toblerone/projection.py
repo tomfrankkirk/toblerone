@@ -26,18 +26,24 @@ class Projector(object):
     matrices are prepared; once created any of the individual projections
     may be calculated directly from the object. 
 
+    Node space ordering: L hemisphere surface, R hemisphere surface, 
+    subcortical voxels in linear index order, subcortical ROIs in alphabetical 
+    order according to their dictionary key (see below)
+
     Args: 
         hemispheres: single or list of two (L/R) Hemisphere objects. Note 
             that the surfaces of the hemispheres must be in alignment with 
             the reference space (ie, apply any transformations beforehand).
         spc: ImageSpace to project from/to 
+        rois: dictionary of subcortical ROIs; keys are ROI name and values 
+            are paths to surfaces or Surface objects for the ROIs themselves. 
         factor: voxel subdivision factor (default 3x voxel size)
         cores: number of processor cores to use (default max)
         ones: debug tool, whole voxel PV assignment. 
     """
 
-    def __init__(self, hemispheres, spc, factor=None, cores=mp.cpu_count(), 
-                 ones=False):
+    def __init__(self, hemispheres, spc, rois=None, factor=None,
+                cores=mp.cpu_count(), ones=False):
 
         print("Initialising projector (will take some time)")
         if not isinstance(hemispheres, Hemisphere):
@@ -56,27 +62,37 @@ class Projector(object):
             
         self.hemi_dict = { h.side: copy.deepcopy(h) for h in hemispheres }
         self.spc = spc 
-        self.pvs = [] 
+        self._hemi_pvs = [] 
         self.vox_tri_mats = [] 
         self.vtx_tri_mats = []
-        ncores = cores if hemispheres[0].inSurf._use_mp else 1 
+        self._roi_pvs = {}
 
         if factor is None:
             factor = np.ceil(3 * spc.vox_size)
         factor = (factor * np.ones(3)).astype(np.int32)
+        ncores = cores if hemispheres[0].inSurf._use_mp else 1 
+        supersampler = np.maximum(np.floor(spc.vox_size.round(1)/0.75), 
+                                            1).astype(np.int32)         
+
+        if rois is not None: 
+            for name in sorted(rois.keys()): 
+                assert isinstance(rois[name], Surface)
+                rpvs = estimators._structure(rois[name], spc, np.eye(4), 
+                                             supersampler, ones=ones, cores=cores)
+                self._roi_pvs[name] = rpvs 
 
         for hemi in self.iter_hemis: 
 
             # If PV estimates are not present, then compute from scratch 
             if hasattr(hemi, 'pvs'): 
                 print("WARNING: PVs should ideally be recalculated from scratch")
-                self.pvs.append(hemi.pvs.reshape(-1,3))
+                self._hemi_pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersampler = np.maximum(np.floor(spc.vox_size.round(1)/0.75), 
                                             1).astype(np.int32)                
                 pvs = estimators._cortex(hemi, spc, np.eye(4), supersampler, 
-                                        ncores, ones)
-                self.pvs.append(pvs.reshape(-1,3))
+                                        cores=ncores, ones=ones)
+                self._hemi_pvs.append(pvs.reshape(-1,3))
 
         self._assemble_vtx_vox_mats(factor, ncores, ones)
 
@@ -100,7 +116,7 @@ class Projector(object):
                                      self.spc, spc, cores=cores, 
                                      order=1
                                     ).reshape(-1,3)
-                    for pv in self.pvs ]
+                    for pv in self._hemi_pvs ]
 
         if factor is None:
             factor = np.ceil(3 * spc.vox_size)
@@ -109,7 +125,7 @@ class Projector(object):
         proj = Projector.__new__(Projector)
         proj.hemi_dict = { h.side: h.transform(trans) for h in self.iter_hemis }
         proj.spc = spc 
-        proj.pvs = new_pvs
+        proj._hemi_pvs = new_pvs
         proj.vox_tri_mats = [] 
         proj.vtx_tri_mats = []
         ncores = cores if any([ h.inSurf._use_mp for h in self.iter_hemis ]) else 1 
@@ -144,25 +160,31 @@ class Projector(object):
 
             side = h.side 
             g = f.create_group(f"{side}_hemi")
-            g.create_dataset(f"{side}_pvs", data=self.pvs[idx])
+            g.create_dataset(f"{side}_pvs", data=self._hemi_pvs[idx], compression='gzip')
 
             # Sparse matrices cannot be save in HDF5, so convert them 
             # to COO and then save as a 3 x N array, where the top row
             # is row indices, second is columns, and last is data. 
             voxtri = self.vox_tri_mats[idx].tocoo()
             voxtri = np.vstack((voxtri.row, voxtri.col, voxtri.data)) 
-            g.create_dataset(f"{side}_vox_tri", data=voxtri)
+            g.create_dataset(f"{side}_vox_tri", data=voxtri, compression='gzip')
 
             # Same again: top row is row indices, then cols, then data 
             vtxtri = self.vtx_tri_mats[idx].tocoo()
             vtxtri = np.vstack((vtxtri.row, vtxtri.col, vtxtri.data))
-            g.create_dataset(f"{side}_vtx_tri", data=vtxtri)
+            g.create_dataset(f"{side}_vtx_tri", data=vtxtri, compression='gzip')
 
             # Finally, save the surfaces of each hemisphere, named
             # as LPS,RPS,LWS,RWS. 
             for k,s in h.surf_dict.items(): 
-                g.create_dataset(f"{k}_tris", data=s.tris)
-                g.create_dataset(f"{k}_points", data=s.points)
+                g.create_dataset(f"{k}_tris", data=s.tris, compression='gzip')
+                g.create_dataset(f"{k}_points", data=s.points, compression='gzip')
+
+        # Save subcortical ROI pvs 
+        if self._roi_pvs: 
+            g = f.create_group("subcortical_pvs")
+            for k,v in self._roi_pvs.items(): 
+                g.create_dataset(k, data=v, compression='gzip')
 
         f.close()
 
@@ -185,10 +207,11 @@ class Projector(object):
         n_vox = p.spc.size.prod()
 
         # Now read out hemisphere specific properties 
-        p.pvs = [] 
+        p._hemi_pvs = [] 
         p.vox_tri_mats = [] 
         p.vtx_tri_mats = []
         p.hemi_dict = {} 
+        p._roi_pvs = {}
 
         for s in SIDES: 
             hemi_key = f"{s}_hemi"
@@ -202,7 +225,7 @@ class Projector(object):
                 p.hemi_dict[s] = Hemisphere(ins, outs, s)
 
                 # Read out the PVs array for the hemi 
-                p.pvs.append(f[hemi_key][f"{s}_pvs"][()])
+                p._hemi_pvs.append(f[hemi_key][f"{s}_pvs"][()])
 
                 # Recreate the sparse voxtri and vtxtri matrices. 
                 # They are stored as a 3 x N array, where top row 
@@ -221,6 +244,11 @@ class Projector(object):
                     (vtxtri[2,:], (vtxtri[0,:], vtxtri[1,:])),
                     shape=(ins.n_points, ins.tris.shape[0]))
                 p.vtx_tri_mats.append(vtxtri.tocsr())
+
+        if "subcortical_pvs" in f: 
+            g = f["subcortical_pvs"]
+            for k in sorted(g.keys()): 
+                p._roi_pvs[k] = g[k][()]
 
         return p 
 
@@ -254,8 +282,13 @@ class Projector(object):
 
 
     @property
-    def n_surf_points(self):
+    def n_surf_nodes(self):
         return sum([ h.n_points for h in self.iter_hemis ])
+
+
+    @property 
+    def n_nodes(self): 
+        return sum([ self.spc.size.prod(), self.n_surf_nodes, len(self._roi_pvs) ])
 
 
     def adjacency_matrix(self, distance_weight=0):
@@ -292,23 +325,32 @@ class Projector(object):
         return sparse.block_diag(mats, format="csr")
 
 
-    def flat_pvs(self):
+    def cortex_pvs(self):
         """
         Combine PV estimates from one or both hemispheres (if available) into 
         single map. 
 
         Returns: 
-            (v x 3) array of PVs, columns arranged GM, WM, non-brain
+            array of PVs, same shape as reference space, arranged GM, WM, 
+                non-brain in 4th dim. 
         """
-        if len(self.pvs) > 1:
+        if len(self._hemi_pvs) > 1:
             # Combine PV estimates from each hemisphere into single map 
             pvs = np.zeros((self.spc.size.prod(), 3))
-            pvs[:,0] = np.minimum(1.0, self.pvs[0][:,0] + self.pvs[1][:,0])
-            pvs[:,1] = np.minimum(1.0 - pvs[:,0], self.pvs[0][:,1] + self.pvs[1][:,1])
+            pvs[:,0] = np.minimum(1.0, self._hemi_pvs[0][:,0] + self._hemi_pvs[1][:,0])
+            pvs[:,1] = np.minimum(1.0 - pvs[:,0], self._hemi_pvs[0][:,1] + self._hemi_pvs[1][:,1])
             pvs[:,2] = 1.0 - pvs[:,0:2].sum(1)
-            return pvs 
+            return pvs.reshape(*self.spc.size, 3)
         else: 
-            return self.pvs[0]
+            return self._hemi_pvs[0].reshape(*self.spc.size, 3)
+
+
+    def subcortex_pvs(self):
+        """
+        """
+
+        pvs = np.stack(self._roi_pvs.values(), axis=-1)
+        return np.clip(pvs.sum(-1).reshape(self.spc.size), 0, 1)
 
 
     def vol2surf_matrix(self, edge_scale):
@@ -332,7 +374,7 @@ class Projector(object):
         v2s_mat = sparse.vstack(proj_mats, format="csr")
 
         if edge_scale: 
-            brain_pv = self.flat_pvs()[:,:2].sum(1)
+            brain_pv = self.cortex_pvs().reshape(-1,3)[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
             upweight = np.ones(brain_pv.shape)
             upweight[brain] = 1 / brain_pv[brain]
@@ -358,14 +400,28 @@ class Projector(object):
 
         v2s_mat = self.vol2surf_matrix(edge_scale)
         v2v_mat = sparse.eye(self.spc.size.prod())
+
         if edge_scale: 
-            brain_pv = self.flat_pvs()[:,:2].sum(1)
+            brain_pv = self.cortex_pvs().reshape(-1,3)[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
             upweight = np.ones(brain_pv.shape)
             upweight[brain] = 1 / brain_pv[brain]
             v2v_mat.data *= upweight
 
-        v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
+        if self._roi_pvs: 
+
+            # mapping from voxels to subcortical ROIs - weighted averaging 
+            v2r_mat = np.stack(
+                [ r.flatten() for r in self._roi_pvs.values() ], axis=0)
+            v2r_mat = sparse.csr_matrix(v2r_mat)
+            v2r_mat = utils.sparse_normalise(v2r_mat, 1)            
+            if edge_scale: 
+                v2r_mat.data *= np.take(upweight, v2r_mat.indices)
+            v2n_mat = sparse.vstack((v2s_mat, v2v_mat, v2r_mat), format="csr")
+
+        else: 
+            v2n_mat = sparse.vstack((v2s_mat, v2v_mat), format="csr")
+
         return v2n_mat
 
 
@@ -392,10 +448,10 @@ class Projector(object):
                 # GM PV can be shared between both hemispheres, so rescale each row of
                 # the s2v matrices by the proportion of all voxel-wise GM that belongs
                 # to that hemisphere (eg, the GM could be shared 80:20 between the two)
-                GM = self.pvs[0][:,0] + self.pvs[1][:,0]
+                GM = self._hemi_pvs[0][:,0] + self._hemi_pvs[1][:,0]
                 GM[GM == 0] = 1 
-                gm_weights.append(self.pvs[0][:,0] / GM)
-                gm_weights.append(self.pvs[1][:,0] / GM)
+                gm_weights.append(self._hemi_pvs[0][:,0] / GM)
+                gm_weights.append(self._hemi_pvs[1][:,0] / GM)
 
             for vox_tri, vtx_tri, weights in zip(self.vox_tri_mats, 
                                                  self.vtx_tri_mats, gm_weights): 
@@ -403,7 +459,7 @@ class Projector(object):
                 s2v_mat.data *= np.take(weights, s2v_mat.indices)
                 proj_mats.append(s2v_mat)
 
-            pvs = self.flat_pvs()
+            pvs = self.cortex_pvs().reshape(-1,3)
             s2v_mat = sparse.hstack(proj_mats, format="csc")
             s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
 
@@ -415,7 +471,7 @@ class Projector(object):
 
             s2v_mat = sparse.hstack(proj_mats, format="csc")
 
-        pvs = self.flat_pvs()
+        pvs = self.cortex_pvs().reshape(-1,3)
         s2v_mat = sparse.hstack(proj_mats, format="csc")
         if edge_scale:
             s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
@@ -444,13 +500,33 @@ class Projector(object):
         # the result. If the final result should not be scaled, then we normalise 
         # so that each row sums to 1 to get a weighted-average projection. In both
         # cases, the weighting given to cortex/subcortex within the projection is 
-        # determined by GM and WM PVs, only the scaling of the final matrix changes. 
+        # determined by GM and WM PVs, only the scaling of the final matrix changes.
+         
+        if self._roi_pvs: 
+            cpvs = self.cortex_pvs().reshape(-1,3)
+            spvs = self.subcortex_pvs().flatten()
+            subcort_wm = np.clip(cpvs[:,1] - spvs, 0, 1)
 
-        pvs = self.flat_pvs()
-        s2v_mat = self.surf2vol_matrix(edge_scale=True)
-        v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
-            shape=2*[self.spc.size.prod()])
-        n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
+            # mapping from subcortial ROIs to voxels 
+            r2v_mat = np.stack(
+                [ r.flatten() for r in self._roi_pvs.values() ], axis=1)
+            r2v_sum = r2v_mat.sum(1)
+            r2v_mat[r2v_sum > 1,:] = r2v_mat[r2v_sum > 1,:] / r2v_sum[r2v_sum > 1,None]
+            r2v_mat = sparse.csr_matrix(r2v_mat)
+
+            # mappings from surface to voxel and from subcortical nodes to voxels 
+            # nb subcortical nodes are just voxels themselves!
+            s2v_mat = self.surf2vol_matrix(edge_scale=True)
+            v2v_mat = sparse.dia_matrix((subcort_wm, 0), 
+                shape=2*[self.spc.size.prod()])
+            n2v_mat = sparse.hstack((s2v_mat, v2v_mat, r2v_mat), format="csr")
+
+        else: 
+            cpvs = self.cortex_pvs().reshape(-1,3)
+            s2v_mat = self.surf2vol_matrix(edge_scale=True)
+            v2v_mat = sparse.dia_matrix((cpvs[:,1], 0), 
+                shape=2*[self.spc.size.prod()])
+            n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
 
         if not edge_scale: 
             n2v_mat = utils.sparse_normalise(n2v_mat, 1)

@@ -27,6 +27,7 @@ from .image_space import ImageSpace, BaseSpace
 from .. import utils, core
 from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
 
+MP_THRESHOLD = 1500
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -132,7 +133,7 @@ class Surface(object):
         self.tris = ts.astype(np.int32)
         self.indexed = None 
         self.name = name
-        self._use_mp = (self.tris.shape[0] > 500)
+        self._use_mp = (self.tris.shape[0] > MP_THRESHOLD)
 
     def __repr__(self):
 
@@ -160,7 +161,7 @@ class Surface(object):
         s.tris = copy.deepcopy(ts.astype(np.int32))
         s.indexed = None 
         s.name = name
-        s._use_mp = (s.tris.shape[0] > 500)
+        s._use_mp = (s.tris.shape[0] > MP_THRESHOLD)
         return s
     
 
@@ -278,7 +279,8 @@ class Surface(object):
             ones: debug tool, write ones in all voxels within assocs_keys 
             desc: for use with progress bar 
         """
-
+        
+        cores = cores if self._use_mp else 1
         if ones: 
             self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=np.bool) 
         else: 
@@ -375,7 +377,7 @@ class Surface(object):
         rayD1D2 = rayD1D2[:,other_dims]
 
         worker = functools.partial(core._voxelise_worker, self)
-
+        cores = cores if self._use_mp else 1 
         if cores > 1: 
 
             # Share out the rays and subset of the overall dimension range

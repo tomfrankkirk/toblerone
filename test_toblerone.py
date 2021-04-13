@@ -10,6 +10,7 @@ import sys
 import numpy as np
 from scipy import sparse
 from numpy.lib.index_tricks import diag_indices
+import nibabel
 
 import toblerone
 from toblerone import pvestimation
@@ -137,7 +138,43 @@ def test_projection():
     assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
     n2v_pv = projector.node2vol_matrix(True)
     assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
-    
+
+
+def test_projector_partial_fov(): 
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    spc = spc.resize([1,1,1], spc.size-2)
+    sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
+    vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
+    ndata = np.concatenate((sdata, vdata))
+    projector = toblerone.projection.Projector(hemi, spc, cores=8)
+    proj = projector.surf2vol(sdata, True)
+
+
+def test_projector_rois():
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    fracs = nibabel.load(op.join(td, 'sph_fractions.nii.gz')).get_fdata()
+    hemi.pvs = fracs.reshape(-1,3)
+    puta = Surface.manual(0.25 * hemi.inSurf.points, 
+                            hemi.inSurf.tris, 'L_Puta')
+    rois = { 'L_Puta': puta }
+    proj = toblerone.projection.Projector(hemi, spc, rois=rois, cores=8)
+
+    ndata = np.ones(proj.n_nodes)
+    ndata[-1] = 2 
+    vdata = proj.node2vol(ndata, True)
+    spc.save_image(vdata, 'n2v.nii.gz')
+
+    ndata = proj.vol2node(vdata, True)
+    print(ndata)
+
 
 def test_subvoxels():
 
@@ -394,5 +431,32 @@ def cmdline():
     main()
 
 if __name__ == "__main__":
-    test_projection()
-    # test_projector_hdf5()
+    import pickle
+
+    sdir = "/Users/tom/Data/103818/T1w/fsaverage_LR32k"
+    lps = op.join(sdir, '103818.L.pial.32k_fs_LR.surf.gii')
+    lws = op.join(sdir, '103818.L.white.32k_fs_LR.surf.gii')
+    lhemi = Hemisphere(lws, lps, 'L')
+
+    rps = op.join(sdir, '103818.R.pial.32k_fs_LR.surf.gii')
+    rws = op.join(sdir, '103818.R.pial.32k_fs_LR.surf.gii')
+    rhemi = Hemisphere(rws, rps, 'R')
+
+    rois = utils._loadFIRSTdir("/Users/tom/Data/pcasl2/1.anat/first_results")
+    rois.pop('BrStem')
+    t1_spc = toblerone.ImageSpace("/Users/tom/Data/pcasl2/1.anat/T1_biascorr_brain.nii.gz")
+    for k,v in rois.items(): 
+        s = Surface(v)
+        s = s.transform(t1_spc.FSL2world)
+        rois[k] = s 
+
+    spc = toblerone.ImageSpace('/Users/tom/Data/pcasl2/raw/s01/A/calibration_body1.nii.gz')
+
+    proj = toblerone.Projector([lhemi, rhemi], spc, rois, factor=3)
+    proj.save('proj.h5')
+    proj = toblerone.Projector.load('proj.h5')
+
+    ndata = np.ones(proj.n_nodes)
+    ndata[-len(rois):] = 2 
+    vdata = proj.node2vol(ndata, False)
+    spc.save_image(vdata, 'n2v.nii.gz')
