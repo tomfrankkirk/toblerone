@@ -347,10 +347,25 @@ class Projector(object):
 
     def subcortex_pvs(self):
         """
+        TODO
         """
 
         pvs = np.stack(self._roi_pvs.values(), axis=-1)
         return np.clip(pvs.sum(-1).reshape(self.spc.size), 0, 1)
+
+
+    def pvs(self):
+        """
+        TODO
+        """
+
+        pvs = np.zeros((*self.spc.size, 3))
+        cpvs = self.cortex_pvs()
+        spvs = self.subcortex_pvs()
+        pvs[...] = cpvs[...]
+        pvs[...,0] = np.clip(pvs[...,0] + spvs, 0, 1)
+        pvs[...,1] = np.clip(1 - (pvs[...,0] + pvs[...,2]), 0, 1)
+        return pvs 
 
 
     def vol2surf_matrix(self, edge_scale):
