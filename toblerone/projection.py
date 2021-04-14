@@ -291,6 +291,11 @@ class Projector(object):
         return sum([ self.spc.size.prod(), self.n_surf_nodes, len(self._roi_pvs) ])
 
 
+    @property 
+    def n_subcortical_nodes(self):
+        return len(self._roi_pvs)
+
+
     def adjacency_matrix(self, distance_weight=0):
         """
         Overall adjacency matrix for all surface vertices of projector. 
@@ -364,6 +369,7 @@ class Projector(object):
         spvs = self.subcortex_pvs()
         pvs[...] = cpvs[...]
         pvs[...,0] = np.clip(pvs[...,0] + spvs, 0, 1)
+        pvs[...,2] = np.minimum(pvs[...,2], 1 - pvs[...,0])
         pvs[...,1] = np.clip(1 - (pvs[...,0] + pvs[...,2]), 0, 1)
         return pvs 
 
@@ -417,7 +423,7 @@ class Projector(object):
         v2v_mat = sparse.eye(self.spc.size.prod())
 
         if edge_scale: 
-            brain_pv = self.cortex_pvs().reshape(-1,3)[:,:2].sum(1)
+            brain_pv = self.pvs().reshape(-1,3)[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
             upweight = np.ones(brain_pv.shape)
             upweight[brain] = 1 / brain_pv[brain]
@@ -518,20 +524,31 @@ class Projector(object):
         # determined by GM and WM PVs, only the scaling of the final matrix changes.
          
         if self._roi_pvs: 
+
+            # Voxels may have GM PV from both cortex and subcortex. 
+            # Prefer the cortex estimate, rescale the subcortex accordingly
+            # Calculate WM as the remainder. 
             cpvs = self.cortex_pvs().reshape(-1,3)
-            spvs = self.subcortex_pvs().flatten()
-            subcort_wm = np.clip(cpvs[:,1] - spvs, 0, 1)
+            spvs = np.stack(self._roi_pvs.values(), axis=-1).sum(-1).flatten()
+
+            gm_sum = (cpvs[...,0] + spvs) 
+            subctx_weight = np.zeros_like(gm_sum)
+            subctx_weight[gm_sum > 0] = spvs[gm_sum > 0] / gm_sum[gm_sum > 0] 
+            ctx_weight = 1 - subctx_weight
+            subcort_wm = np.clip(cpvs[:,1] - gm_sum, 0, 1)
 
             # mapping from subcortial ROIs to voxels 
+            rescale = np.maximum(1, spvs)
             r2v_mat = np.stack(
-                [ r.flatten() for r in self._roi_pvs.values() ], axis=1)
-            r2v_sum = r2v_mat.sum(1)
-            r2v_mat[r2v_sum > 1,:] = r2v_mat[r2v_sum > 1,:] / r2v_sum[r2v_sum > 1,None]
+                [ subctx_weight * r.flatten() 
+                  for r in self._roi_pvs.values() ], axis=1)
+            r2v_mat = r2v_mat / rescale[:,None]
             r2v_mat = sparse.csr_matrix(r2v_mat)
 
             # mappings from surface to voxel and from subcortical nodes to voxels 
             # nb subcortical nodes are just voxels themselves!
-            s2v_mat = self.surf2vol_matrix(edge_scale=True)
+            s2v_mat = self.surf2vol_matrix(edge_scale=True).tocsc()
+            s2v_mat.data *= np.take(ctx_weight, s2v_mat.indices)
             v2v_mat = sparse.dia_matrix((subcort_wm, 0), 
                 shape=2*[self.spc.size.prod()])
             n2v_mat = sparse.hstack((s2v_mat, v2v_mat, r2v_mat), format="csr")
