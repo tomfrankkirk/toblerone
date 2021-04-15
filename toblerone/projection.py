@@ -364,14 +364,23 @@ class Projector(object):
         TODO
         """
 
-        pvs = np.zeros((*self.spc.size, 3))
+        pvs = np.zeros((self.spc.size.prod(), 3))
         cpvs = self.cortex_pvs()
-        spvs = self.subcortex_pvs()
-        pvs[...] = cpvs[...]
-        pvs[...,0] = np.clip(pvs[...,0] + spvs, 0, 1)
-        pvs[...,2] = np.minimum(pvs[...,2], 1 - pvs[...,0])
-        pvs[...,1] = np.clip(1 - (pvs[...,0] + pvs[...,2]), 0, 1)
-        return pvs 
+        spvs = self.subcortex_pvs().flatten()
+        pvs[...] = cpvs[...].reshape(-1,3)
+
+        # Assign subcort GM from cortical CSF,
+        sgm_reassigned = np.minimum(pvs[...,2], spvs)
+        pvs[...,2] -= sgm_reassigned
+        pvs[...,0] += sgm_reassigned
+
+        # Assign subcort GM from cortical WM
+        sgm_reassigned = spvs - sgm_reassigned
+        sgm_reassigned = np.minimum(pvs[...,1], sgm_reassigned)
+        pvs[...,1] -= sgm_reassigned
+        pvs[...,0] += sgm_reassigned
+
+        return pvs.reshape(*self.spc.size, 3)
 
 
     def vol2surf_matrix(self, edge_scale):
@@ -525,31 +534,28 @@ class Projector(object):
          
         if self._roi_pvs: 
 
-            # Voxels may have GM PV from both cortex and subcortex. 
-            # Prefer the cortex estimate, rescale the subcortex accordingly
-            # Calculate WM as the remainder. 
+            pvs = self.pvs().reshape(-1,3)
             cpvs = self.cortex_pvs().reshape(-1,3)
-            spvs = np.stack(self._roi_pvs.values(), axis=-1).sum(-1).flatten()
 
-            gm_sum = (cpvs[...,0] + spvs) 
-            subctx_weight = np.zeros_like(gm_sum)
-            subctx_weight[gm_sum > 0] = spvs[gm_sum > 0] / gm_sum[gm_sum > 0] 
-            ctx_weight = 1 - subctx_weight
-            subcort_wm = np.clip(cpvs[:,1] - gm_sum, 0, 1)
+            # subcortical GM PVs, stacked across ROIs 
+            spvs = np.stack(
+                [ r.flatten() for r in self._roi_pvs.values() ], axis=1)
 
-            # mapping from subcortial ROIs to voxels 
-            rescale = np.maximum(1, spvs)
-            r2v_mat = np.stack(
-                [ subctx_weight * r.flatten() 
-                  for r in self._roi_pvs.values() ], axis=1)
-            r2v_mat = r2v_mat / rescale[:,None]
-            r2v_mat = sparse.csr_matrix(r2v_mat)
+            # The sum of subcortical GM and cortex GM can be greater than 1, 
+            # in which case we downweight until they sum to 1 again. This 
+            # doesn't apply to voxels with GM sum less than 1 
+            sgm_sum = spvs.sum(-1)
+            rescale = np.maximum(1, cpvs[...,0] + sgm_sum)
+
+            # mapping from subcortial ROIs to voxels is just the PV matrix 
+            spvs = spvs / rescale[:,None]
+            r2v_mat = sparse.csr_matrix(spvs)
 
             # mappings from surface to voxel and from subcortical nodes to voxels 
             # nb subcortical nodes are just voxels themselves!
             s2v_mat = self.surf2vol_matrix(edge_scale=True).tocsc()
-            s2v_mat.data *= np.take(ctx_weight, s2v_mat.indices)
-            v2v_mat = sparse.dia_matrix((subcort_wm, 0), 
+            s2v_mat.data /= np.take(rescale, s2v_mat.indices)
+            v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
                 shape=2*[self.spc.size.prod()])
             n2v_mat = sparse.hstack((s2v_mat, v2v_mat, r2v_mat), format="csr")
 

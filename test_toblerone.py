@@ -452,11 +452,22 @@ if __name__ == "__main__":
 
     spc = toblerone.ImageSpace('/Users/tom/Data/pcasl2/raw/s01/A/calibration_body1.nii.gz')
 
-    proj = toblerone.Projector([lhemi, rhemi], spc, rois, factor=3)
-    proj.save('proj.h5')
     proj = toblerone.Projector.load('proj.h5')
+    spc = proj.spc
+    spvs = proj.subcortex_pvs().flatten()
+    cpvs = proj.cortex_pvs().reshape(-1,3)
+
+    spc.save_image(proj.subcortex_pvs(), 'subcort_pvs.nii.gz')
+    spc.save_image(proj.cortex_pvs(), 'cortex_pvs.nii.gz')
+    spc.save_image(proj.pvs(), 'pvs.nii.gz')
+
+    n2v_mat = proj.node2vol_matrix(True)
+    pvs = proj.pvs().reshape(-1,3)
+    b1 = pvs[:,:2].sum(1)
+    b2 = n2v_mat.sum(1).A.flatten()
+    print((b1 - b2).max())
 
     ndata = np.ones(proj.n_nodes)
-    ndata[-len(rois):] = 2 
+    # ndata[-len(rois):] = 2 
     vdata = proj.node2vol(ndata, False)
     spc.save_image(vdata, 'n2v.nii.gz')
