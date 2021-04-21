@@ -504,12 +504,29 @@ class Projector(object):
                 s2v_mat = assemble_surf2vol(vox_tri, vtx_tri).tocsc()
                 proj_mats.append(s2v_mat)
 
+            # If voxels are shared by both hemispheres, split the relative 
+            # weighting according to the GM PV of each hemisphere. This is 
+            # not a PV weighting - just deciding which hemi contributes more
+            # to the signal. 
+            if self.n_hemis == 2: 
+                gm_sum = (self._hemi_pvs[0][...,0] + self._hemi_pvs[1][...,0])
+                gm_sum[gm_sum > 0] = 1 / gm_sum[gm_sum > 0]
+                l_weight = np.clip(self._hemi_pvs[0][...,0] * gm_sum, 0, 1)
+                r_weight = np.clip(self._hemi_pvs[1][...,0] * gm_sum, 0, 1)
+                weights = [l_weight, r_weight]
+            else: 
+                weights = [np.ones(proj_mats[0].shape[0])]
+
+            for p,w in zip(proj_mats, weights): 
+                p.data *= np.take(w, p.indices)
+
             s2v_mat = sparse.hstack(proj_mats, format="csc")
 
         pvs = self.cortex_pvs().reshape(-1,3)
         s2v_mat = sparse.hstack(proj_mats, format="csc")
         if edge_scale:
             s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
+        s2v_mat.data = np.clip(s2v_mat.data, 0, 1)
         return s2v_mat  
 
 
