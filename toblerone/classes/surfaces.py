@@ -27,7 +27,7 @@ from .image_space import ImageSpace, BaseSpace
 from .. import utils, core
 from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
 
-MP_THRESHOLD = 1500
+MP_THRESHOLD = 1000
 
 @utils.cascade_attributes
 def ensure_derived_space(func):
@@ -611,7 +611,7 @@ class Surface(object):
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
         laplacian = adj - laplacian
 
-        assert np.abs(laplacian.sum(1)).max() < 1e-6, 'Unweighted laplacian'
+        assert np.abs(laplacian.sum(1)).max() < 1e-4, 'Unweighted laplacian'
         assert utils.is_nsd(laplacian), 'Not negative semi-definite'
         assert utils.is_symmetric(laplacian), 'Not symmetric'
         return laplacian
