@@ -295,6 +295,11 @@ class Projector(object):
     def n_subcortical_nodes(self):
         return len(self._roi_pvs)
 
+    
+    @property
+    def roi_names(self):
+        return list(self._roi_pvs.keys())
+
 
     def adjacency_matrix(self, distance_weight=0):
         """
