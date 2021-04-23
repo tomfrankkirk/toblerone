@@ -360,8 +360,11 @@ class Projector(object):
         TODO
         """
 
-        pvs = np.stack(self._roi_pvs.values(), axis=-1)
-        return np.clip(pvs.sum(-1).reshape(self.spc.size), 0, 1)
+        if self._roi_pvs:
+            pvs = np.stack(self._roi_pvs.values(), axis=-1)
+            return np.clip(pvs.sum(-1).reshape(self.spc.size), 0, 1)
+        else: 
+            return np.zeros(self.spc.size)
 
 
     def pvs(self):
