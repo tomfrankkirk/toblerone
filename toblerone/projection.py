@@ -334,6 +334,12 @@ class Projector(object):
         mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
+    def discriminated_laplacian(self, distance_weight=0, in_weight=100):
+
+        mats = [ h.discriminated_laplacian(self.spc, 
+                 distance_weight, in_weight) 
+                 for h in self.iter_hemis ]
+        return sparse.block_diag(mats, format="csr")
 
     def cortex_pvs(self):
         """

@@ -617,6 +617,53 @@ class Surface(object):
         return laplacian
 
 
+    def discriminated_laplacian(self, spc, distance_weight=0, in_weight=100): 
+
+        if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
+            raise ValueError("distance_weight must be int >= 0")
+
+        edge_pairs = np.array([
+            np.concatenate((self.tris[:,0], self.tris[:,1], self.tris[:,2])), 
+            np.concatenate((self.tris[:,1], self.tris[:,2], self.tris[:,0]))
+        ])
+        row, col = edge_pairs
+
+        vtx_vox = self.transform(spc.world2vox).points.round().astype(np.int32)
+        vtx_vox_idx = np.ravel_multi_index(vtx_vox.T, spc.size)
+        
+        if distance_weight > 0: 
+            dists = np.linalg.norm(self.points[row,:] - self.points[col,:], 
+                                        ord=2, axis=-1).flatten()
+            dists = 1 / (dists ** distance_weight)
+        else:
+            dists = np.ones(row.size, dtype=np.int32)
+
+        # If the start/end of an edge is the same voxel, then full weight 
+        # if different voxels, downweight it
+        in_weights = in_weight * np.ones_like(dists)
+        in_weights[vtx_vox_idx[row] != vtx_vox_idx[col]] = 1 
+
+        weights = dists * in_weights
+        adj = sparse.coo_matrix((weights, (row, col)), 
+                shape=(self.n_points, self.n_points))
+
+        if distance_weight == 0: 
+            assert adj.max() == 1
+        assert is_symmetric(adj), 'Adjacency should be symmetric'
+
+        # The diagonal is the negative sum of other elements 
+        adj = np.around(adj, 9)
+        dia = adj.sum(1).A.flatten()
+        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
+        laplacian = adj - laplacian
+
+        assert np.abs(laplacian.sum(1)).max() < 1e-3, 'Unweighted laplacian'
+        assert utils.is_nsd(laplacian), 'Not negative semi-definite'
+        assert utils.is_symmetric(laplacian), 'Not symmetric'
+
+        return laplacian.tocsr()
+
+
     # def laplace_beltrami(self, cores=mp.cpu_count()):
     #     """
     #     Laplace-Beltrami operator for this surface, as a scipy sparse matrix
@@ -772,3 +819,6 @@ class Hemisphere(object):
         """
 
         return self.midsurface().mesh_laplacian(distance_weight)
+
+    def discriminated_laplacian(self, spc, distance_weight=0, in_weight=100):
+        return self.midsurface().discriminated_laplacian(spc, distance_weight, in_weight)

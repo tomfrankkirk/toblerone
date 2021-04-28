@@ -288,6 +288,16 @@ def test_mesh_laplacian():
         assert not (lap[diag_indices(2*n)] > 0).any()
 
 
+def test_discriminated_laplacian():
+    td = get_testdir()
+    s = Surface(op.join(td, 'in.surf.gii'))
+    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+
+    for w in range(4):
+        lap = s.discriminated_laplacian(spc, distance_weight=w, in_weight=100)
+        assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
+
+
 # def test_lbo():
 #     td = get_testdir()
 #     s = classes.Surface(op.join(td, 'in.surf.gii'))
@@ -304,6 +314,7 @@ def cmdline_complete():
                 -fslanat {fslanat} -fsdir {fsdir} -out delete"""
     sys.argv[1:] = cmd.split()
     main()     
+
 
 def test_cortex():
     td = get_testdir()
@@ -431,43 +442,5 @@ def cmdline():
     main()
 
 if __name__ == "__main__":
-    import pickle
-
-    sdir = "/Users/tom/Data/103818/T1w/fsaverage_LR32k"
-    lps = op.join(sdir, '103818.L.pial.32k_fs_LR.surf.gii')
-    lws = op.join(sdir, '103818.L.white.32k_fs_LR.surf.gii')
-    lhemi = Hemisphere(lws, lps, 'L')
-
-    rps = op.join(sdir, '103818.R.pial.32k_fs_LR.surf.gii')
-    rws = op.join(sdir, '103818.R.pial.32k_fs_LR.surf.gii')
-    rhemi = Hemisphere(rws, rps, 'R')
-
-    rois = utils._loadFIRSTdir("/Users/tom/Data/pcasl2/1.anat/first_results")
-    rois.pop('BrStem')
-    t1_spc = toblerone.ImageSpace("/Users/tom/Data/pcasl2/1.anat/T1_biascorr_brain.nii.gz")
-    for k,v in rois.items(): 
-        s = Surface(v)
-        s = s.transform(t1_spc.FSL2world)
-        rois[k] = s 
-
-    spc = toblerone.ImageSpace('/Users/tom/Data/pcasl2/raw/s01/A/calibration_body1.nii.gz')
-
-    proj = toblerone.Projector.load('proj.h5')
-    spc = proj.spc
-    spvs = proj.subcortex_pvs().flatten()
-    cpvs = proj.cortex_pvs().reshape(-1,3)
-
-    spc.save_image(proj.subcortex_pvs(), 'subcort_pvs.nii.gz')
-    spc.save_image(proj.cortex_pvs(), 'cortex_pvs.nii.gz')
-    spc.save_image(proj.pvs(), 'pvs.nii.gz')
-
-    n2v_mat = proj.node2vol_matrix(True)
-    pvs = proj.pvs().reshape(-1,3)
-    b1 = pvs[:,:2].sum(1)
-    b2 = n2v_mat.sum(1).A.flatten()
-    print((b1 - b2).max())
-
-    ndata = np.ones(proj.n_nodes)
-    # ndata[-len(rois):] = 2 
-    vdata = proj.node2vol(ndata, False)
-    spc.save_image(vdata, 'n2v.nii.gz')
+    
+    discriminated_laplacian()
