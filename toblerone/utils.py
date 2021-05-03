@@ -454,7 +454,7 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
-    assert np.all(np.abs((sums[sums > 0] - 1)) < (10 * threshold)), 'Did not normalise to 1'
+    assert np.abs((sums[sums > 0] - 1)).max() < (1e2 * threshold), 'Did not normalise to 1'
     return constructor(matrix)
 
 

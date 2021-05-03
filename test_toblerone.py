@@ -147,11 +147,14 @@ def test_projector_partial_fov():
     hemi = toblerone.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     spc = spc.resize([1,1,1], spc.size-2)
+    projector = toblerone.projection.Projector(hemi, spc, cores=8)
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
     vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
-    ndata = np.concatenate((sdata, vdata))
-    projector = toblerone.projection.Projector(hemi, spc, cores=8)
-    proj = projector.surf2vol(sdata, True)
+    # ndata = np.concatenate((sdata, vdata))
+    # proj = projector.surf2vol(sdata, True)
+
+    adj = projector.adjacency_matrix()
+    lap = projector.discriminated_laplacian(1, 100)
 
 
 def test_projector_rois():
@@ -443,4 +446,4 @@ def cmdline():
 
 if __name__ == "__main__":
     
-    discriminated_laplacian()
+    test_projector_partial_fov()

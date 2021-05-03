@@ -622,33 +622,42 @@ class Surface(object):
         if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
             raise ValueError("distance_weight must be int >= 0")
 
+        # Some vertices may not be in the voxel grid, so give them a placeholder
+        # voxel index of -1 
+        vtx_vox = self.transform(spc.world2vox).points.round().astype(np.int32)
+        vtx_in_spc = ((vtx_vox >= 0) & (vtx_vox < spc.size)).all(-1)
+        vtx_vox_idx = -1 * np.ones(vtx_in_spc.shape[0], dtype=np.int32)
+        vtx_vox_idx[vtx_in_spc] = np.ravel_multi_index(vtx_vox[vtx_in_spc,:].T, spc.size)
+
+        # All the edge vectors of the surface 
         edge_pairs = np.array([
             np.concatenate((self.tris[:,0], self.tris[:,1], self.tris[:,2])), 
             np.concatenate((self.tris[:,1], self.tris[:,2], self.tris[:,0]))
         ])
-        row, col = edge_pairs
+        start, end = edge_pairs
 
-        vtx_vox = self.transform(spc.world2vox).points.round().astype(np.int32)
-        vtx_vox_idx = np.ravel_multi_index(vtx_vox.T, spc.size)
-        
+        # Inverse distance weighting of power n 
         if distance_weight > 0: 
-            dists = np.linalg.norm(self.points[row,:] - self.points[col,:], 
+            dists = np.linalg.norm(self.points[start,:] - self.points[end,:], 
                                         ord=2, axis=-1).flatten()
             dists = 1 / (dists ** distance_weight)
         else:
-            dists = np.ones(row.size, dtype=np.int32)
+            dists = np.ones(start.size, dtype=np.int32)
 
         # If the start/end of an edge is the same voxel, then full weight 
         # if different voxels, downweight it
         in_weights = in_weight * np.ones_like(dists)
-        in_weights[vtx_vox_idx[row] != vtx_vox_idx[col]] = 1 
-
+        in_weights[vtx_vox_idx[start] != vtx_vox_idx[end]] = 1 
         weights = dists * in_weights
-        adj = sparse.coo_matrix((weights, (row, col)), 
+
+        # Knock out edges where at least one vertex isn't in the voxel grid 
+        fltr = (vtx_vox_idx[start] >= 0) & (vtx_vox_idx[end] >= 0)
+        start = start[fltr]
+        end = end[fltr]
+        weights = weights[fltr]
+        adj = sparse.coo_matrix((weights, (start, end)), 
                 shape=(self.n_points, self.n_points))
 
-        if distance_weight == 0: 
-            assert adj.max() == 1
         assert is_symmetric(adj), 'Adjacency should be symmetric'
 
         # The diagonal is the negative sum of other elements 

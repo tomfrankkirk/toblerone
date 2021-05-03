@@ -314,7 +314,17 @@ class Projector(object):
                 distance between vertices. 
         """ 
 
-        mats = [ h.adjacency_matrix(distance_weight) for h in self.iter_hemis ]
+        mats = []
+        for hemi in self.iter_hemis: 
+            midsurf = hemi.midsurface() 
+            a = midsurf.adjacency_matrix(distance_weight).tolil()
+            verts_vox = utils.affine_transform(midsurf.points, self.spc.world2vox).round()
+            verts_in_spc = ((verts_vox >= 0) & (verts_vox < self.spc.size)).all(-1)
+            a[~verts_in_spc,:] = 0 
+            a[:,~verts_in_spc] = 0 
+            assert utils.is_symmetric(a)
+            mats.append(a)
+
         return sparse.block_diag(mats, format="csr")
 
 
