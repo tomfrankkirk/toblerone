@@ -86,7 +86,7 @@ class Projector(object):
 
             # If PV estimates are not present, then compute from scratch 
             if hasattr(hemi, 'pvs'): 
-                print("WARNING: PVs should ideally be recalculated from scratch")
+                # print("WARNING: PVs should ideally be recalculated from scratch")
                 self._hemi_pvs.append(hemi.pvs.reshape(-1,3))
             else: 
                 supersampler = np.maximum(np.floor(spc.vox_size.round(1)/0.75), 
