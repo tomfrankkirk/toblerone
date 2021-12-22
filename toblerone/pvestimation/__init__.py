@@ -35,7 +35,7 @@ def cortex(ref, struct2ref, **kwargs):
  
     Returns: 
         (np.array), 4D, size equal to the reference image, with the PVs arranged 
-            GM/WM/non-brain in 4th dim. 
+            GM/WM/non-brain in 4th dim.
     """
 
     if not any([

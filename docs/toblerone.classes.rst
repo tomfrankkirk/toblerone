@@ -28,7 +28,6 @@ toblerone.classes.surfaces module
    :undoc-members:
    :show-inheritance:
 
-
 Module contents
 ---------------
 

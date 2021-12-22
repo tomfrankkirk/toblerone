@@ -1,11 +1,12 @@
 """
-Toblerone surface-volume projection functions
+Projection between surface, volume and hybrid spaces 
 """
 
 import multiprocessing as mp 
 import copy
 import os
 from textwrap import dedent
+import warnings 
 
 import numpy as np 
 from scipy import sparse 
@@ -108,149 +109,161 @@ class Projector(object):
             self.vtx_tri_mats.append(vtx_tri)
 
     
-    def transform(self, trans, spc=None, factor=None, cores=mp.cpu_count(), ones=False):
-        
-        if spc is None: spc = self.spc 
-        t = rt.Registration(trans)
-        new_pvs = [ t.apply_to_array(pv.reshape(*spc.size,3), 
-                                     self.spc, spc, cores=cores, 
-                                     order=1
-                                    ).reshape(-1,3)
-                    for pv in self._hemi_pvs ]
+    # Currently disabled - it is STRONGLY recommended to generate a new projector
+    # from scratch instead of transforming an exisitng one (apply the transform
+    # to the surfaces themselves)
+    # def transform(self, trans, spc=None, factor=None, cores=mp.cpu_count(), ones=False):
 
-        if factor is None:
-            factor = np.ceil(3 * spc.vox_size)
-        factor = (factor * np.ones(3)).astype(np.int32)
+    #     if spc is None: spc = self.spc 
+    #     t = rt.Registration(trans)
+    #     new_pvs = [ t.apply_to_array(pv.reshape(*spc.size,3), 
+    #                                  self.spc, spc, cores=cores, 
+    #                                  order=1
+    #                                 ).reshape(-1,3)
+    #                 for pv in self._hemi_pvs ]
 
-        proj = Projector.__new__(Projector)
-        proj.hemi_dict = { h.side: h.transform(trans) for h in self.iter_hemis }
-        proj.spc = spc 
-        proj._hemi_pvs = new_pvs
-        proj.vox_tri_mats = [] 
-        proj.vtx_tri_mats = []
-        ncores = cores if any([ h.inSurf._use_mp for h in self.iter_hemis ]) else 1 
+    #     if factor is None:
+    #         factor = np.ceil(3 * spc.vox_size)
+    #     factor = (factor * np.ones(3)).astype(np.int32)
 
-        proj._assemble_vtx_vox_mats(factor, ncores, ones)
-        return proj 
+    #     proj = Projector.__new__(Projector)
+    #     proj.hemi_dict = { h.side: h.transform(trans) for h in self.iter_hemis }
+    #     proj.spc = spc 
+    #     proj._hemi_pvs = new_pvs
+    #     proj.vox_tri_mats = [] 
+    #     proj.vtx_tri_mats = []
+    #     ncores = cores if any([ h.inSurf._use_mp for h in self.iter_hemis ]) else 1 
+
+    #     proj._assemble_vtx_vox_mats(factor, ncores, ones)
+    #     return proj 
 
 
     def save(self, path):
-        """
-        Save Projector in HDF5 format. This is useful if multiple analyses are
-        to be performed with the same voxel grid and cortical surfaces, as it
-        will avoid performing the same computations on each run. 
+        """Save Projector in HDF5 format. 
+
+        A projector can be re-used for multiple analyses, assuming the reference 
+        image space and cortical surfaces remain in alignment for all data. 
+
+        Args: 
+            path (str): path to write out with .h5 extension 
         """
 
         d = os.path.dirname(path)
         if d: os.makedirs(d, exist_ok=True)
-        f = h5py.File(path, 'w')      
+        with h5py.File(path, 'w') as f:    
 
-        # Save properties of the reference ImageSpace: vox2world, size
-        # and filename 
-        f.create_dataset('ref_spc_vox2world', data=self.spc.vox2world)
-        f.create_dataset('ref_spc_size', data=self.spc.size)
-        if self.spc.fname: 
-            f.create_dataset('ref_spc_fname', data=np.array(
-                self.spc.fname.encode("utf-8")), 
-                dtype=h5py.string_dtype('utf-8'))
+            # Save properties of the reference ImageSpace: vox2world, size
+            # and filename 
+            f.create_dataset('ref_spc_vox2world', data=self.spc.vox2world)
+            f.create_dataset('ref_spc_size', data=self.spc.size)
+            if self.spc.fname: 
+                f.create_dataset('ref_spc_fname', data=np.array(
+                    self.spc.fname.encode("utf-8")), 
+                    dtype=h5py.string_dtype('utf-8'))
 
-        # Each hemisphere is a group within the file (though there may 
-        # only be 1)
-        for idx,h in enumerate(self.iter_hemis): 
+            # Each hemisphere is a group within the file (though there may 
+            # only be 1)
+            for idx,h in enumerate(self.iter_hemis): 
 
-            side = h.side 
-            g = f.create_group(f"{side}_hemi")
-            g.create_dataset(f"{side}_pvs", data=self._hemi_pvs[idx], compression='gzip')
+                side = h.side 
+                g = f.create_group(f"{side}_hemi")
+                g.create_dataset(f"{side}_pvs", data=self._hemi_pvs[idx], 
+                                                compression='gzip')
 
-            # Sparse matrices cannot be save in HDF5, so convert them 
-            # to COO and then save as a 3 x N array, where the top row
-            # is row indices, second is columns, and last is data. 
-            voxtri = self.vox_tri_mats[idx].tocoo()
-            voxtri = np.vstack((voxtri.row, voxtri.col, voxtri.data)) 
-            g.create_dataset(f"{side}_vox_tri", data=voxtri, compression='gzip')
+                # Sparse matrices cannot be save in HDF5, so convert them 
+                # to COO and then save as a 3 x N array, where the top row
+                # is row indices, second is columns, and last is data. 
+                voxtri = self.vox_tri_mats[idx].tocoo()
+                voxtri = np.vstack((voxtri.row, voxtri.col, voxtri.data)) 
+                g.create_dataset(f"{side}_vox_tri", data=voxtri, 
+                                                    compression='gzip')
 
-            # Same again: top row is row indices, then cols, then data 
-            vtxtri = self.vtx_tri_mats[idx].tocoo()
-            vtxtri = np.vstack((vtxtri.row, vtxtri.col, vtxtri.data))
-            g.create_dataset(f"{side}_vtx_tri", data=vtxtri, compression='gzip')
+                # Same again: top row is row indices, then cols, then data 
+                vtxtri = self.vtx_tri_mats[idx].tocoo()
+                vtxtri = np.vstack((vtxtri.row, vtxtri.col, vtxtri.data))
+                g.create_dataset(f"{side}_vtx_tri", data=vtxtri, 
+                                                    compression='gzip')
 
-            # Finally, save the surfaces of each hemisphere, named
-            # as LPS,RPS,LWS,RWS. 
-            for k,s in h.surf_dict.items(): 
-                g.create_dataset(f"{k}_tris", data=s.tris, compression='gzip')
-                g.create_dataset(f"{k}_points", data=s.points, compression='gzip')
+                # Finally, save the surfaces of each hemisphere, named
+                # as LPS,RPS,LWS,RWS. 
+                for k,s in h.surf_dict.items(): 
+                    g.create_dataset(f"{k}_tris", data=s.tris, 
+                                                  compression='gzip')
+                    g.create_dataset(f"{k}_points", data=s.points, 
+                                                    compression='gzip')
 
-        # Save subcortical ROI pvs 
-        if self._roi_pvs: 
-            g = f.create_group("subcortical_pvs")
-            for k,v in self._roi_pvs.items(): 
-                g.create_dataset(k, data=v, compression='gzip')
-
-        f.close()
+            # Save subcortical ROI pvs 
+            if self._roi_pvs: 
+                g = f.create_group("subcortical_pvs")
+                for k,v in self._roi_pvs.items(): 
+                    g.create_dataset(k, data=v, compression='gzip')
 
     
     @classmethod
     def load(cls, path):
-        """
-        Load Projector from path in HDF5 format. This is useful for 
-        performing repeated analyses with the same voxel grid and 
-        cortical surfaces.
+        """Load Projector from path in HDF5 format. 
+        
+        This is useful for performing repeated analyses with the same voxel 
+        grid and cortical surfaces.
+
+        Args: 
+            path (str): path to load from 
         """
         
-        f = h5py.File(path, 'r')
-        p = cls.__new__(cls)
+        with h5py.File(path, 'r') as f: 
+            p = cls.__new__(cls)
 
-        # Recreate the reference ImageSpace first 
-        p.spc = ImageSpace.manual(f['ref_spc_vox2world'][()],
-                                f['ref_spc_size'][()])
-        if 'ref_spc_fname' in f: p.spc.fname = f['ref_spc_fname'][()]
-        n_vox = p.spc.size.prod()
+            # Recreate the reference ImageSpace first 
+            p.spc = ImageSpace.manual(f['ref_spc_vox2world'][()],
+                                    f['ref_spc_size'][()])
+            if 'ref_spc_fname' in f: p.spc.fname = f['ref_spc_fname'][()]
+            n_vox = p.spc.size.prod()
 
-        # Now read out hemisphere specific properties 
-        p._hemi_pvs = [] 
-        p.vox_tri_mats = [] 
-        p.vtx_tri_mats = []
-        p.hemi_dict = {} 
-        p._roi_pvs = {}
+            # Now read out hemisphere specific properties 
+            p._hemi_pvs = [] 
+            p.vox_tri_mats = [] 
+            p.vtx_tri_mats = []
+            p.hemi_dict = {} 
+            p._roi_pvs = {}
 
-        for s in SIDES: 
-            hemi_key = f"{s}_hemi"
-            if hemi_key in f: 
+            for s in SIDES: 
+                hemi_key = f"{s}_hemi"
+                if hemi_key in f: 
 
-                # Read out the surfaces, create the Hemisphere 
-                ins, outs = [ Surface.manual(
-                    f[hemi_key][f'{s}{n}S_points'][()], 
-                    f[hemi_key][f'{s}{n}S_tris'][()], f'{s}{n}S')
-                    for n in ['W', 'P'] ]
-                p.hemi_dict[s] = Hemisphere(ins, outs, s)
+                    # Read out the surfaces, create the Hemisphere 
+                    ins, outs = [ Surface.manual(
+                        f[hemi_key][f'{s}{n}S_points'][()], 
+                        f[hemi_key][f'{s}{n}S_tris'][()], f'{s}{n}S')
+                        for n in ['W', 'P'] ]
+                    p.hemi_dict[s] = Hemisphere(ins, outs, s)
 
-                # Read out the PVs array for the hemi 
-                p._hemi_pvs.append(f[hemi_key][f"{s}_pvs"][()])
+                    # Read out the PVs array for the hemi 
+                    p._hemi_pvs.append(f[hemi_key][f"{s}_pvs"][()])
 
-                # Recreate the sparse voxtri and vtxtri matrices. 
-                # They are stored as a 3 x N array, where top row 
-                # is row indices, second is column, then data 
-                voxtri = f[hemi_key][f"{s}_vox_tri"][()]
-                assert voxtri.shape[0] == 3, 'expected 3 rows'
-                voxtri = sparse.coo_matrix(
-                    (voxtri[2,:], (voxtri[0,:], voxtri[1,:])),
-                    shape=(n_vox, ins.tris.shape[0]))
-                p.vox_tri_mats.append(voxtri.tocsr())
+                    # Recreate the sparse voxtri and vtxtri matrices. 
+                    # They are stored as a 3 x N array, where top row 
+                    # is row indices, second is column, then data 
+                    voxtri = f[hemi_key][f"{s}_vox_tri"][()]
+                    assert voxtri.shape[0] == 3, 'expected 3 rows'
+                    voxtri = sparse.coo_matrix(
+                        (voxtri[2,:], (voxtri[0,:], voxtri[1,:])),
+                        shape=(n_vox, ins.tris.shape[0]))
+                    p.vox_tri_mats.append(voxtri.tocsr())
 
-                # Same convention as above
-                vtxtri = f[hemi_key][f"{s}_vtx_tri"][()]
-                assert vtxtri.shape[0] == 3, 'expected 3 rows'
-                vtxtri = sparse.coo_matrix(
-                    (vtxtri[2,:], (vtxtri[0,:], vtxtri[1,:])),
-                    shape=(ins.n_points, ins.tris.shape[0]))
-                p.vtx_tri_mats.append(vtxtri.tocsr())
+                    # Same convention as above
+                    vtxtri = f[hemi_key][f"{s}_vtx_tri"][()]
+                    assert vtxtri.shape[0] == 3, 'expected 3 rows'
+                    vtxtri = sparse.coo_matrix(
+                        (vtxtri[2,:], (vtxtri[0,:], vtxtri[1,:])),
+                        shape=(ins.n_points, ins.tris.shape[0]))
+                    p.vtx_tri_mats.append(vtxtri.tocsr())
 
-        if "subcortical_pvs" in f: 
-            g = f["subcortical_pvs"]
-            for k in sorted(g.keys()): 
-                p._roi_pvs[k] = g[k][()]
+            if "subcortical_pvs" in f: 
+                g = f["subcortical_pvs"]
+                for k in sorted(g.keys()): 
+                    p._roi_pvs[k] = g[k][()]
 
-        return p 
+            return p 
 
 
     def __repr__(self):
@@ -272,6 +285,7 @@ class Projector(object):
 
     @property
     def n_hemis(self):
+        """Number of hemispheres (1/2) in projector"""
         return len(self.hemi_dict)
 
 
@@ -283,27 +297,31 @@ class Projector(object):
 
     @property
     def n_surf_nodes(self):
+        """Number of surface vertices in projector (one or both hemis)"""
         return sum([ h.n_points for h in self.iter_hemis ])
 
 
     @property 
     def n_nodes(self): 
+        """Number of nodes in projector (surface, voxels, subcortical ROIs)"""
         return sum([ self.spc.size.prod(), self.n_surf_nodes, len(self._roi_pvs) ])
 
 
     @property 
     def n_subcortical_nodes(self):
+        """Number of subcortical ROIs"""
         return len(self._roi_pvs)
 
     
     @property
     def roi_names(self):
+        """List of names for subcortical ROIs"""
         return list(self._roi_pvs.keys())
 
 
     def adjacency_matrix(self, distance_weight=0):
-        """
-        Overall adjacency matrix for all surface vertices of projector. 
+        """Adjacency matrix for all surface vertices of projector.
+
         If there are two hemispheres present, the matrix indices will 
         be arranged L,R.  
 
@@ -329,8 +347,8 @@ class Projector(object):
 
 
     def mesh_laplacian(self, distance_weight=0):
-        """
-        Overall mesh Laplacian matrix for all surface vertices of projector. 
+        """Mesh Laplacian matrix for all surface vertices of projector. 
+
         If there are two hemispheres present, the matrix indices will be 
         arranged L/R. 
 
@@ -339,12 +357,30 @@ class Projector(object):
                 0 (do not weight, all egdes are unity), whereas positive
                 values will weight edges by 1 / d^n, where d is geometric 
                 distance between vertices. 
+
+        Returns: 
+            sparse CSR matrix 
         """
 
         mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
     def discriminated_laplacian(self, distance_weight=0, in_weight=100):
+        """Discriminated Laplacian for all surface vertices of projector. 
+
+        The discriminated Laplacian is a variant of the inverse distance 
+        Laplacian, where connections between nodes in the same voxel are
+        multiplied by ``in_weight``. This is experimental functionality. 
+
+        Args: 
+            distance_weight (int/float): connections will be 1/d^n, where
+                d is the distance between nodes and n is the ``distance_weight``
+            in_weight (int/float): multiply within-voxel connections by
+                this value 
+
+        Returns: 
+            sparse CSR matrix
+        """
 
         mats = [ h.discriminated_laplacian(self.spc, 
                  distance_weight, in_weight) 
@@ -352,12 +388,10 @@ class Projector(object):
         return sparse.block_diag(mats, format="csr")
 
     def cortex_pvs(self):
-        """
-        Combine PV estimates from one or both hemispheres (if available) into 
-        single map. 
+        """Single Vx3 array of cortex PVs for all hemispheres of Projector. 
 
         Returns: 
-            array of PVs, same shape as reference space, arranged GM, WM, 
+            np.array: same shape as reference space, arranged GM, WM, 
                 non-brain in 4th dim. 
         """
         if len(self._hemi_pvs) > 1:
@@ -372,8 +406,10 @@ class Projector(object):
 
 
     def subcortex_pvs(self):
-        """
-        TODO
+        """Flattened 3D array of interior/exterior PVs for all ROIs.
+        
+        Returns: 
+            np.array: same shape as ``self.ref_spc``
         """
 
         if self._roi_pvs:
@@ -384,8 +420,11 @@ class Projector(object):
 
 
     def pvs(self):
-        """
-        TODO
+        """Flattened 4D array of PVs for cortex, subcortex and ROIs. 
+
+        Returns: 
+            np.array: same shape as reference space, arranged GM, WM, 
+                non-brain in 4th dim. 
         """
 
         pvs = np.zeros((self.spc.size.prod(), 3))

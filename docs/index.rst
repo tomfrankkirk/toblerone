@@ -7,52 +7,45 @@ Surface-based analysis tools
 Installation
 -----------------
 
-Cython and numpy need to be installed prior to running pip: 
+Cython and numpy must be installed prior to running pip: 
 
 .. code-block:: python
 
     python -m pip install cython numpy
     python -m pip install toblerone
 
+Usage 
+-----------
 
-Usage from command line
--------------------------
+Toblerone has two broad use cases:
 
-Run ``toblerone -h`` to see available commands and help info. 
+1. :ref:`Partial volume estimation <pvestimation-index>` using surface segmentations 
+2. :ref:`Projection <projection-index>` of data between volume, surface and hybrid spaces. 
 
+Run ``toblerone -h`` to see available commands and help info. Toblerone can also be used within python scripts.
 
-Usage from Python: PV estimation
-----------------------------------
+Citation 
+----------- 
 
-Toblerone can estimate partial volumes (PVs) across the brain using surface segmentations (for example, those from FreeSurfer and FSL FIRST). This can be used as a direct replacement for tools such as FSL FAST. 
-The following functions are available in :mod:`toblerone.pvestimation`: 
+If you use Toblerone in your work, please include the following citation: 
 
-   * :func:`toblerone.pvestimation.estimation.cortex`: estimate PVs for one/both hemispheres of the cortex
-   * :func:`toblerone.pvestimation.estimation.structure`: estimate PVs for a structure delineated by a single surface, eg thalamus 
-   * :func:`toblerone.pvestimation.estimation.all`: estimate PVs across the whole brain, including subcortical structures identified by FSL FIRST 
-
-
-Parial volume correction 
-----------------------------
-
-Toblerone has been integrated with `oxasl` to provide PV correction via the spatial Variational Bayesian method. See [oxasl](#https://github.com/ibme-qubic/oxasl) and [oxasl_surfpvc](#https://github.com/ibme-qubic/oxasl_surfpvc). 
-
-Usage from Python: PV estimation
-------------------------------------
-
-This is work in progress. 
+T. F. Kirk, T. S. Coalson, M. S. Craig and M. A. Chappell, “Toblerone: Surface-Based Partial Volume Estimation,” in IEEE Transactions on Medical Imaging, vol. 39, no. 5, pp. 1501-1510, May 2020, `doi: 10.1109/TMI.2019.2951080. <https://ieeexplore.ieee.org/document/8892523>`_.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
+   :hidden:
 
-   PV estimation <pvestimation>
-   Projection <projection>
-   API index <modules> 
+   pvestimation
+   projection
+   Classes <toblerone.classes>
+   Submodules <modules>
+.. Partial volume estimation <pvestimation>
+.. Projection <projection>
+.. Module index <modules>
 
+.. Indices and tables
+.. ==================
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. * :ref:`genindex`
+.. * :ref:`modindex`
+.. * :ref:`search`

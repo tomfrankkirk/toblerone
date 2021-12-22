@@ -1,9 +1,43 @@
+.. _projection-index:
+
 Projection 
 =============
 
-Toblerone provides functions for projecting data between volumetric and surface-based representations. These have been developed for use in neuroimaging, and hence are intimately related to the *partial volume effect* that is the other main focus of this module. 
+Spaces of data representation
+-------------------------------
+Toblerone can project data between different *spaces*, as explained below. 
 
-Within the context of imaging on the cortex, the region of interest is a narrow ribbon that is bounded by the pial (outer) and white (inner) surfaces of the brain. 
+1.  **Volume**: the conventional analysis space for MRI data, this can be any 3D voxel grid as defined by a NIFTI header, for example. This space is best for the study of the subcortex. 
+2. **Surface**: particularly well-suited to the study of the cortex, this is a 2D topological sphere (ie, closed surface) defined by a cortical surface reconstruction (ie, the output of FreeSurfer)
+3. **Hybrid**: this is the union of the volume and surface spaces into a single data representation. It includes all voxels of interest for the subcortex, all surface vertices for the cortex, and (optionally) any subcortical regions of interest (ROI). This concept is very similar, but not indetical, to the HCP's concept of *grayordinates*, which is embodied in the CIFTI file format. 
+
+The Projector object 
+----------------------
+Any projection of data between spaces is handled by a `Projector` object. A `Projector` encapsulates the geometric relationship between the surfaces of the cortex (one or both hemispheres) and *one specific voxel grid*. Once initialised (a slow process, due to the need to perform many geometric computations), a `Projector` can be used to project any data that is in alignment with the cortical surfaces and exists in the correct voxel grid. This means that you can re-use a `Projector` for multiple acquisitions, if the data is in alignment. 
+
+.. warning:: 
+   Toblerone **does not perform registration** between cortical surfaces and volumetric data. When creating a `Projector`, it is assumed that the surfaces are in alignment 
+   with the data to be projected. If you have the necessary registration matrices, you can apply them to the surfaces using the `Surface.transform()` method before creating a `Projector`. This is preferred to transforming the data itself, which creates interpolation artefacts. 
+
+.. warning:: 
+   A `Projector` is only valid for the voxel grid with which it is created. If data from another grid is to be projected (eg, an acquisition with a different resolution), then a new `Projector` must be created for that voxel grid. 
+
+The basic steps of creating and using a `Projector` are as follows: 
+1. Create the `Projector` for the cortical surfaces and voxel grid of interest. This can take around 15 minutes.  
+2. It is strongly recommended at this point to save the projector. This avoids having to re-create it from scratch at a later date and saves time.
+3. Choose the correct projection method on the `Projector`: `vol2surf()`, `surf2vol()`, `node2vol()`, `vol2node()`
+4. Call the appropriate method with the vector of data to be projected. 
+
+**Surface projection** is achieved with the `vol2surf()` and `surf2vol()` methods. 
+
+**Hybrid projection** is achieved with the `vol2node()` and `node2vol()` methods. 
+
+.. note::
+   Edge scaling is optional for all projection methods, in all spaces. It reflects the presence of PVE in creating *missing* signal in voxels that are less than 100% brain tissue. 
+
+   In the surface to volume direction, edge scaling is on by default and will reduce the final voxel signal where the brain tissue PV in that voxel is less than 100%. 
+
+   In the volume to surface direction, edge scaling is off by default and will (if enabled) increase the final surface signal where the corresponding voxels have brain tissue PVs less than 100%. This accounts for the *missing* signal that would have been acquired if there were no PVE. NB in this direction, edge scaling is a poorly-conditioned operation that will amplify noise. 
 
 .. automodule:: toblerone.projection
    :members:

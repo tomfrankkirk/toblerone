@@ -7,10 +7,8 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   toblerone.pvestimation
-   toblerone.projection
    toblerone.classes
-
+   toblerone.pvestimation
 
 Submodules
 ----------
@@ -54,7 +52,6 @@ toblerone.utils module
    :members:
    :undoc-members:
    :show-inheritance:
-
 
 Module contents
 ---------------

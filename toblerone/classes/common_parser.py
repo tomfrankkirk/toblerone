@@ -40,9 +40,8 @@ class CommonParser(argparse.ArgumentParser):
             
         if 'struct2ref' in args_to_add: 
             general.add_argument('-struct2ref', required=True,
-                help="""path to registration from the source image of 
-                    the surfaces to the reference image. Use 'I' to 
-                    denote identity transform.""")
+                help="""path to registration to align surfaces with reference
+                image. Use 'I' to denote identity transform.""")
     
         if 'flirt' in args_to_add: 
             general.add_argument('-flirt', action='store_true', required=False,
@@ -64,7 +63,7 @@ class CommonParser(argparse.ArgumentParser):
         if 'fsdir' in args_to_add: 
             fsgroup.add_argument('-fsdir', required=False,
                 help="path to FreeSurfer subject directory, from which /surf "
-                "will be loaded, or provide LPS/LWS/RPS/RWS")
+                "will be loaded, or provide -LPS/LWS/RPS/RWS")
 
         if 'LWS' in args_to_add: 
             fsgroup.add_argument('-LWS', required=False,
@@ -76,7 +75,7 @@ class CommonParser(argparse.ArgumentParser):
 
         if 'RWS' in args_to_add: 
             fsgroup.add_argument('-RWS', required=False,
-                help="alternative to -fsdir, path to right whtie surface")
+                help="alternative to -fsdir, path to right white surface")
 
         if 'RPS' in args_to_add: 
             fsgroup.add_argument('-RPS', required=False,
@@ -86,7 +85,7 @@ class CommonParser(argparse.ArgumentParser):
         anatgroup = self.add_argument_group("subcortical surfaces and segmentations")
         if 'fslanat' in args_to_add: 
             anatgroup.add_argument('-fslanat', type=str, required=False, 
-                help="path to fslanat dir (replaces firstdir/fastdir")
+                help="path to fslanat dir (replaces firstdir/fastdir)")
 
         if 'firstdir' in args_to_add:
             anatgroup.add_argument('-firstdir', type=str, required=False, 
@@ -96,7 +95,8 @@ class CommonParser(argparse.ArgumentParser):
         if 'fastdir' in args_to_add: 
             anatgroup.add_argument('-fastdir', type=str, required=False,
                 help="""replaces -fslanat, path to directory with
-                    FAST outputs.""")
+                    FAST outputs. Note that -struct2ref transform will 
+                    also be applied""")
 
 
         misc = self.add_argument_group("other arguments")
