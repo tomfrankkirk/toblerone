@@ -8,7 +8,7 @@ from toblerone._version import __version__
 suffix = (
 f"""
 version {__version__}
-Tom Kirk, thomas.kirk@eng.ox.ac.uk
+Tom Kirk,
 Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging,
 University of Oxford, 2018
 """)
