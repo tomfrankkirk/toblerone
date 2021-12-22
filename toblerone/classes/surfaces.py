@@ -282,7 +282,7 @@ class Surface(object):
         
         cores = cores if self._use_mp else 1
         if ones: 
-            self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=np.bool) 
+            self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=bool) 
         else: 
             self.fractions = core._estimateFractions(self, supersampler, 
                                                         desc, cores)
@@ -351,7 +351,7 @@ class Surface(object):
             cores (int): CPU cores to use
 
         Returns
-            (np.bool): flat array of voxels contained within surface
+            (bool): flat array of voxels contained within surface
         """
 
         if self.indexed is None: 
@@ -409,7 +409,7 @@ class Surface(object):
         # Else, we can just return the mask as-is. 
         if space != self.indexed.space: 
             src_inds, dest_inds = self.reindexing_filter(space, False)
-            mask = np.zeros(space.size.prod(), dtype=np.bool)
+            mask = np.zeros(space.size.prod(), dtype=bool)
             mask[dest_inds] = src_mask[src_inds]    
         else: 
             mask = src_mask 
@@ -667,7 +667,8 @@ class Surface(object):
         laplacian = adj - laplacian
 
         assert np.abs(laplacian.sum(1)).max() < 1e-3, 'Unweighted laplacian'
-        assert utils.is_nsd(laplacian), 'Not negative semi-definite'
+        # FIXME: the eigs test required by nsd crashes for in_weight > 10 
+        # assert utils.is_nsd(laplacian), 'Not negative semi-definite'
         assert utils.is_symmetric(laplacian), 'Not symmetric'
 
         return laplacian.tocsr()

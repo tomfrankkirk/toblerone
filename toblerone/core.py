@@ -193,7 +193,7 @@ def _formAssociationsWorker(tris, points, grid_size, triInds):
     """
 
     vox_size = np.array([0.5, 0.5, 0.5], dtype=NP_FLOAT)
-    assocs = sparse.dok_matrix((grid_size.prod(), tris.shape[0]), dtype=np.bool)
+    assocs = sparse.dok_matrix((grid_size.prod(), tris.shape[0]), dtype=bool)
 
     for t in triInds:
 
@@ -1038,7 +1038,7 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
             # double counting within the polyhedra (although in theory this 
             # shouldn't happen). Hull formation can fail due to geometric 
             # degeneracy so wrap it up in a try block 
-            samps_in = np.zeros(v_samps.shape[0], dtype=np.bool)
+            samps_in = np.zeros(v_samps.shape[0], dtype=bool)
             for tet in tets: 
                 try: 
                     hull = Delaunay(hull_ps[tet,:])
