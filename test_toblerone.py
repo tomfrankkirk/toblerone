@@ -102,7 +102,7 @@ def test_projection():
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
     vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
     ndata = np.concatenate((sdata, vdata))
-    projector = toblerone.projection.Projector(hemi, spc, 10)
+    projector = toblerone.projection.Projector(hemi, spc, factor=10)
 
     # volume to surface 
     v2s = projector.vol2surf(vdata, False)
@@ -221,7 +221,7 @@ def test_proj_properties():
     for h,s in zip(proj.iter_hemis, ['L', 'R']):
         assert h.side == s 
 
-    assert proj.n_surf_points == 2 * ins.n_points
+    assert proj.n_surf_nodes == 2 * ins.n_points
 
 
 def test_hemi_init():
@@ -301,14 +301,6 @@ def test_discriminated_laplacian():
         assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
 
 
-# def test_lbo():
-#     td = get_testdir()
-#     s = classes.Surface(op.join(td, 'in.surf.gii'))
-#     for area in ['barycentric', 'voronoi', 'mayer']:
-#         lbo = s.laplace_beltrami(area)
-#         assert (lbo[np.diag_indices(lbo.shape[0])] < 0).min(), 'positive diag'
-
-
 def cmdline_complete():
     fslanat = "/Users/tom/Data/pcasl2/1.anat"
     ref = fslanat + "/T1.nii.gz"
@@ -364,7 +356,7 @@ def test_structure():
     ins = Surface(op.join(td, 'in.surf.gii'), name='L')
     s2r = np.identity(4)
 
-    fracs = pvestimation.structure(surf=op.join(td, 'in.surf.gii'), ref=spc, struct2ref=s2r, cores=1, flirt=True, coords='fsl', struct=op.join(td, 'ref.nii.gz'))
+    fracs = pvestimation.structure(surf=op.join(td, 'in.surf.gii'), ref=spc, struct2ref=s2r, cores=1, struct=op.join(td, 'ref.nii.gz'))
 
     superfactor = 10
     spc_high = spc.resize_voxels(1.0/superfactor)
@@ -382,7 +374,6 @@ def test_structure():
     np.testing.assert_array_almost_equal(fracs, truth, 2)
 
     
-
 def test_sparse_normalise():
     mat = sparse.random(5000, 5000, 0.1)
     thr = 1e-12
@@ -402,7 +393,7 @@ def test_projector_hdf5():
     proj.save('proj.h5')
     proj2 = toblerone.Projector.load('proj.h5')
 
-    assert np.array_equiv(proj.pvs, proj2.pvs)
+    assert np.array_equiv(proj.pvs(), proj2.pvs())
     assert np.array_equiv(proj.spc, proj2.spc)
     assert np.array_equiv(proj.vox_tri_mats[0].data, 
                           proj2.vox_tri_mats[0].data)
@@ -425,25 +416,10 @@ def test_projector_cmdline():
     os.remove('proj.h5')
 
 
-def test_transform_projector():
-    td = get_testdir()
-    ins = op.join(td, 'in.surf.gii')
-    outs = op.join(td, 'out.surf.gii')
-    hemi = toblerone.Hemisphere(ins, outs, 'L')
-    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    proj = toblerone.Projector(hemi, spc)
-
-    # proj = toblerone.Projector.load('temp.h5')
-    trans = np.eye(4)
-    trans[:3,3] = 0.4 * np.random.rand(3)
-    proj2 = proj.transform(trans, spc)
-
-    assert (proj.surf2vol_matrix(False) != proj2.surf2vol_matrix(False)).A.any()
-
 def cmdline(): 
     # sys.argv[1:] = ['-estimate-cortex']
     main()
 
 if __name__ == "__main__":
     
-    test_projector_partial_fov()
+    test_structure()
