@@ -13,9 +13,9 @@
 import os
 import sys
 
-# sys.path.insert(1, '..')
-# from setup import get_version
-from toblerone import ctoblerone
+import toblerone.ctoblerone
+sys.path.insert(1, '..')
+from setup import get_version
 
 # -- Project information -----------------------------------------------------
 
@@ -24,7 +24,7 @@ copyright = '2020, Tom Kirk'
 author = 'Tom Kirk'
 
 # The full version, including alpha/beta/rc tags
-# release = get_version()
+release = get_version()
 
 
 # -- General configuration ---------------------------------------------------
@@ -41,7 +41,7 @@ extensions = [
 ]
 
 autodoc_member_order = 'bysource'
-autodoc_mock_imports = ['Cython', 'fslpy', 'meshio', 'pyvista', 'toblerone.ctoblerone']
+autodoc_mock_imports = ['Cython', 'fslpy', 'meshio', 'pyvista']
 
 
 # Add any paths that contain templates here, relative to this directory.
