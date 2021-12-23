@@ -476,7 +476,7 @@ class Projector(object):
         return v2s_mat 
 
 
-    def vol2node_matrix(self, edge_scale): 
+    def vol2hybrid_matrix(self, edge_scale): 
         """
         Volume to node space projection matrix. 
 
@@ -588,7 +588,7 @@ class Projector(object):
         return s2v_mat  
 
 
-    def node2vol_matrix(self, edge_scale): 
+    def hybrid2vol_matrix(self, edge_scale): 
         """
         Node space to volume projection matrix. 
 
@@ -695,7 +695,7 @@ class Projector(object):
         return s2v_mat.dot(sdata)
 
 
-    def vol2node(self, vdata, edge_scale):
+    def vol2hybrid(self, vdata, edge_scale):
         """
         Project data from volume to node space. 
 
@@ -712,14 +712,14 @@ class Projector(object):
                 Surface vertices are arranged L then R. 
         """
 
-        v2n_mat = self.vol2node_matrix(edge_scale)
+        v2n_mat = self.vol2hybrid_matrix(edge_scale)
         if vdata.shape[0] != v2n_mat.shape[1]: 
             raise RuntimeError("vdata must have the same number of rows as" +
                 " nodes (voxels+vertices) in the reference ImageSpace")
         return v2n_mat.dot(vdata)
 
 
-    def node2vol(self, ndata, edge_scale):
+    def hybrid2vol(self, ndata, edge_scale):
         """
         Project data from node space to volume.
 
@@ -733,7 +733,7 @@ class Projector(object):
             np.array, sized n_voxels in first dimension
         """
 
-        n2v_mat = self.node2vol_matrix(edge_scale)
+        n2v_mat = self.hybrid2vol_matrix(edge_scale)
         if ndata.shape[0] != n2v_mat.shape[1]: 
             raise RuntimeError("ndata must have the same number of rows as" +
                 " total nodes in ImageSpace (voxels+vertices)")

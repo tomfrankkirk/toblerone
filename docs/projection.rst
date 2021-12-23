@@ -25,12 +25,12 @@ Any projection of data between spaces is handled by a `Projector` object. A `Pro
 The basic steps of creating and using a `Projector` are as follows: 
 1. Create the `Projector` for the cortical surfaces and voxel grid of interest. This can take around 15 minutes.  
 2. It is strongly recommended at this point to save the projector. This avoids having to re-create it from scratch at a later date and saves time.
-3. Choose the correct projection method on the `Projector`: `vol2surf()`, `surf2vol()`, `node2vol()`, `vol2node()`
+3. Choose the correct projection method on the `Projector`: `vol2surf()`, `surf2vol()`, `hybrid2vol()`, `vol2hybrid()`
 4. Call the appropriate method with the vector of data to be projected. 
 
 **Surface projection** is achieved with the `vol2surf()` and `surf2vol()` methods. 
 
-**Hybrid projection** is achieved with the `vol2node()` and `node2vol()` methods. 
+**Hybrid projection** is achieved with the `vol2hybrid()` and `hybrid2vol()` methods. 
 
 .. note::
    Edge scaling is optional for all projection methods, in all spaces. It reflects the presence of PVE in creating *missing* signal in voxels that are less than 100% brain tissue. 

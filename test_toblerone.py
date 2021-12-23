@@ -122,21 +122,21 @@ def test_projection():
     assert (s2v_pv.data <= s2v.data).all(), 'pv weighting should reduce voxel weights'
 
     # volume to node 
-    v2n = projector.vol2node(vdata, False)
-    v2n_edge = projector.vol2node(vdata, True)
+    v2n = projector.vol2hybrid(vdata, False)
+    v2n_edge = projector.vol2hybrid(vdata, True)
     assert (v2n <= v2n_edge).all(), "edge correction did not increase signal"
-    v2n = projector.vol2node_matrix(False)
+    v2n = projector.vol2hybrid_matrix(False)
     assert (v2n.sum(1).max() - 1) < 1e-6, 'total node weight > 1'
-    v2n_edge = projector.vol2node_matrix(True)
+    v2n_edge = projector.vol2hybrid_matrix(True)
     assert (v2n_edge.sum(1).max() - 1) > 1e-6, 'edge correction: node should have weight > 1'
 
     # node to volume 
-    n2v = projector.node2vol(ndata, False)
-    n2v_pv = projector.node2vol(ndata, True)
+    n2v = projector.hybrid2vol(ndata, False)
+    n2v_pv = projector.hybrid2vol(ndata, True)
     assert (n2v_pv <= n2v).all(), "pv weighting did not reduce signal"
-    n2v = projector.node2vol_matrix(False)
+    n2v = projector.hybrid2vol_matrix(False)
     assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
-    n2v_pv = projector.node2vol_matrix(True)
+    n2v_pv = projector.hybrid2vol_matrix(True)
     assert (n2v.sum(1).max() - 1) < 1e-6, 'total voxel weight > 1'
 
 
@@ -172,10 +172,10 @@ def test_projector_rois():
 
     ndata = np.ones(proj.n_nodes)
     ndata[-1] = 2 
-    vdata = proj.node2vol(ndata, True)
+    vdata = proj.hybrid2vol(ndata, True)
     spc.save_image(vdata, 'n2v.nii.gz')
 
-    ndata = proj.vol2node(vdata, True)
+    ndata = proj.vol2hybrid(vdata, True)
     print(ndata)
 
 
