@@ -7,7 +7,7 @@ Spaces of data representation
 -------------------------------
 Toblerone can project data between different *spaces*, as explained below. 
 
-1.  **Volume**: the conventional analysis space for MRI data, this can be any 3D voxel grid as defined by a NIFTI header, for example. This space is best for the study of the subcortex. 
+1. **Volume**: the conventional analysis space for MRI data, this can be any 3D voxel grid as defined by a NIFTI header, for example. This space is best for the study of the subcortex. 
 2. **Surface**: particularly well-suited to the study of the cortex, this is a 2D topological sphere (ie, closed surface) defined by a cortical surface reconstruction (ie, the output of FreeSurfer)
 3. **Hybrid**: this is the union of the volume and surface spaces into a single data representation. It includes all voxels of interest for the subcortex, all surface vertices for the cortex, and (optionally) any subcortical regions of interest (ROI). This concept is very similar, but not indetical, to the HCP's concept of *grayordinates*, which is embodied in the CIFTI file format. 
 
