@@ -13,15 +13,8 @@ import copy
 import numpy as np 
 import nibabel 
 from scipy import sparse
-
-try: 
-    import pyvista
-    import meshio 
-    _VTK_ENABLED = True 
-except ImportError as e: 
-    warnings.warn("Could not import meshio/pyvista: these are required to"
-        " read/write VTK surfaces. VTK requires Python <=3.7 (as of May 2020)")
-    _VTK_ENABLED = False 
+import pyvista
+import vtk 
 
 from .image_space import ImageSpace, BaseSpace
 from .. import utils, core
@@ -73,7 +66,7 @@ class Surface(object):
     method Surface.manual() to directly pass points and triangles.
     
     Args: 
-        path:   path to file (.gii/FS binary/meshio compatible)
+        path:   path to file (.gii/FS binary/pyvista compatible)
         coords:  'world' (default) or 'fsl'; coordinate system of surface
         struct: if in 'fsl' coords, then path to structural image used by FIRST
         name: optional, can be useful for progress bars 
@@ -84,16 +77,50 @@ class Surface(object):
         if not op.exists(path):
             raise RuntimeError("File {} does not exist".format(path))
 
-        if path.endswith('.vtk') and (not _VTK_ENABLED):
-            raise NotImplementedError("VTK/meshio must be available to "
-                "save VTK surfaces (requires Python <=3.7")    
-
+        # Can we get an extension please, makes life easier 
         surfExt = op.splitext(path)[-1]
+
+        # GIFTI via nibabel 
         if surfExt == '.gii':
-            gft = nibabel.load(path).darrays
-            ps, ts = gft[0].data, gft[1].data
+            try: 
+                gft = nibabel.load(path).darrays
+                ps, ts = gft[0].data, gft[1].data
+
+            except Exception as e: 
+                print(f"""Could not load {path} as .gii. Is it a surface
+                    GIFTI (.surf.gii)?""")
+                raise e 
+
+        # VTK via vtk (ie python vtk library)
+        elif surfExt == '.vtk':
+            try: 
+                reader = vtk.vtkGenericDataObjectReader()
+                reader.SetFileName(path)
+                reader.Update()
+
+                ps = np.array(reader.GetOutput().GetPoints().GetData())
+                ts = np.array(reader.GetOutput().GetPolys().GetData())
+
+                # tris array is returned as a single vector eg 
+                # [3 a b c 3 a b c] where 3 represents triangle faces
+                # so it actually has FOUR columns, the first of which 
+                # is all 3... 
+                if (ts.size % 4): 
+                    raise ValueError(f'VTK file does not appear to be triangle data (first poly has {ts[0]} faces')
+                ts = ts.reshape(-1,4)
+                if (ts[:,0] != 3).any(): 
+                    raise ValueError(f'VTK file does not appear to be triangle data (first poly has {ts[0,0]} faces')
+                ts = ts[:,1:]
+
+            except Exception as e: 
+                print(f"""Could not load {path} as .vtk. Is it a triangle
+                    VTK?""")
+                raise e 
 
         else: 
+
+            # FS files don't have a proper extension (binary)
+            # FreeSurfer via nibabel 
             try: 
                 ps, ts, meta = nibabel.freesurfer.io.read_geometry(path, 
                     read_metadata=True)
@@ -103,22 +130,16 @@ class Surface(object):
                 else:
                     ps += meta['cras']
 
+            # Maybe FreeSurfer didn't work, try anything else via pyvista
             except Exception as e: 
-                try:
-                    mesh = meshio.read(path)
-                    ps = np.array(mesh.points)
-                    ts = mesh.cells[0].data
-                    
-                except Exception as e: 
-                    try: 
-                        poly = pyvista.read(path)
-                        ps = np.array(poly.points)
-                        ts = poly.faces.reshape(-1,4)[:,1:]
+                try: 
+                    poly = pyvista.read(path)
+                    ps = np.array(poly.points)
+                    ts = poly.faces.reshape(-1,4)[:,1:]
 
-                    except Exception as e: 
-                        print("Could not load surface as GIFTI, FS binary or"
-                            " meshio/pyvista format")
-                        raise e 
+                except Exception as e: 
+                    print("Could not load surface via pyvista")
+                    raise e 
 
         if ps.shape[1] != 3: 
             raise RuntimeError("Points matrices should be p x 3")
@@ -190,16 +211,17 @@ class Surface(object):
 
     def save(self, path):
         """
-        Save surface as .surf.gii (default), .vtk or .white/.pial at path.
+        Save surface as .surf.gii (default), .white/.pial at path.
         """
 
         if path.endswith('.vtk'):
-            if not _VTK_ENABLED:
-                raise NotImplementedError("VTK/meshio must be available to "
-                    "save VTK surfaces (requires Python 3.7")
-            mesh = meshio.Mesh(self.points, [ ("triangle", t[None,:]) 
-                                                for t in self.tris ])
-            mesh.write(path)
+
+            # Faces must be an array of polygons with 3 in first 
+            # columns to denote triangle data 
+            faces = 3 * np.ones((self.tris.shape[0],4), dtype=int)
+            faces[:,1:] = self.tris 
+            m = pyvista.PolyData(self.points, faces)
+            m.save(path)
 
         elif path.count('.gii'): 
             if not path.endswith('.surf.gii'):
