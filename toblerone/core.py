@@ -25,7 +25,7 @@ from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,
                                   _cytestManyRayTriangleIntersections,
                                   _quick_cross)
 from toblerone import utils 
-from toblerone.utils import NP_FLOAT, space_encloses_surface
+from toblerone.utils import NP_FLOAT
 
 
 # Module level constants ------------------------------------------------------

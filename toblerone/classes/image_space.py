@@ -4,13 +4,9 @@ inverse, of an image. Inherits most methods and properties from
 regtricks.ImageSpace. 
 """
 
-import os.path as op 
 import copy 
-import warnings
 
-import nibabel
 import numpy as np 
-from scipy import sparse
 from regtricks import ImageSpace as BaseSpace
 
 from toblerone import utils

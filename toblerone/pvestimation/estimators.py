@@ -8,7 +8,6 @@ import copy
 import numpy as np
 
 from toblerone.utils import STRUCTURES, NP_FLOAT
-from toblerone.classes import Surface, Hemisphere
 
 def _cortex(hemispheres, space, struct2ref, supersampler, cores, ones):
     """Estimate the PVs of the cortex. 

@@ -2,7 +2,6 @@
 # The following functions are exposed to the __main__.py file and are
 # called when the module is invoked eg python3 -m toblerone
 
-import argparse
 import os.path as op
 import os
 
@@ -33,7 +32,7 @@ def estimate_cortex():
     else: 
         outdir = kwargs['out']
 
-    utils._weak_mkdir(outdir)
+    os.makedirs(outdir, exist_ok=True)
     refSpace = ImageSpace(kwargs['ref'])
 
     print('Saving output at', outdir)
@@ -113,8 +112,8 @@ def estimate_complete():
 
     # Make output dirs if they do not exist. 
     intermediatedir = op.join(outdir, 'intermediate_pvs')
-    utils._weak_mkdir(outdir)
-    utils._weak_mkdir(intermediatedir)
+    os.makedirs(outdir, exist_ok=True)
+    os.makedirs(intermediatedir, exist_ok=True)
 
     # Load the reference image space and save the various outputs. 
     # 'stacked' goes in the outdir, all others go in outdir/intermediate 

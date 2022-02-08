@@ -11,7 +11,7 @@ import regtricks as rt
 
 from toblerone.pvestimation import estimators
 from toblerone import utils, core
-from toblerone.classes import ImageSpace, Surface, Hemisphere
+from toblerone.classes import ImageSpace, Surface
 
 @utils.enforce_and_load_common_arguments
 def cortex(ref, struct2ref, **kwargs):

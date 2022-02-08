@@ -1,17 +1,12 @@
 """Toblerone utility functions"""
 
 import os.path as op
-import os 
 import glob
-import subprocess 
-import sys
-import shutil
 import warnings 
 import multiprocessing
 import copy 
 
 import numpy as np 
-from fsl.wrappers import fsl_anat
 import regtricks as rt
 from scipy.sparse.linalg import eigs
 
@@ -36,13 +31,6 @@ def cascade_attributes(decorator):
         wrapped.__module__ = original.__module__
         return wrapped
     return new_decorator
-
-
-def _mp_call_attribute(obj, method_name, args=None):
-    if args: 
-        return getattr(obj, method_name)(args)
-    else: 
-        return getattr(obj, method_name)
 
 
 def check_anat_dir(dir):
@@ -122,26 +110,6 @@ def _loadSurfsToDict(fsdir):
     return surfs
 
 
-def _addSuffixToFilename(suffix, fname):
-    """Add suffix to filename, whilst preserving original extension, eg:
-    'file.ext1.ext2' + '_suffix' -> 'file_suffix.ext1.ext2'
-    """
-
-    head = op.split(fname)[0]
-    fname, ext = _splitExts(fname)   
-    return op.join(head, fname + suffix + ext)
-
-
-def _addPrefixToFilename(prefix, fname):
-    """Add prefix to filename, whilst preserving original extension, eg:
-    'prefix_' + file.ext1.ext2' -> 'prefix_file_suffix.ext1.ext2'
-    """
-
-    head = op.split(fname)[0]
-    fname, ext = _splitExts(fname)   
-    return op.join(head, prefix + fname + ext)
-
-
 def _splitExts(fname):
     """Split all extensions off a filename, eg:
     'file.ext1.ext2' -> ('file', '.ext1.ext2')
@@ -154,80 +122,6 @@ def _splitExts(fname):
         ext = e + ext 
     
     return fname, ext
-
-
-def _weak_mkdir(dir):
-    """Create a directory if it does not already exist"""
-
-    if not op.isdir(dir):
-        os.makedirs(dir)
-
-
-def _shellCommand(cmd):   
-    """Convenience function for calling shell commands"""
-
-    try: 
-        ret = subprocess.run(cmd, stdout=sys.stdout, stderr=sys.stderr, 
-            shell=True)
-        if ret.returncode:
-            print("Non-zero return code")
-            raise RuntimeError()
-    except Exception as e:
-        print("Error when executing cmd:", cmd)
-        raise e
-
-
-def _runFreeSurfer(struct, dir, debug=False):
-    """Args: 
-        struct: path to structural image 
-        dir: path to directory in which a subject directory entitled
-            'fs' will be created and FS run within
-    """
-
-    struct = op.abspath(struct)
-    pwd = os.getcwd()
-    os.chdir(dir)
-    cmd = 'recon-all -i {} -all -subjid fs -sd .'.format(struct)
-    if debug: cmd += ' -dontrun'
-    print("Calling FreeSurfer on", struct)
-    print("This will take ~10 hours")
-    _shellCommand(cmd)
-    os.chdir(pwd)
-
-
-def _runFIRST(struct, dir):
-    """Args: 
-        struct: path to structural image 
-        dir: path to directory in which FIRST will be run
-    """
-
-    _weak_mkdir(dir)
-    nameroot, _ = _splitExts(struct)
-    struct = op.abspath(struct)
-    pwd = os.getcwd()
-    os.chdir(dir)
-    cmd = 'run_first_all -i {} -o {}'.format(struct, nameroot)
-    print("Calling FIRST on", struct)
-    _shellCommand(cmd)
-    os.chdir(pwd)
-
-
-def _runFAST(struct, dir):
-    """Args: 
-        struct: path to structural image 
-        dir: path to directory in which FAST will be run
-    """
-
-    _weak_mkdir(dir)
-    struct = op.abspath(struct)
-    pwd = os.getcwd()
-    newstruct = op.abspath(op.join(dir, op.split(struct)[1]))
-    shutil.copy(struct, newstruct)
-    os.chdir(dir)
-    cmd = 'fast {}'.format(newstruct)
-    print("Calling FAST on", struct)
-    _shellCommand(cmd)
-    os.chdir(pwd)
 
 
 def affine_transform(points, affine):

@@ -6,12 +6,10 @@ import multiprocessing as mp
 import copy
 import os
 from textwrap import dedent
-import warnings 
 
 import numpy as np 
 from scipy import sparse 
 import h5py
-import regtricks as rt 
 
 from toblerone import utils 
 from toblerone.pvestimation import estimators
@@ -107,35 +105,6 @@ class Projector(object):
             vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.vox_tri_mats.append(vox_tri)
             self.vtx_tri_mats.append(vtx_tri)
-
-    
-    # Currently disabled - it is STRONGLY recommended to generate a new projector
-    # from scratch instead of transforming an exisitng one (apply the transform
-    # to the surfaces themselves)
-    # def transform(self, trans, spc=None, factor=None, cores=mp.cpu_count(), ones=False):
-
-    #     if spc is None: spc = self.spc 
-    #     t = rt.Registration(trans)
-    #     new_pvs = [ t.apply_to_array(pv.reshape(*spc.size,3), 
-    #                                  self.spc, spc, cores=cores, 
-    #                                  order=1
-    #                                 ).reshape(-1,3)
-    #                 for pv in self._hemi_pvs ]
-
-    #     if factor is None:
-    #         factor = np.ceil(3 * spc.vox_size)
-    #     factor = (factor * np.ones(3)).astype(np.int32)
-
-    #     proj = Projector.__new__(Projector)
-    #     proj.hemi_dict = { h.side: h.transform(trans) for h in self.iter_hemis }
-    #     proj.spc = spc 
-    #     proj._hemi_pvs = new_pvs
-    #     proj.vox_tri_mats = [] 
-    #     proj.vtx_tri_mats = []
-    #     ncores = cores if any([ h.inSurf._use_mp for h in self.iter_hemis ]) else 1 
-
-    #     proj._assemble_vtx_vox_mats(factor, ncores, ones)
-    #     return proj 
 
 
     def save(self, path):
@@ -413,7 +382,7 @@ class Projector(object):
         """
 
         if self._roi_pvs:
-            pvs = np.stack(self._roi_pvs.values(), axis=-1)
+            pvs = np.stack(list(self._roi_pvs.values()), axis=-1)
             return np.clip(pvs.sum(-1).reshape(self.spc.size), 0, 1)
         else: 
             return np.zeros(self.spc.size)
@@ -495,7 +464,8 @@ class Projector(object):
         v2v_mat = sparse.eye(self.spc.size.prod())
 
         if edge_scale: 
-            brain_pv = self.pvs().reshape(-1,3)[:,:2].sum(1)
+            brain_pv = self.pvs().reshape(-1,3)
+            brain_pv = brain_pv[:,:2].sum(1)
             brain = (brain_pv > 1e-3)
             upweight = np.ones(brain_pv.shape)
             upweight[brain] = 1 / brain_pv[brain]
