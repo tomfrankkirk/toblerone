@@ -96,8 +96,8 @@ def estimate_complete():
         if not all([ 
             (('fastdir' in kwargs) and ('firstdir' in kwargs)),
             (('LPS' in kwargs) and ('RPS' in kwargs)) ]): 
-            raise RuntimeError("Either separate -firstdir and -fastdir"+
-                " must be provided, or an -fslanat dir must be provided")
+            raise RuntimeError("Either separate firstdir, fastdir and struct"+
+                " must be provided, or an fslanat dir must be provided")
 
     output = pvestimation.complete(**kwargs)
 

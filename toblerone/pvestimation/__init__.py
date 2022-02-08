@@ -174,7 +174,7 @@ def complete(ref, struct2ref, **kwargs):
 
     if not bool(kwargs.get('fslanat')):
         if not (bool(kwargs.get('fastdir')) and bool(kwargs.get('firstdir'))):
-            raise RuntimeError("If not using anat dir, fastdir/firstdir required")
+            raise RuntimeError("If not using fslanat dir, fastdir/firstdir required")
    
     # Resample FASTs to reference space. Then redefine CSF as 1-(GM+WM)
     fast_paths = utils._loadFASTdir(kwargs['fastdir'])
