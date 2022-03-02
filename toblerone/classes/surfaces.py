@@ -633,94 +633,49 @@ class Surface(object):
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
         laplacian = adj - laplacian
 
-        assert np.abs(laplacian.sum(1)).max() < 1e-4, 'Unweighted laplacian'
+        assert (np.abs(laplacian.sum(1))< 1e-4).all(), 'Unweighted laplacian'
         assert utils.is_nsd(laplacian), 'Not negative semi-definite'
         assert utils.is_symmetric(laplacian), 'Not symmetric'
         return laplacian
 
 
-    def discriminated_laplacian(self, spc, distance_weight=0, in_weight=100): 
+    def cotangent_laplacian(self): 
+        """
+        Discrete Laplacian operator with cotangent weights. Elements on the diagonal 
+        are the negative sum of each row / column. Taken from: 
 
-        if not (isinstance(distance_weight, int) and (distance_weight >= 0)):
-            raise ValueError("distance_weight must be int >= 0")
+        http://jamesgregson.ca/mesh-processing-in-python-implementing-arap-deformation.html
 
-        # Some vertices may not be in the voxel grid, so give them a placeholder
-        # voxel index of -1 
-        vtx_vox = self.transform(spc.world2vox).points.round().astype(np.int32)
-        vtx_in_spc = ((vtx_vox >= 0) & (vtx_vox < spc.size)).all(-1)
-        vtx_vox_idx = -1 * np.ones(vtx_in_spc.shape[0], dtype=np.int32)
-        vtx_vox_idx[vtx_in_spc] = np.ravel_multi_index(vtx_vox[vtx_in_spc,:].T, spc.size)
+        Returns: 
+            sparse CSR matrix, size (n_points x n_points)
+        """
 
-        # All the edge vectors of the surface 
-        edge_pairs = np.array([
-            np.concatenate((self.tris[:,0], self.tris[:,1], self.tris[:,2])), 
-            np.concatenate((self.tris[:,1], self.tris[:,2], self.tris[:,0]))
-        ])
-        start, end = edge_pairs
+        points = self.points.T
+        a, b, c = self.tris.T 
+        A = np.take(points, a, axis=1)
+        B = np.take(points, b, axis=1)
+        C = np.take(points, c, axis=1)
 
-        # Inverse distance weighting of power n 
-        if distance_weight > 0: 
-            dists = np.linalg.norm(self.points[start,:] - self.points[end,:], 
-                                        ord=2, axis=-1).flatten()
-            dists = 1 / (dists ** distance_weight)
-        else:
-            dists = np.ones(start.size, dtype=np.int32)
+        eab, ebc, eca = (B - A, C - B, A - C)
+        eab = eab / np.linalg.norm(eab, axis=0)[None,:]
+        ebc = ebc / np.linalg.norm(ebc, axis=0)[None,:]
+        eca = eca / np.linalg.norm(eca, axis=0)[None,:]
 
-        # If the start/end of an edge is the same voxel, then full weight 
-        # if different voxels, downweight it
-        in_weights = in_weight * np.ones_like(dists)
-        in_weights[vtx_vox_idx[start] != vtx_vox_idx[end]] = 1 
-        weights = dists * in_weights
+        alpha = np.arccos(-(eca * eab).sum(0))
+        beta  = np.arccos(-(eab * ebc).sum(0))
+        gamma = np.arccos(-(ebc * eca).sum(0))
 
-        # Knock out edges where at least one vertex isn't in the voxel grid 
-        fltr = (vtx_vox_idx[start] >= 0) & (vtx_vox_idx[end] >= 0)
-        start = start[fltr]
-        end = end[fltr]
-        weights = weights[fltr]
-        adj = sparse.coo_matrix((weights, (start, end)), 
-                shape=(self.n_points, self.n_points))
+        wab, wbc, wca = (1.0 / np.tan(gamma), 1.0 / np.tan(alpha), 1.0 / np.tan(beta))
+        rows = np.concatenate((   a,   b,   a,   b,   b,   c,   b,   c,   c,   a,   c,   a ), axis=0)
+        cols = np.concatenate((   a,   b,   b,   a,   b,   c,   c,   b,   c,   a,   a,   c ), axis=0)
+        vals = np.concatenate(( wab, wab,-wab,-wab, wbc, wbc,-wbc,-wbc, wca, wca,-wca, -wca), axis=0)
+        L = - sparse.coo_matrix((vals, (rows,cols)), shape=(points.shape[1],points.shape[1]), dtype=NP_FLOAT).tocsr()
 
-        assert is_symmetric(adj), 'Adjacency should be symmetric'
+        assert (np.abs(L.sum(1))< 1e-4).all(), 'Unweighted laplacian'
+        assert utils.is_nsd(L), 'Not negative semi-definite'
+        assert utils.is_symmetric(L), 'Not symmetric'
 
-        # The diagonal is the negative sum of other elements 
-        adj = np.around(adj, 9)
-        dia = adj.sum(1).A.flatten()
-        laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
-        laplacian = adj - laplacian
-
-        assert np.abs(laplacian.sum(1)).max() < 1e-3, 'Unweighted laplacian'
-        # FIXME: the eigs test required by nsd crashes for in_weight > 10 
-        # assert utils.is_nsd(laplacian), 'Not negative semi-definite'
-        assert utils.is_symmetric(laplacian), 'Not symmetric'
-
-        return laplacian.tocsr()
-
-
-    # def laplace_beltrami(self, cores=mp.cpu_count()):
-    #     """
-    #     Laplace-Beltrami operator for this surface, as a scipy sparse matrix
-    #     of size n_points x n_points. Elements on the diagonal are negative 
-    #     and off-diagonal elements are positive. 
-
-    #     Areas are calculated according to the definition of A_mixed in "Discrete 
-    #     Differential-Geometry Operators for Triangulated 2-Manifolds", M. Meyer, 
-    #     M. Desbrun, P. Schroder, A.H. Barr.
-
-    #     Args: 
-    #         cores (int): CPU cores to use.
-
-    #     Returns: 
-    #         sparse matrix 
-    #     """
-
-    #     ncores = cores if self._use_mp else 1 
-    #     M = core.vtx_tri_weights(self, ncores)
-    #     M = sparse.diags(np.squeeze(M.sum(1).A))
-
-    #     L = igl.cotmatrix(self.points, self.tris)
-    #     lbo = (M.power(-1)).dot(L)
-    #     assert (np.abs(lbo.sum(1).A) < 1e-2).all(), 'Unweighted LBO matrix'
-    #     return lbo
+        return L 
 
 
     def edges(self):
@@ -852,5 +807,15 @@ class Hemisphere(object):
 
         return self.midsurface().mesh_laplacian(distance_weight)
 
-    def discriminated_laplacian(self, spc, distance_weight=0, in_weight=100):
-        return self.midsurface().discriminated_laplacian(spc, distance_weight, in_weight)
+    def cotangent_laplacian(self): 
+        """
+        Discrete Laplacian operator with cotangent weights on midsurface. 
+        Elements on the diagonal are the negative sum of each row / column.
+        Taken from: 
+        http://jamesgregson.ca/mesh-processing-in-python-implementing-arap-deformation.html
+
+        Returns: 
+            sparse CSR matrix, size (n_points x n_points)
+        """
+
+        return self.midsurface().cotangent_laplacian()

@@ -185,7 +185,11 @@ class Projector(object):
             # Recreate the reference ImageSpace first 
             p.spc = ImageSpace.manual(f['ref_spc_vox2world'][()],
                                     f['ref_spc_size'][()])
-            if 'ref_spc_fname' in f: p.spc.fname = f['ref_spc_fname'][()]
+            if 'ref_spc_fname' in f: 
+                fname = f['ref_spc_fname'][()]
+                if isinstance(fname, bytes): 
+                    fname = fname.decode('utf-8')
+                p.spc.fname = fname 
             n_vox = p.spc.size.prod()
 
             # Now read out hemisphere specific properties 
@@ -334,26 +338,17 @@ class Projector(object):
         mats = [ h.mesh_laplacian(distance_weight) for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
-    def discriminated_laplacian(self, distance_weight=0, in_weight=100):
-        """Discriminated Laplacian for all surface vertices of projector. 
+    def cotangent_laplacian(self): 
+        """Cotangent Laplacian matrix for all surface vertices of projector. 
 
-        The discriminated Laplacian is a variant of the inverse distance 
-        Laplacian, where connections between nodes in the same voxel are
-        multiplied by ``in_weight``. This is experimental functionality. 
-
-        Args: 
-            distance_weight (int/float): connections will be 1/d^n, where
-                d is the distance between nodes and n is the ``distance_weight``
-            in_weight (int/float): multiply within-voxel connections by
-                this value 
+        If there are two hemispheres present, the matrix indices will be 
+        arranged L/R. 
 
         Returns: 
-            sparse CSR matrix
+            sparse CSR matrix, square with size (n_vertices)
         """
 
-        mats = [ h.discriminated_laplacian(self.spc, 
-                 distance_weight, in_weight) 
-                 for h in self.iter_hemis ]
+        mats = [ h.cotangent_laplacian() for h in self.iter_hemis ]
         return sparse.block_diag(mats, format="csr")
 
     def cortex_pvs(self):

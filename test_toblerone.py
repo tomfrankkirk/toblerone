@@ -241,20 +241,22 @@ def test_surf_edges():
 
 def test_adjacency():
     td = get_testdir()
-    s = Surface(op.join(td, 'in.surf.gii'))
+    ins = Surface(op.join(td, 'in.surf.gii'))
+    outs = Surface(op.join(td, 'out.surf.gii'))
+    h = Hemisphere(ins, outs, 'L')
     for w in range(4):
-        adj = s.adjacency_matrix(w)
+        adj = h.adjacency_matrix(w)
         assert not (adj.data < 0).any(), 'negative value in adjacency matrix'
 
     try: 
-        s.adjacency_matrix(-1)
+        h.adjacency_matrix(-1)
     except Exception as e: 
         assert isinstance(e, ValueError), 'negative distance weight should give ValueError'     
 
     outs = Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-    hemi = toblerone.Hemisphere(s, outs, 'L')
-    hemi2 = toblerone.Hemisphere(s, outs, 'R')
+    hemi = toblerone.Hemisphere(ins, outs, 'L')
+    hemi2 = toblerone.Hemisphere(ins, outs, 'R')
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
     n = proj.hemi_dict['L'].n_points
 
@@ -267,16 +269,6 @@ def test_adjacency():
 def test_mesh_laplacian():
     td = get_testdir()
     s = Surface(op.join(td, 'in.surf.gii'))
-
-    try: 
-        s.mesh_laplacian(-1)
-    except Exception as e: 
-        assert isinstance(e, ValueError), 'negative distance weight should give ValueError'     
-
-    for w in range(4):
-        lap = s.mesh_laplacian(distance_weight=w)
-        assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
-
     outs = Surface(op.join(td, 'out.surf.gii'))
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     hemi = toblerone.Hemisphere(s, outs, 'L')
@@ -285,20 +277,20 @@ def test_mesh_laplacian():
 
     for w in range(4):
         lap = proj.mesh_laplacian(w)
+        lap = s.mesh_laplacian(distance_weight=w)
+        assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
         n = proj.hemi_dict['L'].n_points
         assert not slice_sparse(lap, slice(0, n), slice(n, 2*n)).nnz
         assert not slice_sparse(lap, slice(n, 2*n), slice(0, n)).nnz
         assert not (lap[diag_indices(2*n)] > 0).any()
 
 
-def test_discriminated_laplacian():
+def test_cotan_laplacian(): 
     td = get_testdir()
-    s = Surface(op.join(td, 'in.surf.gii'))
-    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
-
-    for w in range(4):
-        lap = s.discriminated_laplacian(spc, distance_weight=w, in_weight=100)
-        assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
+    ins = Surface(op.join(td, 'in.surf.gii'))
+    outs = Surface(op.join(td, 'out.surf.gii'))
+    h = Hemisphere(ins, outs, 'L')
+    h.cotangent_laplacian()
 
 
 def cmdline_complete():
@@ -422,4 +414,4 @@ def cmdline():
 
 if __name__ == "__main__":
     
-    test_structure()
+    test_cotan_laplacian()
