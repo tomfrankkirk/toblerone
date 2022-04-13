@@ -5,17 +5,11 @@ import os
 import subprocess
 import re
 import io
-import glob
 import sys
 
 from setuptools import setup
 from setuptools import find_packages
 from setuptools.extension import Extension
-
-from Cython.Build import cythonize
-from Cython.Distutils import build_ext
-
-import numpy
 
 PACKAGE_NAME = 'toblerone'
 ROOTDIR = os.path.abspath(os.path.dirname(__file__))
@@ -87,6 +81,10 @@ def get_version():
 
 def get_extensions():
     """ Build Cython extensions """
+
+    from Cython.Build import cythonize
+    import numpy
+
     extensions = []
     compile_args = []
     link_args = []
@@ -111,6 +109,7 @@ def get_extensions():
 
 if __name__ == '__main__':
 
+    from Cython.Distutils import build_ext
     setup(name=PACKAGE_NAME,
         version=get_version(),
         description="Surface-based analysis tools",
