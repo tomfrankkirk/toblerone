@@ -34,7 +34,7 @@ release = get_version()
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'recommonmark',
+    'myst_parser',
     'sphinx.ext.viewcode',
     'sphinx_rtd_theme', 
 ]
