@@ -14,6 +14,7 @@ import os
 import sys
 
 sys.path.insert(1, '..')
+from toblerone import ctoblerone
 from setup import get_version
 
 # -- Project information -----------------------------------------------------
