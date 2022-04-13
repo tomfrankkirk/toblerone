@@ -89,26 +89,19 @@ def structure(ref, struct2ref, **kwargs):
         (np.array) PV image, sized equal to reference space 
     """
 
-    # Check we either have a surface object or path to one 
-    if not bool(kwargs.get('surf')):
-        raise RuntimeError("surf kwarg must be a Surface object or path to one")
-
     coords = kwargs.get('coords', 'world')
     if coords == 'fsl' and not kwargs.get('struct'):
         raise RuntimeError("Structural image must be supplied for FIRST surfs")
 
-    if type(kwargs['surf']) is str: 
-        surf = Surface(kwargs['surf'], name=op.split(kwargs['surf'])[1])
+    if type(surf) is str: 
+        surf = Surface(surf, name=op.split(surf)[1])
         if kwargs.get('coords', 'world') == 'fsl':
             struct_spc = ImageSpace(kwargs['struct'])
             surf = surf.transform(struct_spc.FSL2world)
 
-    elif type(kwargs['surf']) is not Surface: 
+    elif type(surf) is not Surface: 
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
 
-    else: 
-        surf = kwargs['surf']
-        
     # Either create local copy of ImageSpace object or init from path 
     if isinstance(ref, ImageSpace):
         ref_space = copy.deepcopy(ref)

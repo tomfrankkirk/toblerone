@@ -17,8 +17,7 @@ import copy
 
 import numpy as np 
 import tqdm
-from scipy.spatial import ConvexHull
-from scipy.spatial.qhull import QhullError, Delaunay
+from scipy.spatial import ConvexHull, QhullError, Delaunay
 
 from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,  
                                   _cyfilterTriangles,
