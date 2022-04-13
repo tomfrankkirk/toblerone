@@ -40,17 +40,10 @@ T. F. Kirk, T. S. Coalson, M. S. Craig and M. A. Chappell, “Toblerone: Surface
    API reference <modules>
    Index <genindex>
 
-* :ref:`genindex`
 
+.. Indices and tables
+.. ==================
 
-..    Classes <toblerone.classes>
-.. Partial volume estimation <pvestimation>
-.. Projection <projection>
-.. Module index <modules>
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. * :ref:`genindex`
+.. * :ref:`modindex`
+.. * :ref:`search`
