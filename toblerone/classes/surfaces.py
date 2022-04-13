@@ -322,14 +322,16 @@ class Surface(object):
             space (ImageSpace): voxel grid to index against. 
             cores (int): CPU cores for multiprocessing. 
 
-        Updates: 
-            self.indexed (SimpleNamespace): with the following attributes
-                indexed.points_vox:  converted into voxel coordinates for the space
-                indexed.assocs:      sparse CSR bool matrix of size (voxs, tris)
-                indexed.assocs_keys: voxel indices that contain surface 
-                indexed.xprods:      triangle cross products, voxel coordinates
-                indexed.space:       the minimal enclosing ImageSpace used for indexing
-                                      (NB this is not necessarily the same as the input space)
+        Returns: 
+            None, but the attribute ``self.indexed`` is set (see notes)
+
+        Notes: 
+            ``self.indexed.points_vox``: vertices converted into voxel coordinates for the space\n
+            ``self.indexed.assocs``: vertex/voxel associations as sparse CSR bool matrix of size (voxs, tris)\n
+            ``self.indexed.assocs_keys``: flat voxel indices that intersect surface\n
+            ``self.indexed.xprods``: surface triangle cross products in voxel coordinates\n
+            ``self.indexed.space``: the minimal enclosing ``ImageSpace`` used for indexing associations\n
+                (NB this is not necessarily the same as the input space)
         """
 
         # Smallest possible ImageSpace, based on space, that fully encloses surf. 

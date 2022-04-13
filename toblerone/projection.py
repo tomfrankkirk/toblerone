@@ -303,6 +303,9 @@ class Projector(object):
                 0 (do not weight, all egdes are unity), whereas positive
                 values will weight edges by 1 / d^n, where d is geometric 
                 distance between vertices. 
+
+        Returns: 
+            sparse CSR matrix, square sized (n vertices)
         """ 
 
         mats = []
@@ -355,7 +358,7 @@ class Projector(object):
         """Single Vx3 array of cortex PVs for all hemispheres of Projector. 
 
         Returns: 
-            np.array: same shape as reference space, arranged GM, WM, 
+            np.array, same shape as reference space, arranged GM, WM, 
                 non-brain in 4th dim. 
         """
         if len(self._hemi_pvs) > 1:
@@ -373,7 +376,7 @@ class Projector(object):
         """Flattened 3D array of interior/exterior PVs for all ROIs.
         
         Returns: 
-            np.array: same shape as ``self.ref_spc``
+            np.array, same shape as ``self.ref_spc``
         """
 
         if self._roi_pvs:
@@ -387,7 +390,7 @@ class Projector(object):
         """Flattened 4D array of PVs for cortex, subcortex and ROIs. 
 
         Returns: 
-            np.array: same shape as reference space, arranged GM, WM, 
+            np.array, same shape as reference space, arranged GM, WM, 
                 non-brain in 4th dim. 
         """
 
@@ -422,7 +425,7 @@ class Projector(object):
                                 (eg time quantities)
 
         Returns: 
-            sparse matrix sized (surface vertices x voxels). Surface vertices 
+            sparse CSR matrix, sized (surface vertices x voxels). Surface vertices 
                 are arranged L then R. 
         """
 
@@ -452,7 +455,7 @@ class Projector(object):
                                 (eg time quantities)
 
         Returns: 
-            sparse matrix sized ((surface vertices + voxels) x voxels)
+            sparse CSR matrix, sized ((surface vertices + voxels) x voxels)
         """
 
         v2s_mat = self.vol2surf_matrix(edge_scale)
@@ -493,7 +496,7 @@ class Projector(object):
                                set False for data that does not (eg time quantities). 
 
         Returns: 
-            sparse matrix sized (surface vertices x voxels)
+            sparse CSC matrix, sized (surface vertices x voxels)
         """
 
         proj_mats = []
@@ -563,7 +566,7 @@ class Projector(object):
                                set False for data that does not (eg time quantities). 
 
         Returns: 
-            sparse CSR matrix sized (voxels x (surface vertices + voxels))
+            sparse CSR matrix, sized (voxels x (surface vertices + voxels))
         """
 
         # Assemble the matrices corresponding to cortex and subcortex individually. 
@@ -673,8 +676,7 @@ class Projector(object):
                                 (eg time quantities)
 
         Returns: 
-            np.array, sized (n_vertices + n_voxels) in first dimension.
-                Surface vertices are arranged L then R. 
+            np.array, sized (n_vertices + n_voxels) in first dimension. Surface vertices are arranged L then R. 
         """
 
         v2n_mat = self.vol2hybrid_matrix(edge_scale)
@@ -707,7 +709,7 @@ class Projector(object):
 
 def assemble_vol2surf(vox_tri, vtx_tri):
     """
-    Combine (w/ normalisation) the vox_tri and vtx_tri matrices into vol2surf.
+    Combine with normalisation the vox_tri and vtx_tri matrices into vol2surf.
     """
     
     # Ensure each triangle's voxel weights sum to 1 
@@ -720,7 +722,7 @@ def assemble_vol2surf(vox_tri, vtx_tri):
 
 def assemble_surf2vol(vox_tri, vtx_tri):
     """
-    Combine (w/ normalisation) the vox_tri and vtx_tri matrices into surf2vol.
+    Combine with normalisation the vox_tri and vtx_tri matrices into surf2vol.
     """
 
     # Ensure each triangle's vertex weights sum to 1 

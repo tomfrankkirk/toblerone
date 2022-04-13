@@ -16,26 +16,25 @@ from toblerone.classes import ImageSpace, Surface
 @utils.enforce_and_load_common_arguments
 def cortex(ref, struct2ref, **kwargs):
     """
-    Estimate PVs for L/R cortex. All arguments are kwargs. To estimate for 
-    a single hemisphere, provide only surfaces for that side. 
+    Estimate PVs for L/R cortex. To estimate for a single hemisphere, 
+    provide only surfaces for that side. 
 
-    Required args: 
+    Args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
         struct2ref (str/np.array/rt.Registration): registration between space 
-            of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
+            of surface and reference [see `-flirt` and `-stuct`], use 'I' for identity. 
         fsdir (str): path to a FreeSurfer subject directory. 
-        LWS/LPS/RWS/RPS (str): individual paths to the surfaces,
+        LWS/LPS/RWS/RPS (str): individual paths to the surfaces, 
             eg LWS = Left White surface, RPS = Right Pial surace. 
 
-    Optional args: 
+    Other parameters: 
         flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
         struct (str): path to structural image from which surfaces were derived. 
         cores (int): number of cores to use, default 8. 
         supersample (int/array): single or 3 values, supersampling factor. 
  
     Returns: 
-        (np.array), 4D, size equal to the reference image, with the PVs arranged 
-            GM/WM/non-brain in 4th dim.
+        (np.array) PVs arranged GM/WM/non-brain in 4th dim.
     """
 
     if not any([
@@ -66,18 +65,17 @@ def cortex(ref, struct2ref, **kwargs):
     return pvs
 
 @utils.enforce_and_load_common_arguments
-def structure(ref, struct2ref, **kwargs):
+def structure(ref, struct2ref, surf, **kwargs):
     """
     Estimate PVs for a structure defined by a single surface. 
-    All arguments are kwargs.
     
-    Required args: 
+    Args: 
         ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
         struct2ref (str/np.array/rt.Registration): registration between space 
             of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
-        surf (str): path to surface (see coords argument below)
+        surf (str/`Surface`): path to surface (see coords argument below)
 
-    Optional args: 
+    Other parameters: 
         flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
         coords (str): convention by which surface is defined: default is 'world' 
             (mm coords), for FIRST surfaces set as 'fsl' and provide struct argument 
@@ -101,7 +99,7 @@ def structure(ref, struct2ref, **kwargs):
 
     elif type(surf) is not Surface: 
         raise RuntimeError("surf kwarg must be a Surface object or path to one")
-
+        
     # Either create local copy of ImageSpace object or init from path 
     if isinstance(ref, ImageSpace):
         ref_space = copy.deepcopy(ref)
@@ -130,11 +128,10 @@ def complete(ref, struct2ref, **kwargs):
     """
     Estimate PVs for cortex and all structures identified by FIRST within 
     a reference image space. Use FAST to fill in non-surface PVs. 
-    All arguments are kwargs.
 
-    Required args: 
-        ref (str/regtricks ImageSpace): voxel grid in which to estimate PVs. 
-        struct2ref (str/np.array/rt.Registration): registration between space 
+    Args: 
+        ref (str/regtricks.ImageSpace): voxel grid in which to estimate PVs. 
+        struct2ref (str/np.array/regtricks.Registration): registration between space 
             of surface and reference (see -flirt and -stuct). Use 'I' for identity. 
         fslanat: path to fslanat directory. This REPLACES firstdir/fastdir/struct. 
         firstdir (str): FIRST directory in which .vtk surfaces are located
@@ -143,7 +140,7 @@ def complete(ref, struct2ref, **kwargs):
         fsdir (str): FreeSurfer subject directory, OR: 
         LWS/LPS/RWS/RPS (str): paths to individual surfaces (L/R white/pial)
 
-    Optional args: 
+    Other parameters: 
         flirt (bool): denoting struct2ref is FLIRT transform; if so, set struct. 
         coords (str): convention by which surface is defined: default is 'world' 
             (mm coords), for FIRST surfaces set as 'fsl' and provide struct argument 
@@ -152,8 +149,7 @@ def complete(ref, struct2ref, **kwargs):
         supersample (int/array): single or 3 values, supersampling factor
 
     Returns: 
-        (dict) PVs associated with each individual structure and 
-            also the overall combined result ('stacked')
+        (dict) keyed for each structure and also flattened ('stacked')
     """
 
     print("Estimating PVs for", ref.file_name)

@@ -37,6 +37,14 @@ toblerone.ctoblerone module
    :undoc-members:
    :show-inheritance:
 
+toblerone.ctoblerone module
+---------------------------
+
+.. automodule:: toblerone.ctoblerone
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 toblerone.projection module
 ---------------------------
 

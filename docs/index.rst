@@ -2,12 +2,12 @@
 Toblerone
 =====================================
 
-Surface-based analysis tools 
+Surface-based analysis tools for neuroimaging
 
 Installation
 -----------------
 
-Cython and numpy must be installed prior to running pip: 
+Cython and numpy must be installed *prior* to running pip: 
 
 .. code-block:: python
 
@@ -37,15 +37,20 @@ T. F. Kirk, T. S. Coalson, M. S. Craig and M. A. Chappell, “Toblerone: Surface
 
    pvestimation
    projection
-   Classes <toblerone.classes>
-   Submodules <modules>
+   API reference <modules>
+   Index <genindex>
+
+* :ref:`genindex`
+
+
+..    Classes <toblerone.classes>
 .. Partial volume estimation <pvestimation>
 .. Projection <projection>
 .. Module index <modules>
 
-.. Indices and tables
-.. ==================
+Indices and tables
+==================
 
-.. * :ref:`genindex`
-.. * :ref:`modindex`
-.. * :ref:`search`
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

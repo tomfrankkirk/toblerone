@@ -181,24 +181,24 @@ def enforce_and_load_common_arguments(func):
     in place, and then returns to the caller. The following args are handled:
 
     Required args:
-        ref: path to a reference image in which to operate 
+        ref: path to a reference image in which to operate. 
         struct2ref: path/np.array/Registration representing transformation
             between structural space (that of the surfaces) and reference. 
             If given as 'I', identity matrix will be used. 
 
     Optional args: 
-        fslanat: a fslanat directory
+        fslanat: a fslanat directory. 
         flirt: bool denoting that the struct2ref is a FLIRT transform.
             This means it requires special treatment. If set, then it will be
             pre-processed in place by this function, and then the flag will 
             be set back to false when the kwargs dict is returned to the caller
         struct: if FLIRT given, then the path to the structural image used
-            for surface generation is required for said special treatment
+            for surface generation is required for said special treatment. 
         cores: maximum number of cores to parallelise tasks across 
-            (default is N-1)
+            (default is N-1). 
 
     Returns: 
-        a modified copy of kwargs dictionary passed to the caller
+        a modified copy of kwargs dictionary passed to the caller. 
     """
     
     def enforcer(ref, struct2ref, **kwargs):

@@ -1,4 +1,4 @@
-"""Surface-based partial volume estimation tools"""
+"""Surface-based analysis tools for neuroimaging"""
 
 from toblerone import projection, pvestimation
 from toblerone.classes import ImageSpace, Surface, Hemisphere
