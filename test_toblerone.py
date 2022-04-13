@@ -154,7 +154,6 @@ def test_projector_partial_fov():
     # proj = projector.surf2vol(sdata, True)
 
     adj = projector.adjacency_matrix()
-    lap = projector.discriminated_laplacian(1, 100)
 
 
 def test_projector_rois():
@@ -276,8 +275,7 @@ def test_mesh_laplacian():
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
 
     for w in range(4):
-        lap = proj.mesh_laplacian(w)
-        lap = s.mesh_laplacian(distance_weight=w)
+        lap = proj.mesh_laplacian(distance_weight=w)
         assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
         n = proj.hemi_dict['L'].n_points
         assert not slice_sparse(lap, slice(0, n), slice(n, 2*n)).nnz
@@ -414,4 +412,4 @@ def cmdline():
 
 if __name__ == "__main__":
     
-    test_cotan_laplacian()
+    test_mesh_laplacian()
