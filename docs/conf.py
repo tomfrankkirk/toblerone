@@ -14,7 +14,6 @@ import os
 import sys
 
 sys.path.insert(1, '..')
-from toblerone import ctoblerone
 from setup import get_version
 
 # -- Project information -----------------------------------------------------
@@ -41,7 +40,7 @@ extensions = [
 ]
 
 autodoc_member_order = 'bysource'
-autodoc_mock_imports = ['Cython', 'fslpy', 'vtk', 'pyvista']
+autodoc_mock_imports = ['Cython', 'fslpy', 'vtk', 'pyvista', 'toblerone.ctoblerone']
 
 
 # Add any paths that contain templates here, relative to this directory.
