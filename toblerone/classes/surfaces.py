@@ -66,10 +66,8 @@ class Surface(object):
     method Surface.manual() to directly pass points and triangles.
     
     Args: 
-        path:   path to file (.gii/FS binary/pyvista compatible)
-        coords:  'world' (default) or 'fsl'; coordinate system of surface
-        struct: if in 'fsl' coords, then path to structural image used by FIRST
-        name: optional, can be useful for progress bars 
+        path (str): path to file (GIFTI/FS binary/pyvista compatible)
+        name (str): optional, for progress bars 
     """
 
     def __init__(self, path, name=None):
