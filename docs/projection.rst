@@ -40,7 +40,46 @@ The basic steps of creating and using a :class:`~toblerone.projection.Projector`
 
    In the volume to surface direction, edge scaling is off by default and will (if enabled) increase the final surface signal where the corresponding voxels have brain tissue PVs less than 100%. This accounts for the *missing* signal that would have been acquired if there were no PVE. NB in this direction, edge scaling is a poorly-conditioned operation that will amplify noise. 
 
-.. .. automodule:: toblerone.projection
-..    :members:
-..    :undoc-members:
-..    :show-inheritance:
+
+Example usage 
+--------------- 
+
+Initialisation and saving of a projector for a single cortical hemisphere: 
+
+.. code-block:: python 
+
+   import toblerone as tob 
+
+   # Create a hemisphere object for left surfaces, side must be specified
+   # NB surfaces could also be GIFTI 
+   LWS = '/path/to/lh.white'
+   LPS = '/path/to/lh.pial'
+   lhemi = tob.Hemisphere(LWS, LPS, side='L')
+
+   # If any registration of the surfaces to the reference grid is required, 
+   # it must be done now 
+   lhemi = lhemi.transform(some_registration)
+
+   # Create the projector and save to file 
+   ref = '/some/reference_image.nii.gz'   
+   proj = toblerone.Projector(lhemi, spc)
+   proj.save('/path/to/save.h5')
+
+Load a projector and use to project data between surface and volume spaces: 
+
+.. code-block:: python 
+
+   import toblerone as tob 
+   import numpy as np 
+
+   # Load existing projector 
+   proj = tob.Projector.load('/path/to/load.h5')
+
+   # Simulate some volumetric data for the reference voxel grid 
+   # and project onto the surface 
+   vol_data = np.random.rand(*proj.spc.size)
+   vol_on_surf = proj.vol2surf(vol_data.flatten(), edge_scale=False)
+
+   # Simulate some surface data and project into the volume 
+   surf_data = np.random.rand(proj.n_surf_nodes)
+   surf_in_vol = proj.surf2vol(surf_data, edge_scale=False)

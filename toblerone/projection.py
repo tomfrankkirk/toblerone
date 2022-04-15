@@ -30,15 +30,16 @@ class Projector(object):
     order according to their dictionary key (see below)
 
     Args: 
-        hemispheres: single or list of two (L/R) Hemisphere objects. Note 
-            that the surfaces of the hemispheres must be in alignment with 
+        hemispheres (list/Hemisphere): single or list (L/R) of Hemisphere objects.
+            Note that the surfaces of the hemispheres must be in alignment with 
             the reference space (ie, apply any transformations beforehand).
-        spc: ImageSpace to project from/to 
-        rois: dictionary of subcortical ROIs; keys are ROI name and values 
+        spc (str/ImageSpace): path for, or ImageSpace object, for voxel grid 
+            to project from/to 
+        rois (dict): subcortical ROIs; keys are ROI name and values 
             are paths to surfaces or Surface objects for the ROIs themselves. 
-        factor: voxel subdivision factor (default 3x voxel size)
-        cores: number of processor cores to use (default max)
-        ones: debug tool, whole voxel PV assignment. 
+        factor (int): voxel subdivision factor (default 3x voxel size)
+        cores (int): number of processor cores to use (default max)
+        ones (bool): debug tool, whole voxel PV assignment. 
     """
 
     def __init__(self, hemispheres, spc, rois=None, factor=None,
@@ -60,6 +61,8 @@ class Projector(object):
             hemispheres = [hemispheres]
             
         self.hemi_dict = { h.side: copy.deepcopy(h) for h in hemispheres }
+        if not isinstance(spc, ImageSpace): 
+            spc = ImageSpace(spc)
         self.spc = spc 
         self._hemi_pvs = [] 
         self.vox_tri_mats = [] 

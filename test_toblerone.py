@@ -378,7 +378,7 @@ def test_projector_hdf5():
     ins = op.join(td, 'in.surf.gii')
     outs = op.join(td, 'out.surf.gii')
     hemi = toblerone.Hemisphere(ins, outs, 'L')
-    spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
+    spc = op.join(td, 'ref.nii.gz')
     proj = toblerone.Projector(hemi, spc)
     proj.save('proj.h5')
     proj2 = toblerone.Projector.load('proj.h5')
