@@ -412,4 +412,4 @@ def cmdline():
 
 if __name__ == "__main__":
     
-    test_mesh_laplacian()
+    test_projection()

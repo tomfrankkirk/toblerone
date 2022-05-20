@@ -101,10 +101,12 @@ class Projector(object):
 
     def _assemble_vtx_vox_mats(self, factor, ncores, ones): 
 
-        for hemi in self.iter_hemis: 
+        for side,hemi in self.hemi_dict.items(): 
             # Calculate the constituent matrices for projection with each hemi 
             midsurf = hemi.midsurface()
-            vox_tri = vox_tri_weights(*hemi.surfs, self.spc, factor, ncores, ones)
+            vox_tri = vox_tri_weights(*hemi.surfs, self.spc, factor, 
+                                      cores=ncores, ones=ones, 
+                                      descriptor=f'{side} prisms')
             vtx_tri = vtx_tri_weights(midsurf, ncores)
             self.vox_tri_mats.append(vox_tri)
             self.vtx_tri_mats.append(vtx_tri)

@@ -881,7 +881,7 @@ def _voxelise_worker(surf, dim_range, raysd1d2):
 
 
 def vox_tri_weights(in_surf, out_surf, spc, factor, 
-                    cores=mp.cpu_count(), ones=False):     
+                    cores=mp.cpu_count(), descriptor='', ones=False):     
     """
     Form matrix of size (n_vox x n_tris), in which element (I,J) is the 
     fraction of samples from voxel I that are in triangle prism J. 
@@ -892,6 +892,7 @@ def vox_tri_weights(in_surf, out_surf, spc, factor,
         spc: ImageSpace object within which to project 
         factor: voxel subdivision factor
         cores: number of cpu cores
+        descriptor: string for tqdm progress bar 
         
     Returns: 
         vox_tri_weights: a scipy.sparse CSR matrix of shape
@@ -906,21 +907,26 @@ def vox_tri_weights(in_surf, out_surf, spc, factor,
         points_vox.append(p_v)
 
     n_tris = in_surf.tris.shape[0]
+    t_ranges = utils._distributeObjects(range(n_tris), 50)
     worker = functools.partial(_vox_tri_weights_worker, 
         inps_vox=points_vox[0], outps_vox=points_vox[1], 
         tris=in_surf.tris, spc=spc, factor=factor, ones=ones)
     
+    iterator = functools.partial(tqdm.tqdm,
+        total=len(t_ranges), desc=descriptor, 
+        bar_format=BAR_FORMAT, ascii=True)
+
     if cores > 1: 
-        t_ranges = utils._distributeObjects(range(n_tris), cores)
         with mp.Pool(cores) as p: 
-            vpmats = p.map(worker, t_ranges)
+            vpmats = [ r for r in iterator(p.imap_unordered(worker, t_ranges)) ] 
+            # vpmats = p.map(worker, t_ranges)
             
         vpmat = vpmats[0]
         for vp in vpmats[1:]:
             vpmat += vp
             
     else: 
-        vpmat = worker(range(n_tris))
+        vpmat = [ r for r in iterator(map(worker, t_ranges)) ] 
          
     return vpmat / factor.prod()
 
