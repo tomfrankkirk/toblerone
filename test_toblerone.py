@@ -6,11 +6,13 @@ from pdb import set_trace
 import os 
 import multiprocessing
 import sys 
+import copy 
 
 import numpy as np
 from scipy import sparse
 from numpy.lib.index_tricks import diag_indices
 import nibabel
+import trimesh
 
 import toblerone
 from toblerone import pvestimation
@@ -21,6 +23,7 @@ from toblerone.pvestimation import estimators
 from regtricks.application_helpers import sum_array_blocks
 from toblerone.utils import NP_FLOAT, slice_sparse, sparse_normalise
 from toblerone.__main__ import main
+from toblerone.classes.image_space import reindexing_filter
 
 cores = multiprocessing.cpu_count()
 
@@ -323,13 +326,13 @@ def test_cortex():
     hemi.inSurf.index_on(spc_high)
     hemi.inSurf.indexed.voxelised = hemi.inSurf.voxelise(spc_high, 1)
 
-    reindex_in = hemi.inSurf.reindexing_filter(spc_high)
+    reindex_in = reindexing_filter(hemi.inSurf.indexed.space, spc_high)
     voxelised[reindex_in[1]] = -(hemi.inSurf.indexed.
                                     voxelised[reindex_in[0]]).astype(NP_FLOAT)
 
     hemi.outSurf.index_on(spc_high)
     hemi.outSurf.indexed.voxelised = hemi.outSurf.voxelise(spc_high, 1)
-    reindex_out = hemi.outSurf.reindexing_filter(spc_high)
+    reindex_out = reindexing_filter(hemi.outSurf.indexed.space, spc_high)
     voxelised[reindex_out[1]] += hemi.outSurf.indexed.voxelised[reindex_out[0]]
 
     voxelised = voxelised.reshape(spc_high.size)
@@ -354,7 +357,7 @@ def test_structure():
     ins.index_on(spc_high)
     ins.indexed.voxelised = ins.voxelise(spc_high, 1)
 
-    reindex_in = ins.reindexing_filter(spc_high)
+    reindex_in = reindexing_filter(ins.indexed.space, spc_high)
     voxelised[reindex_in[1]] = (ins.indexed.
                                     voxelised[reindex_in[0]]).astype(NP_FLOAT)
 
@@ -460,4 +463,4 @@ def test_prefer_convex_hull():
 
 if __name__ == "__main__":
     
-    test_projection()
+    test_projector_cmdline()
