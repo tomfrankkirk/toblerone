@@ -306,9 +306,9 @@ def enforce_and_load_common_arguments(func):
 
         return ref, struct2ref, kwargs
 
-    def common_args_enforced(ref, struct2ref, **kwargs):
+    def common_args_enforced(ref, struct2ref, *args, **kwargs):
         ref, struct2ref, enforced = enforcer(ref, struct2ref, **kwargs)
-        return func(ref, struct2ref, **enforced)
+        return func(ref, struct2ref, *args, **enforced)
 
     return common_args_enforced
 
