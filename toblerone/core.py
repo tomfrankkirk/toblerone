@@ -17,6 +17,7 @@ import copy
 
 import numpy as np 
 import tqdm
+import trimesh
 from scipy.spatial import ConvexHull, QhullError, Delaunay
 
 from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,  
@@ -30,6 +31,9 @@ from toblerone.utils import NP_FLOAT
 # Module level constants ------------------------------------------------------
 
 ZERO_3 = np.zeros(3, dtype=NP_FLOAT)
+
+SUPER2 = 6 * np.ones(3, dtype=NP_FLOAT)
+SUPER2_DIV = SUPER2.prod()
 
 # edge vectors for a single voxel 
 ORIGINS = np.array([1, 1, 1, 4, 4, 4, 5, 5, 8, 8, 6, 7, 1, 2, 3, 4,
@@ -551,30 +555,36 @@ def _safeFormHull(points):
         return 0
         
 
-def _points_in_voxel(points, vc, vs):
-    return (np.abs(points - vc) <= vs/2).all(1)
+def _get_subvoxel_grid(supersampler):
+    """Generate grid of subvoxel centers"""
+
+    steps = 1.0 / supersampler
+    subs = np.indices(supersampler.astype(int)).reshape(3,-1).T / supersampler
+    subs += (steps / 2) - 0.5 
+
+    # subs2 = np.meshgrid(*[np.arange(s/2, 1, s, dtype=NP_FLOAT) for s in steps ]
+    # )
+    # subs2 = np.stack(subs2, axis=-1).reshape(-1,3) - 0.5
+    # np.array_equal(subs, subs2)
+    return subs.astype(NP_FLOAT)
+
+
+# Pre-compute the subvoxel grid used for recursive processing (it will
+# be the same size for all such voxels)
+SUPER2_GRID = _get_subvoxel_grid(SUPER2.astype(int))
 
 
 def _classifyVoxelViaRecursion(patch, voxCent, vox_size, containedFlag):
     """Classify a voxel via recursion (not using convex hulls)"""
 
-    # Create a grid of 125 subvoxels, calculate fraction by simply testing
+    # Create a grid of subvoxels, calculate fraction by simply testing
     # each subvoxel centre coordinate. 
-    super2 = 5 * np.ones(3)
-    subVoxCents = _get_subvoxel_grid(super2) + voxCent
+    subVoxCents = SUPER2_GRID + voxCent
     flags = _reducedRayIntersectionTest(subVoxCents, patch, voxCent, \
         ~containedFlag)
 
-    return flags.sum() / super2.prod()
+    return flags.sum() / SUPER2_DIV
 
-
-def _get_subvoxel_grid(supersampler):
-
-    # Test all subvox centres now and store the results for later
-    steps = 1.0 / supersampler
-    subs = np.meshgrid(*[np.arange(s/2, 1, s, dtype=NP_FLOAT) for s in steps ]
-    )
-    return np.stack(subs, axis=-1).reshape(-1,3) - 0.5
 
 def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
     """The Big Daddy that does the Heavy Lifting. 
@@ -596,7 +606,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
 
     # Set up the subvoxel sizes and vols. 
     subvox_size = (1.0 / supersampler).astype(NP_FLOAT)
-    subVoxVol = np.prod(subvox_size).astype(NP_FLOAT)
+    subVoxVol = subvox_size.prod()
 
     # Rebase triangles and points for this voxel
     voxCentFlag = surf.indexed.voxelised[voxIdx]
@@ -1125,7 +1135,7 @@ def __meyer_worker(points, tris, edges, edge_lengths, worklist):
             angles = np.array([alpha, beta, gamma])
 
             # Area if not obtuse
-            if not np.any((angles > np.pi/2)): # Voronoi
+            if not (angles > np.pi/2).any(): # Voronoi
                 a = ((np.square(L01)/np.tan(gamma)) + (np.square(L02)/np.tan(beta))) / 8
             else: 
                 # If obtuse, heuristic approach
