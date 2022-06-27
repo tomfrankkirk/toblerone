@@ -410,6 +410,54 @@ def cmdline():
     # sys.argv[1:] = ['-estimate-cortex']
     main()
 
+
+def test_projector_cmdline():
+    td = get_testdir()
+    ins = op.join(td, 'in.surf.gii')
+    outs = op.join(td, 'out.surf.gii')
+    spc = op.join(td, 'ref.nii.gz')
+
+    cmd = f"""-prepare-projector -ref {spc} -LPS {outs} 
+        -LWS {ins} -out proj -struct2ref I"""
+    sys.argv[1:] = cmd.split()
+    main()
+    os.remove('proj.h5')
+
+
+def test_prefer_convex_hull():
+
+    # This was a sneaky bug. When estimating PVs for a voxel that intersects the surface, 
+    # we should aim to pick the side that is more convex, so the convex hull volume will 
+    # be more accurate. The below test case of a very small sphere that is contained within
+    # a grid of 2,2,2 voxels is nasty because there are float rounding issues. On one side, 
+    # a fold in the surface is detected and recursion is used. On the other side, no fold
+    # is detected (due to float equality issues) and therefore a hull is used. It's important
+    # that the two strategies yield similar results. 
+
+    fov = 4
+    vox_size = np.ones(3)
+    spc = toblerone.ImageSpace.create_axis_aligned([0,0,0], (fov/vox_size).astype(int), vox_size)
+    
+    sph = trimesh.creation.icosphere(3, radius=1.0)
+    sph.vertices += fov/2
+    surf = Surface.manual(sph.vertices, sph.faces)
+
+    # ground truth 
+    factor = 10
+    spc2 = spc.resize_voxels(1/factor)
+    surf2 = copy.deepcopy(surf)
+    surf2.index_on(spc2)
+    surf2.indexed.voxelised = surf2.voxelise(spc2, 1)
+    truth = np.zeros(spc2.size.prod())
+    src_fltr, dest_fltr = reindexing_filter(surf2.indexed.space, spc2)
+    truth[dest_fltr] = surf2.indexed.voxelised
+    truth = sum_array_blocks(truth.reshape(spc2.size), 3*[factor]) / (factor**3)
+
+    pvs = pvestimation.structure(spc, 'I', surf, cores=1)
+
+    assert np.abs(truth - pvs).max() < 0.01, 'PVs for small sphere do not match truth'
+
+
 if __name__ == "__main__":
     
     test_projection()
