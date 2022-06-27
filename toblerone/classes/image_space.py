@@ -5,6 +5,7 @@ regtricks.ImageSpace.
 """
 
 import copy 
+import warnings
 
 import numpy as np 
 from regtricks import ImageSpace as BaseSpace
@@ -76,25 +77,32 @@ class ImageSpace(BaseSpace):
             min_max[sidx*2 + 1,:] = ps.max(0)
 
         # Fix the offset relative to reference and minimal size 
-        minFoV = np.floor(min_max.min(0)).astype(np.int16)
-        maxFoV = np.ceil(min_max.max(0)).astype(np.int16)
-        size = maxFoV - minFoV + 1
-        FoVoffset = -minFoV
+        min_vox = np.floor(min_max.min(0)).astype(np.int16)
+        max_vox = np.ceil(min_max.max(0)).astype(np.int16)
+        # min_vox = np.clip(min_vox, 0, space.size-1)
+        # max_vox = np.clip(max_vox, 0, space.size-1)
+        size = max_vox - min_vox + 1
     
         # Get a copy of the corresponding mm coords for checking later
-        min_max_mm = utils.affine_transform(np.array([minFoV, maxFoV]),
+        min_max_mm = utils.affine_transform(np.array([min_vox, max_vox]),
             space.vox2world)
 
         # Calculate new origin for the coordinate system and modify the 
         # vox2world matrix accordingly 
         space.size = size 
         space.vox2world[0:3,3] = min_max_mm[0,:]
-        space.offset = FoVoffset 
+        space.offset = - min_vox 
 
         check = utils.affine_transform(min_max_mm, space.world2vox)
         if (np.any(check[0,:].round() < 0) or 
             np.any(check[1,:].round() > size - 1)): 
             raise RuntimeError("New space does not enclose surfaces")
+
+        new_voxs, old_voxs = reindexing_filter(space, reference)
+        if not (new_voxs.size and old_voxs.size): 
+            warnings.warn(f"Surfaces {[s.name for s in slist]} do not intersect the reference voxel grid")
+
+        space.parent = reference
 
         return space 
 
@@ -112,3 +120,59 @@ class ImageSpace(BaseSpace):
         offset_mm2 = parent.vox2world[0:3,3] @ self.offset 
         return ((np.abs(det1 - det2) < 1e-9) and np.all(np.abs(offset_mm - offset_mm2) < 1e9))
 
+
+def reindexing_filter(src_space, dest_space, as_bool=False):
+    """
+    Filter of voxels in the source space that lie within destination
+    space. Use for extracting PV estimates from index space back to
+    the space from which the index space derives. NB dest_space must 
+    derive from the surface's current index_space 
+
+    Args: 
+        src_space: ImageSpace data is currently in 
+        dest_space: ImageSpace data will be mapped into. Must derive from 
+                    src_space. 
+        as_bool: output results as logical filters instead of indices
+            (note they will be of different size in this case)
+
+    Returns: 
+        (src_inds, dest_inds) arrays of equal length, flat indices into 
+        arrays of size src_space.size and dest_space.size respectively, 
+        mapping voxels from source to corresponding destination positions 
+    """
+
+    if not src_space.derives_from(dest_space):
+        raise ValueError("src_space must derive from dest_space")
+
+    # We need offset and size of source space compared to dest 
+    offset = src_space.offset 
+    size = src_space.size 
+
+    # src_orig = src_space.vox2world[:3,3]
+    # dest_orig = dest_space.vox2world[:3,3]
+    # shift_mm = dest_orig - src_orig 
+    # shift_vox = shift_mm / src_space.vox_size
+
+    # List voxel indices in the current index space 
+    # List corresponding voxel coordinates in the destination space 
+    # curr2dest_fltr selects voxel indices from the current space that 
+    # are also contained within the destination space 
+    # inds_in_src = np.arange(np.prod(size))
+    # voxs_in_src = np.array(np.unravel_index(inds_in_src, size)).T
+    voxs_in_src = np.moveaxis(np.indices(size), 0, 3).reshape(-1,3)
+    voxs_in_dest = voxs_in_src - offset
+    fltr = np.logical_and(np.all(voxs_in_dest > - 1, 1), 
+        np.all(voxs_in_dest < dest_space.size, 1))
+    
+    src_inds = np.ravel_multi_index(voxs_in_src[fltr,:].T, size)
+    dest_inds = np.ravel_multi_index(voxs_in_dest[fltr,:].T, 
+        dest_space.size)
+
+    if as_bool: 
+        src_fltr = np.zeros(np.prod(size), dtype=bool)
+        src_fltr[src_inds] = 1 
+        dest_fltr = np.zeros(np.prod(dest_space.size), dtype=bool)
+        dest_fltr[dest_inds] = 1
+        return (src_fltr, dest_fltr)
+
+    return src_inds, dest_inds

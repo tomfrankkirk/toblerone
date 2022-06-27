@@ -16,7 +16,7 @@ from scipy import sparse
 import pyvista
 import vtk 
 
-from .image_space import ImageSpace, BaseSpace
+from .image_space import ImageSpace, BaseSpace, reindexing_filter
 from .. import utils, core
 from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
 
@@ -166,7 +166,7 @@ class Surface(object):
 
 
     @classmethod
-    def manual(cls, ps, ts, name=None):
+    def manual(cls, ps, ts, name='<manually created surface>'):
         """Manual surface constructor using points and triangles arrays"""
 
         if (ps.shape[1] != 3) or (ts.shape[1] != 3):
@@ -283,7 +283,7 @@ class Surface(object):
         pvs_curr = self.indexed.voxelised.astype(NP_FLOAT)
         pvs_curr[self.indexed.assocs_keys] = self.fractions
         out = np.zeros(np.prod(space.size), dtype=NP_FLOAT)
-        curr_inds, dest_inds = self.reindexing_filter(space)
+        curr_inds, dest_inds = reindexing_filter(self.indexed.space, space)
         out[dest_inds] = pvs_curr[curr_inds]
         return out.reshape(space.size)
 
@@ -302,7 +302,7 @@ class Surface(object):
         
         cores = cores if self._use_mp else 1
         if ones: 
-            self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=bool) 
+            self.fractions = np.ones(self.indexed.assocs_keys.size, dtype=NP_FLOAT) 
         else: 
             self.fractions = core._estimateFractions(self, supersampler, 
                                                         desc, cores)
@@ -349,6 +349,8 @@ class Surface(object):
         cores = cores if self._use_mp else 1 
         assocs, assocs_keys = core.form_associations(points_vox, self.tris, 
                                                         encl_space, cores)
+        if not assocs_keys.size: 
+            warnings.warn(f'Surface {self.name} does not intersect the reference voxel grid')
         xprods = utils.calculateXprods(points_vox, self.tris)
 
         # All the results of indexing are stored using the namedtuple 
@@ -421,7 +423,8 @@ class Surface(object):
         else: 
             src_mask = worker(range(size[other_dims[0]]), rayD1D2)
 
-        assert src_mask.any(), 'no voxels filled'
+        if not src_mask.any():
+            warnings.warn(f"Voxelisation of {self.name}: no voxels filled")
         src_mask = src_mask.flatten()
 
         # If the space provided is not the same as the space used for indexing 
@@ -430,7 +433,7 @@ class Surface(object):
         # for more info. 
         # Else, we can just return the mask as-is. 
         if space != self.indexed.space: 
-            src_inds, dest_inds = self.reindexing_filter(space, False)
+            src_inds, dest_inds = reindexing_filter(self.indexed.space, space, False)
             mask = np.zeros(space.size.prod(), dtype=bool)
             mask[dest_inds] = src_mask[src_inds]    
         else: 
@@ -440,58 +443,10 @@ class Surface(object):
     
 
     @ensure_derived_space
-    def reindexing_filter(self, dest_space, as_bool=False):
-        """
-        Filter of voxels in the current index space that lie within 
-        dest_space. Use for extracting PV estimates from index space back to
-        the space from which the index space derives. NB dest_space must 
-        derive from the surface's current index_space 
-
-        Args: 
-            dest_space: ImageSpace from which current index_space derives
-            as_bool: output results as logical filters instead of indices
-                (note they will be of different size in this case)
-
-        Returns: 
-            (src_inds, dest_inds) arrays of equal length, flat indices into 
-            arrays of size index_space.size and dest_space.size respectively, 
-            mapping voxels from source to corresponding destination positions 
-        """
-
-        # Get the offset and size of the current index space 
-        src_space = self.indexed.space
-        offset = src_space.offset 
-        size = src_space.size 
-
-        # List voxel indices in the current index space 
-        # List corresponding voxel coordinates in the destination space 
-        # curr2dest_fltr selects voxel indices from the current space that 
-        # are also contained within the destination space 
-        inds_in_src = np.arange(np.prod(size))
-        voxs_in_src = np.array(np.unravel_index(inds_in_src, size)).T
-        voxs_in_dest = voxs_in_src - offset
-        fltr = np.logical_and(np.all(voxs_in_dest > - 1, 1), 
-            np.all(voxs_in_dest < dest_space.size, 1))
-        
-        src_inds = np.ravel_multi_index(voxs_in_src[fltr,:].T, size)
-        dest_inds = np.ravel_multi_index(voxs_in_dest[fltr,:].T, 
-            dest_space.size)
-
-        if as_bool: 
-            src_fltr = np.zeros(np.prod(size), dtype=bool)
-            src_fltr[src_inds] = 1 
-            dest_fltr = np.zeros(np.prod(dest_space.size), dtype=bool)
-            dest_fltr[dest_inds] = 1
-            return (src_fltr, dest_fltr)
-
-        return src_inds, dest_inds
-
-
-    @ensure_derived_space
     def reindex_LUT(self, space):
         """Return a copy of LUT indices expressed in another space"""
 
-        src_inds, dest_inds = self.reindexing_filter(space)
+        src_inds, dest_inds = reindexing_filter(self.indexed.space, space)
         fltr = np.in1d(src_inds, self.indexed.assocs_keys, assume_unique=True)
         return dest_inds[fltr]
 
@@ -520,7 +475,7 @@ class Surface(object):
             return bridges 
 
         else: 
-            src_inds, dest_inds = self.reindexing_filter(space)
+            src_inds, dest_inds = reindexing_filter(self.indexed.space, space)
             fltr = np.in1d(src_inds, bridges, assume_unique=True)
             return dest_inds[fltr]
 
