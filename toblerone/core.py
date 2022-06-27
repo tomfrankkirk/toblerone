@@ -681,15 +681,18 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 # Aim to form the smallest possible hull
                 else:
                     
-                    # Smaller interior hull 
-                    if cornerFlags.sum() < 4:
-                        hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
-                        classes = [1, 0]
-                    
-                    # Smaller exterior hull
-                    else:
+                    # Vertex defects is 2pi - (sum of triangle angles around each vertex)
+                    # This will be positive in a convex region, negative for concave. 
+                    # Concave: we assume the hull exterior to the surface is smaller so form that 
+                    msh = trimesh.base.Trimesh(vertices=smallPatch.points, faces=smallPatch.tris)
+                    if trimesh.curvature.vertex_defects(msh).sum() < 0: 
                         hullPts = np.vstack((hullPts, corners[~cornerFlags,:]))
                         classes = [0, 1]
+                    
+                    # Smaller interior hull 
+                    else:
+                        hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
+                        classes = [1, 0]
 
                 V = _safeFormHull(hullPts)
                 if not V: 
