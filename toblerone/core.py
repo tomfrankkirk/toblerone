@@ -690,7 +690,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                 # Non homogenous corner flags: use convex hulls. 
                 # Aim to form the smallest possible hull
                 else:
-                    
+
                     # Vertex defects is 2pi - (sum of triangle angles around each vertex)
                     # This will be positive in a convex region, negative for concave. 
                     # Concave: we assume the hull exterior to the surface is smaller so form that 
@@ -699,7 +699,7 @@ def _estimateVoxelFraction(surf, voxIJK, voxIdx, supersampler):
                         hullPts = np.vstack((hullPts, corners[~cornerFlags,:]))
                         classes = [0, 1]
                     
-                    # Smaller interior hull 
+                    # Smaller interior hull
                     else:
                         hullPts = np.vstack((hullPts, corners[cornerFlags,:]))
                         classes = [1, 0]
@@ -932,15 +932,14 @@ def vox_tri_weights(in_surf, out_surf, spc, factor,
     if cores > 1: 
         with mp.Pool(cores) as p: 
             vpmats = [ r for r in iterator(p.imap_unordered(worker, t_ranges)) ] 
-            # vpmats = p.map(worker, t_ranges)
-            
-        vpmat = vpmats[0]
-        for vp in vpmats[1:]:
-            vpmat += vp
             
     else: 
-        vpmat = [ r for r in iterator(map(worker, t_ranges)) ] 
+        vpmats = [ r for r in iterator(map(worker, t_ranges)) ]
          
+    vpmat = vpmats[0]
+    for vp in vpmats[1:]:
+        vpmat += vp
+
     return vpmat / factor.prod()
 
 
