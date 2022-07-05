@@ -8,3 +8,4 @@ regtricks
 pyvista 
 h5py
 vtk 
+trimesh
