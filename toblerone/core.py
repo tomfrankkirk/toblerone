@@ -18,7 +18,14 @@ import copy
 import numpy as np 
 import tqdm
 import trimesh
-from scipy.spatial import ConvexHull, QhullError, Delaunay
+
+# BF: the first import matches against scipy >= 1.8, second
+# matches otherwise. API naming was made consistent >= 1.8 
+from scipy.spatial import ConvexHull, Delaunay
+try: 
+    from scipy.spatial import QhullError
+except ImportError: 
+    from scipy.spatial.qhull import QhullError
 
 from toblerone.ctoblerone import (_ctestTriangleVoxelIntersection,  
                                   _cyfilterTriangles,
