@@ -348,26 +348,20 @@ def sparse_normalise(mat, axis, threshold=1e-6):
 
     # Sanity check
     sums = matrix.sum(axis).A.flatten()
-    assert np.abs((sums[sums > 0] - 1)).max() < (1e2 * threshold), 'Did not normalise to 1'
+    assert np.allclose(sums[sums>0], 1, atol=1e-4), 'Did not normalise to 1'
     return constructor(matrix)
 
 
 def is_symmetric(a, tol=1e-9): 
+    if not a.nnz: 
+        return True 
     return not (np.abs(a - a.T) > tol).max()
 
 
 def is_nsd(a):
+    if not a.nnz: 
+        return True 
     return not (eigs(a)[0] > 0).any()
-
-
-def calc_midsurf(in_surf, out_surf):
-    """
-    Midsurface between two Surfaces
-    """
-    from .classes import Surface
-    vec = out_surf.points - in_surf.points 
-    points =  in_surf.points + (0.5 * vec)
-    return Surface.manual(points, in_surf.tris)
 
 
 def calculateXprods(points, tris):
@@ -398,6 +392,70 @@ def slice_sparse(mat, slice0, slice1):
     
     out = mat.tocsc()[:,slice1]
     return out.tocsr()[slice0,:]
+
+
+def mask_laplacian(lap, mask): 
+
+    lap = lap.tocsr()
+    lap[np.diag_indices_from(lap)] = 0 
+    lap = slice_sparse(lap, mask, mask)
+    dia = lap.sum(1).A.flatten()
+    lap[np.diag_indices_from(lap)] = -dia 
+    assert (np.abs(lap.sum(1))< 1e-4).all(), 'Unweighted laplacian'
+    assert is_nsd(lap), 'Not negative semi-definite'
+    assert is_symmetric(lap), 'Not symmetric'
+    return lap 
+
+def mask_projection_matrix(matrix, row_mask, col_mask): 
+    """
+    Mask a sparse projection matrix, whilst preserving total signal intensity. 
+    For example, if the mask implies discarding voxels from a vol2surf matrix, 
+    upweight the weights of the remaining voxels to account for the discarded 
+    voxels. Rows represent the target domain and columns the source. 
+
+    Args: 
+        matrix (sparse): of any form, shape (N,M)
+        row_mask (np.array,bool): flat vector of size N, rows to retain in matrix 
+        col_mask (np.array,bool): flat vector of size M, cols to retain in matrix 
+
+    Returns: 
+        CSR matrix, shape (sum(row_mask), sum(col_mask))
+    """
+
+    if (row_mask.dtype.kind != 'b') or (col_mask.dtype.kind != 'b'): 
+        raise ValueError("Row and column masks must be boolean arrays")
+
+    if not (row_mask.shape[0] == row_mask.size == matrix.shape[0]):
+        raise ValueError('Row mask size does not match matrix shape')
+
+    if not (col_mask.shape[0] == col_mask.size == matrix.shape[1]):
+        raise ValueError('Column mask size does not match matrix shape')
+
+    # Masking by rows is easy because they represent the output domain - ie, 
+    # we can just drop the rows and ignore. 
+    matrix = matrix[row_mask,:]
+
+    # Masking by cols is harder because we seek to preserve the overall signal 
+    # intensity from source to output. So for every bit of source signal that 
+    # goes missing, we want to upscale the remainder so that the overall 
+    # magnitude of output remains the same. 
+    matrix_masked = matrix[:,col_mask]
+
+    orig_weights = matrix.sum(1).A.flatten()
+    new_weights = matrix_masked.sum(1).A.flatten()
+    valid = (new_weights > 0)
+    sf = np.zeros_like(orig_weights)
+    sf[valid] = orig_weights[valid] / new_weights[valid]
+
+    matrix_csc = matrix_masked.tocsc()
+    matrix_csc.data = matrix_csc.data * np.take(sf, matrix_csc.indices)
+    matrix_new = matrix_csc.tocsr() 
+
+    final_weights = matrix_new.sum(1).A.flatten() 
+    if not np.allclose(final_weights[valid], orig_weights[valid]): 
+        raise RuntimeError('Masked matrix did not re-scale correctly')
+
+    return matrix_new 
 
 
 def rebase_triangles(points, tris, tri_inds):

@@ -18,7 +18,7 @@ import vtk
 
 from .image_space import ImageSpace, BaseSpace, reindexing_filter
 from .. import utils, core
-from ..utils import NP_FLOAT, calc_midsurf, is_symmetric
+from ..utils import NP_FLOAT, is_symmetric
 
 MP_THRESHOLD = 1000
 
@@ -583,7 +583,7 @@ class Surface(object):
 
         # The diagonal is the negative sum of other elements 
         adj = self.adjacency_matrix(distance_weight)
-        adj = np.around(adj, 12)
+        adj = np.around(adj, 9) # FIXME: this is less than ideal - would be better to round to s.f.
         dia = adj.sum(1).A.flatten()
         laplacian = sparse.dia_matrix((dia, 0), shape=(adj.shape), dtype=np.float32)
         laplacian = adj - laplacian
@@ -728,7 +728,16 @@ class Hemisphere(object):
 
     def midsurface(self):
         """Midsurface between inner and outer cortex"""
-        return calc_midsurf(self.inSurf, self.outSurf)
+
+        vec = self.outSurf.points - self.inSurf.points 
+        points = self.inSurf.points + (0.5 * vec)
+        return Surface.manual(points, self.inSurf.tris)
+
+    
+    def thickness(self): 
+        vec = self.outSurf.points - self.inSurf.points 
+        return np.linalg.norm(vec, ord=2, axis=-1)
+
 
     def adjacency_matrix(self, distance_weight=0):
         """

@@ -968,7 +968,7 @@ def _vox_tri_weights_worker(t_range, inps_vox, outps_vox, tris,
 
     # Initialise a grid of sample points, sized by (factor) in each dimension. 
     # We then shift the samples into each individual voxel. 
-    vox_tri_samps = sparse.dok_matrix((spc.size.prod(), 
+    vox_tri_samps = sparse.dok_matrix((spc.n_vox, 
         tris.shape[0]), dtype=NP_FLOAT)
     samplers = [ np.linspace(0, 1, 2*f + 1, dtype=NP_FLOAT)[1:-1:2] 
                     for f in factor ]

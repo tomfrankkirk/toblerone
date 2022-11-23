@@ -195,7 +195,7 @@ class Projector(object):
                 if isinstance(fname, bytes): 
                     fname = fname.decode('utf-8')
                 p.spc.fname = fname 
-            n_vox = p.spc.size.prod()
+            n_vox = p.spc.n_vox
 
             # Now read out hemisphere specific properties 
             p._hemi_pvs = [] 
@@ -282,7 +282,13 @@ class Projector(object):
     @property 
     def n_nodes(self): 
         """Number of nodes in projector (surface, voxels, subcortical ROIs)"""
-        return sum([ self.spc.size.prod(), self.n_surf_nodes, len(self._roi_pvs) ])
+        return sum([ self.spc.n_vox, self.n_surf_nodes, len(self._roi_pvs) ])
+
+
+    @property 
+    def n_vox(self): 
+        """Number of voxels in reference ImageSpace"""
+        return self.spc.n_vox 
 
 
     @property 
@@ -368,13 +374,17 @@ class Projector(object):
         """
         if len(self._hemi_pvs) > 1:
             # Combine PV estimates from each hemisphere into single map 
-            pvs = np.zeros((self.spc.size.prod(), 3))
+            pvs = np.zeros((self.spc.n_vox, 3))
             pvs[:,0] = np.minimum(1.0, self._hemi_pvs[0][:,0] + self._hemi_pvs[1][:,0])
             pvs[:,1] = np.minimum(1.0 - pvs[:,0], self._hemi_pvs[0][:,1] + self._hemi_pvs[1][:,1])
             pvs[:,2] = 1.0 - pvs[:,0:2].sum(1)
             return pvs.reshape(*self.spc.size, 3)
         else: 
             return self._hemi_pvs[0].reshape(*self.spc.size, 3)
+
+    def cortex_thickness(self): 
+
+        return np.concatenate([ h.thickness() for h in self.iter_hemis ])
 
 
     def subcortex_pvs(self):
@@ -399,7 +409,7 @@ class Projector(object):
                 non-brain in 4th dim. 
         """
 
-        pvs = np.zeros((self.spc.size.prod(), 3))
+        pvs = np.zeros((self.spc.n_vox, 3))
         cpvs = self.cortex_pvs()
         spvs = self.subcortex_pvs().flatten()
         pvs[...] = cpvs[...].reshape(-1,3)
@@ -417,8 +427,22 @@ class Projector(object):
 
         return pvs.reshape(*self.spc.size, 3)
 
+    
+    def brain_mask(self, pv_threshold=0.1): 
+        """Boolean mask of brain voxels, in reference ImageSpace
+        
+        Args: 
+            pv_threshold (float): minimum brain PV (WM+GM) to include
 
-    def vol2surf_matrix(self, edge_scale):
+        Returns: 
+            np.array, same shape as reference space, boolean dtype  
+        """
+
+        pvs = self.pvs() 
+        return (pvs[...,:2].sum(-1) > pv_threshold)
+
+
+    def vol2surf_matrix(self, edge_scale, vol_mask=None, surf_mask=None):
         """
         Volume to surface projection matrix. 
 
@@ -429,14 +453,32 @@ class Projector(object):
                                 (eg perfusion), set False otherwise 
                                 (eg time quantities)
 
+            vol_mask (np.array,bool): bool mask of voxels to include
+            surf_mask (np.array,bool): bool mask of surface vertices to include 
+
         Returns: 
             sparse CSR matrix, sized (surface vertices x voxels). Surface vertices 
                 are arranged L then R. 
         """
 
+        if surf_mask is None: 
+            surf_mask = np.ones(self.n_surf_nodes, dtype=bool)
+        
+        if vol_mask is None: 
+            vol_mask = np.ones(self.n_vox, dtype=bool)
+
+        if not (vol_mask.shape[0] == vol_mask.size == self.spc.n_vox):
+            raise ValueError(f'Vol mask incorrectly sized ({vol_mask.shape})'\
+                f' for reference ImageSpace ({self.spc.n_vox})')
+
+        if not (surf_mask.shape[0] == surf_mask.size == self.n_surf_nodes):
+            raise ValueError(f'Surf mask incorrectly sized ({surf_mask.shape})'\
+                f' for projector surfaces ({self.n_surf_nodes})')
+
         proj_mats = [ assemble_vol2surf(vox_tri, vtx_tri) 
             for vox_tri, vtx_tri in zip(self.vox_tri_mats, self.vtx_tri_mats) ]
         v2s_mat = sparse.vstack(proj_mats, format="csr")
+        assert v2s_mat.sum(1).max() < 1+1e-6
 
         if edge_scale: 
             brain_pv = self.cortex_pvs().reshape(-1,3)[:,:2].sum(1)
@@ -445,10 +487,13 @@ class Projector(object):
             upweight[brain] = 1 / brain_pv[brain]
             v2s_mat.data *= np.take(upweight, v2s_mat.indices)
 
+        if not (vol_mask.all() and surf_mask.all()): 
+            v2s_mat = utils.mask_projection_matrix(v2s_mat, row_mask=surf_mask, col_mask=vol_mask)
+
         return v2s_mat 
 
 
-    def vol2hybrid_matrix(self, edge_scale): 
+    def vol2hybrid_matrix(self, edge_scale, vol_mask=None, node_mask=None): 
         """
         Volume to node space projection matrix. 
 
@@ -459,12 +504,32 @@ class Projector(object):
                                 (eg perfusion), set False otherwise 
                                 (eg time quantities)
 
+            vol_mask (np.array,bool): bool mask of voxels to include
+            node_mask (np.array,bool): bool mask of nodes to include 
+
         Returns: 
-            sparse CSR matrix, sized ((surface vertices + voxels) x voxels)
+            sparse CSR matrix, sized (nodes x voxels)
         """
 
-        v2s_mat = self.vol2surf_matrix(edge_scale)
-        v2v_mat = sparse.eye(self.spc.size.prod())
+        if node_mask is None: 
+            node_mask = np.ones(self.n_nodes, dtype=bool)
+        
+        if vol_mask is None: 
+            vol_mask = np.ones(self.spc.n_vox, dtype=bool)
+
+        if not (vol_mask.shape[0] == vol_mask.size == self.spc.n_vox):
+            raise ValueError(f'Vol mask incorrectly sized ({vol_mask.shape})'\
+                f' for reference ImageSpace ({self.spc.n_vox})')
+
+        if not (node_mask.shape[0] == node_mask.size == self.n_nodes):
+            raise ValueError(f'Node mask incorrectly sized ({node_mask.shape})'\
+                f' for projector nodes ({self.n_nodes})')
+
+        surf_mask = node_mask[:self.n_surf_nodes]
+        v2s_mat = self.vol2surf_matrix(edge_scale, vol_mask=vol_mask, surf_mask=surf_mask)
+
+        wm_mask = node_mask[self.n_surf_nodes : self.n_nodes - self.n_subcortical_nodes]
+        v2v_mat = sparse.eye(self.spc.n_vox)
 
         if edge_scale: 
             brain_pv = self.pvs().reshape(-1,3)
@@ -474,15 +539,22 @@ class Projector(object):
             upweight[brain] = 1 / brain_pv[brain]
             v2v_mat.data *= upweight
 
+        v2v_mat = utils.slice_sparse(v2v_mat, wm_mask, vol_mask)
+
         if self._roi_pvs: 
 
             # mapping from voxels to subcortical ROIs - weighted averaging 
             v2r_mat = np.stack(
                 [ r.flatten() for r in self._roi_pvs.values() ], axis=0)
             v2r_mat = sparse.csr_matrix(v2r_mat)
-            v2r_mat = utils.sparse_normalise(v2r_mat, 1)            
+            v2r_mat = utils.sparse_normalise(v2r_mat, 1)  
+            assert v2r_mat.sum(1).max() < 1+1e-6
             if edge_scale: 
                 v2r_mat.data *= np.take(upweight, v2r_mat.indices)
+
+            roi_mask = node_mask[-self.n_subcortical_nodes:]
+            v2r_mat = utils.mask_projection_matrix(v2r_mat, row_mask=roi_mask, col_mask=vol_mask)
+
             v2n_mat = sparse.vstack((v2s_mat, v2v_mat, v2r_mat), format="csr")
 
         else: 
@@ -491,7 +563,7 @@ class Projector(object):
         return v2n_mat
 
 
-    def surf2vol_matrix(self, edge_scale):
+    def surf2vol_matrix(self, edge_scale, vol_mask=None, surf_mask=None):
         """
         Surface to volume projection matrix. 
 
@@ -500,16 +572,33 @@ class Projector(object):
                                set True for data that scales with PVE (eg perfusion),
                                set False for data that does not (eg time quantities). 
 
+            vol_mask (np.array,bool): bool mask of voxels to include
+            surf_mask (np.array,bool): bool mask of surface vertices to include 
+
         Returns: 
             sparse CSC matrix, sized (surface vertices x voxels)
         """
+
+        if surf_mask is None: 
+            surf_mask = np.ones(self.n_surf_nodes, dtype=bool)
+        
+        if vol_mask is None: 
+            vol_mask = np.ones(self.n_vox, dtype=bool)
+
+        if not (vol_mask.shape[0] == vol_mask.size == self.spc.n_vox):
+            raise ValueError(f'Vol mask incorrectly sized ({vol_mask.shape})'\
+                f' for reference ImageSpace ({self.spc.n_vox})')
+
+        if not (surf_mask.shape[0] == surf_mask.size == self.n_surf_nodes):
+            raise ValueError(f'Surf mask incorrectly sized ({surf_mask.shape})'\
+                f' for projector surfaces ({self.n_surf_nodes})')
 
         proj_mats = []
 
         if edge_scale: 
             gm_weights = []
             if len(self.hemi_dict) == 1: 
-                gm_weights.append(np.ones(self.spc.size.prod()))
+                gm_weights.append(np.ones(self.spc.n_vox))
             else: 
                 # GM PV can be shared between both hemispheres, so rescale each row of
                 # the s2v matrices by the proportion of all voxel-wise GM that belongs
@@ -558,10 +647,15 @@ class Projector(object):
         if edge_scale:
             s2v_mat.data *= np.take(pvs[:,0], s2v_mat.indices)
         s2v_mat.data = np.clip(s2v_mat.data, 0, 1)
+
+        if not (vol_mask.all() and surf_mask.all()): 
+            s2v_mat = utils.mask_projection_matrix(s2v_mat, row_mask=vol_mask, col_mask=surf_mask)
+
+        assert s2v_mat.sum(1).max() < 1+1e-6
         return s2v_mat  
 
 
-    def hybrid2vol_matrix(self, edge_scale): 
+    def hybrid2vol_matrix(self, edge_scale, vol_mask=None, node_mask=None): 
         """
         Node space to volume projection matrix. 
 
@@ -570,8 +664,11 @@ class Projector(object):
                                set True for data that scales with PVE (eg perfusion),
                                set False for data that does not (eg time quantities). 
 
+            vol_mask (np.array,bool): bool mask of voxels to include
+            node_mask (np.array,bool): bool mask of nodes to include 
+
         Returns: 
-            sparse CSR matrix, sized (voxels x (surface vertices + voxels))
+            sparse CSR matrix, sized (voxels x nodes)
         """
 
         # Assemble the matrices corresponding to cortex and subcortex individually. 
@@ -584,12 +681,29 @@ class Projector(object):
         # so that each row sums to 1 to get a weighted-average projection. In both
         # cases, the weighting given to cortex/subcortex within the projection is 
         # determined by GM and WM PVs, only the scaling of the final matrix changes.
-         
+
+        if node_mask is None: 
+            node_mask = np.ones(self.n_nodes, dtype=bool)
+        
+        if vol_mask is None: 
+            vol_mask = np.ones(self.spc.n_vox, dtype=bool)
+
+        if not (vol_mask.shape[0] == vol_mask.size == self.spc.n_vox):
+            raise ValueError(f'Vol mask incorrectly sized ({vol_mask.shape})'\
+                f' for reference ImageSpace ({self.spc.n_vox})')
+
+        if not (node_mask.shape[0] == node_mask.size == self.n_nodes):
+            raise ValueError(f'Node mask incorrectly sized ({node_mask.shape})'\
+                f' for projector nodes ({self.n_nodes})')
+
+        surf_mask = node_mask[:self.n_surf_nodes]
+        wm_mask = node_mask[self.n_surf_nodes : self.n_nodes - self.n_subcortical_nodes]
+
+        cpvs = self.cortex_pvs().reshape(-1,3)
+        pvs = self.pvs().reshape(-1,3)
+
         if self._roi_pvs: 
-
-            pvs = self.pvs().reshape(-1,3)
-            cpvs = self.cortex_pvs().reshape(-1,3)
-
+             
             # subcortical GM PVs, stacked across ROIs 
             spvs = np.stack(
                 [ r.flatten() for r in self._roi_pvs.values() ], axis=1)
@@ -603,24 +717,35 @@ class Projector(object):
             # mapping from subcortial ROIs to voxels is just the PV matrix 
             spvs = spvs / rescale[:,None]
             r2v_mat = sparse.csr_matrix(spvs)
+            roi_mask = node_mask[-self.n_subcortical_nodes:]
+            r2v_mat = utils.mask_projection_matrix(r2v_mat, row_mask=vol_mask, col_mask=roi_mask)
 
             # mappings from surface to voxel and from subcortical nodes to voxels 
             # nb subcortical nodes are just voxels themselves!
             s2v_mat = self.surf2vol_matrix(edge_scale=True).tocsc()
             s2v_mat.data /= np.take(rescale, s2v_mat.indices)
+            s2v_mat = utils.mask_projection_matrix(s2v_mat, row_mask=vol_mask, col_mask=surf_mask)
+
             v2v_mat = sparse.dia_matrix((pvs[:,1], 0), 
-                shape=2*[self.spc.size.prod()])
+                shape=2*[self.spc.n_vox]).tocsr()
+            v2v_mat = utils.mask_projection_matrix(v2v_mat, row_mask=vol_mask, col_mask=wm_mask)
+        
             n2v_mat = sparse.hstack((s2v_mat, v2v_mat, r2v_mat), format="csr")
 
         else: 
-            cpvs = self.cortex_pvs().reshape(-1,3)
             s2v_mat = self.surf2vol_matrix(edge_scale=True)
+            s2v_mat = utils.mask_projection_matrix(s2v_mat, row_mask=vol_mask, col_mask=surf_mask)
+
             v2v_mat = sparse.dia_matrix((cpvs[:,1], 0), 
-                shape=2*[self.spc.size.prod()])
+                shape=2*[self.spc.n_vox]).tocsr()
+            v2v_mat = utils.mask_projection_matrix(v2v_mat, row_mask=vol_mask, col_mask=wm_mask)
+        
             n2v_mat = sparse.hstack((s2v_mat, v2v_mat), format="csr")
 
+        assert n2v_mat.sum(1).max() < 1+1e-6
         if not edge_scale: 
             n2v_mat = utils.sparse_normalise(n2v_mat, 1)
+
         return n2v_mat
 
 
@@ -640,7 +765,7 @@ class Projector(object):
             np.array, sized n_vertices in first dimension 
         """
 
-        if vdata.shape[0] != self.spc.size.prod(): 
+        if vdata.shape[0] != self.spc.n_vox: 
             raise RuntimeError("vdata must have the same number of rows as" +
                 " voxels in the reference ImageSpace")
         v2s_mat = self.vol2surf_matrix(edge_scale)

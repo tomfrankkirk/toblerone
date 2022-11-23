@@ -103,7 +103,7 @@ def test_projection():
     hemi = toblerone.Hemisphere(ins, outs, 'L')
     spc = toblerone.ImageSpace(op.join(td, 'ref.nii.gz'))
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
-    vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
+    vdata = np.ones(spc.n_vox, dtype=NP_FLOAT)
     ndata = np.concatenate((sdata, vdata))
     projector = toblerone.projection.Projector(hemi, spc, factor=10)
 
@@ -152,7 +152,7 @@ def test_projector_partial_fov():
     spc = spc.resize([1,1,1], spc.size-2)
     projector = toblerone.projection.Projector(hemi, spc, cores=8)
     sdata = np.ones(hemi.inSurf.n_points, dtype=NP_FLOAT)
-    vdata = np.ones(spc.size.prod(), dtype=NP_FLOAT)
+    vdata = np.ones(spc.n_vox, dtype=NP_FLOAT)
     # ndata = np.concatenate((sdata, vdata))
     # proj = projector.surf2vol(sdata, True)
 
@@ -277,7 +277,7 @@ def test_mesh_laplacian():
     hemi2 = toblerone.Hemisphere(s, outs, 'R')
     proj = toblerone.projection.Projector([hemi, hemi2], spc)
 
-    for w in range(4):
+    for w in range(1,4):
         lap = proj.mesh_laplacian(distance_weight=w)
         assert (lap[np.diag_indices(lap.shape[0])] < 0).min(), 'positive diagonal'
         n = proj.hemi_dict['L'].n_points
@@ -461,6 +461,98 @@ def test_prefer_convex_hull():
     assert np.abs(truth - pvs).max() < 0.01, 'PVs for small sphere do not match truth'
 
 
+def test_matrix_masking(): 
+
+    # td = get_testdir()
+    # ins = op.join(td, 'in.surf.gii')
+    # outs = op.join(td, 'out.surf.gii')
+    # hemi = toblerone.Hemisphere(ins, outs, 'L')
+    # spc = op.join(td, 'ref.nii.gz')
+    # proj = toblerone.Projector(hemi, spc)
+
+
+    proj = toblerone.Projector.load('103818_L_hemi.h5')
+    smask = proj.cortex_thickness() > 0.5 
+    wmmask = (proj.pvs()[...,1] > 0.1).flatten()
+    nmask = np.concatenate((smask, wmmask))
+    vmask = proj.hybrid2vol(nmask, edge_scale=False).astype(bool)
+
+    proj.spc.save_image(vmask, 'vmask.nii.gz')
+    proj.spc.save_image(proj.pvs(), 'pvs.nii.gz')
+
+    vones = np.ones(vmask.sum()) 
+    sones = np.ones(smask.sum())
+    nones = np.ones(nmask.sum()) 
+    eps = 1e-6
+
+    m1 = proj.vol2surf_matrix(False, vol_mask=vmask, surf_mask=smask)
+    m2 = utils.slice_sparse(proj.vol2surf_matrix(False), smask, vmask)
+    x = m1 @ vones
+    y = m2 @ vones
+    assert (x[x>0] >= y[x>0]).all()
+    assert np.allclose(x[x>0], 1)
+
+    m1 = proj.vol2surf_matrix(True, vol_mask=vmask, surf_mask=smask)
+    m2 = utils.slice_sparse(proj.vol2surf_matrix(True), smask, vmask)
+    x = m1 @ vones
+    y = m2 @ vones
+    assert (x[x>0] >= y[x>0]).all()
+    assert (x[x>0] >= 1 - eps).all()
+
+    m1 = proj.surf2vol_matrix(False, surf_mask=smask, vol_mask=vmask)
+    m2 = utils.slice_sparse(proj.surf2vol_matrix(False), vmask, smask)
+    x = m1 @ sones
+    y = m2 @ sones
+    assert (x[x>0] >= y[y>0]).all()
+    assert np.allclose(x[x>0], 1)
+
+    m1 = proj.surf2vol_matrix(True, surf_mask=smask, vol_mask=vmask)
+    m2 = utils.slice_sparse(proj.surf2vol_matrix(True), vmask, smask)
+    x = m1 @ sones
+    y = m2 @ sones
+    assert (x[x>0] >= y[y>0]).all()
+    assert (x[x>0] <= 1 + eps).all()
+
+    m1 = proj.vol2hybrid_matrix(False, vol_mask=vmask, node_mask=nmask)
+    m2 = utils.slice_sparse(proj.vol2hybrid_matrix(False), nmask, vmask)
+    x = m1 @ vones
+    y = m2 @ vones
+    assert (x[x>0] >= y[x>0]).all()
+    assert np.allclose(x[x>0], 1)
+
+    m1 = proj.vol2hybrid_matrix(True, vol_mask=vmask, node_mask=nmask)
+    m2 = utils.slice_sparse(proj.vol2hybrid_matrix(True), nmask, vmask)
+    x = m1 @ vones
+    y = m2 @ vones
+    assert (x[x>0] >= x[x>0]).all()
+    assert (x[x>0] >= 1 - eps).all()
+
+    m1 = proj.hybrid2vol_matrix(False, node_mask=nmask)
+    m2 = proj.hybrid2vol_matrix(False)[:,nmask]
+    x = m1 @ nones
+    y = m2 @ nones
+    assert (x[x>0] >= y[y>0]).all()
+    assert np.allclose(x[x>0], 1)
+
+    m1 = proj.hybrid2vol_matrix(True, node_mask=nmask)
+    m2 = proj.hybrid2vol_matrix(True)[:,nmask]
+    x = m1 @ nones
+    y = m2 @ nones
+    assert (x[x>0] >= y[y>0]).all()
+    assert (x[x>0] <= 1 + eps).all()
+
+
+def test_mask_laplacian(): 
+
+    td = get_testdir()
+    s = Surface(op.join(td, 'in.surf.gii'))
+    mat = s.cotangent_laplacian()
+
+    mask = np.random.rand(mat.shape[0]) > 0.1
+    mat = utils.mask_laplacian(mat, mask)
+
+
+
 if __name__ == "__main__":
     
-    test_projector_cmdline()
+    test_matrix_masking()
