@@ -9,3 +9,26 @@ version: 0.8.2
 date-released: 2022-8-26
 url: https://github.com/tomfrankkirk/toblerone
 doi: 10.5281/zenodo.7859583 
+preferred-citation:
+  type: article
+  authors:
+  - family-names: Kirk
+    given-names: Thomas F. 
+    orcid: https://orcid.org/0000-0002-3458-2104
+  - family-names: Coalson
+    given-names: Timothy S. 
+    orcid: https://orcid.org/0000-0002-2105-7896
+  - family-names: Craig
+    given-names: Martin S. 
+  - family-names: Chappell
+    given-names: Michael A.
+    orcid: https://orcid.org/0000-0003-1802-4214 
+  doi: 10.1109/TMI.2019.2951080
+  journal: "IEEE Transactions on Medical Imaging"
+  month: 5
+  start: 1501 
+  end: 1510 
+  title: "Toblerone: Surface-Based Partial Volume Estimation"
+  issue: 5
+  volume: 39
+  year: 2020
