@@ -54,7 +54,8 @@ Initialisation and saving of a projector for a single cortical hemisphere:
    # NB surfaces could also be GIFTI 
    LWS = '/path/to/lh.white'
    LPS = '/path/to/lh.pial'
-   lhemi = tob.Hemisphere(LWS, LPS, side='L')
+   LSS = '/path/to/lh.sphere'
+   lhemi = tob.Hemisphere(LWS, LPS, LSS, side='L')
 
    # If any registration of the surfaces to the reference grid is required, 
    # it must be done now 

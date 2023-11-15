@@ -1,7 +1,8 @@
 """Surface-based analysis tools for neuroimaging"""
 
-from toblerone import projection, pvestimation
-from toblerone.classes import ImageSpace, Surface, Hemisphere
+from toblerone import scripts, utils
 from toblerone._version import __version__
+from toblerone.classes import Hemisphere, ImageSpace, Surface
 from toblerone.projection import Projector
-from toblerone import utils
+
+__all__ = ["scripts", "utils", "Hemisphere", "ImageSpace", "Surface", "Projector"]

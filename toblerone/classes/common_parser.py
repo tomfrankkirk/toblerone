@@ -4,112 +4,181 @@ to parse arguments that are common to many pvtools functions
 """
 
 import argparse
-import multiprocessing as mp 
+import multiprocessing as mp
+
 
 class CommonParser(argparse.ArgumentParser):
     """
     Preconfigured subclass of ArgumentParser to parse arguments that
-    are common across pvtools functions. To use, instantiate an object, 
+    are common across pvtools functions. To use, instantiate an object,
     then call add_argument to add in the arguments unique to the particular
-    function in which it is being used, then finally call parse_args as 
-    normal. 
+    function in which it is being used, then finally call parse_args as
+    normal.
     """
 
-    def __init__(self, *args_to_add, **kwargs):
+    def __init__(self, args_to_add, **kwargs):
         from ..__main__ import suffix
 
-        super().__init__(prog='toblerone', epilog=suffix,
-            usage='toblerone -command-name <options>', 
-            formatter_class=argparse.RawDescriptionHelpFormatter, 
-            **kwargs)
+        super().__init__(
+            prog="toblerone",
+            epilog=suffix,
+            usage="toblerone -command-name <options>",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            **kwargs
+        )
 
         general = self.add_argument_group("general arguments")
-        if 'ref' in args_to_add: 
-            general.add_argument('-ref', required=True, 
-                help="path to reference image that defines voxel grid")
+        if "ref" in args_to_add:
+            general.add_argument(
+                "-ref",
+                required=True,
+                help="path to reference image that defines voxel grid",
+            )
 
-        if 'surf' in args_to_add:
-            general.add_argument('-surf', type=str, required=True,
-                help="path to surface (see -coords argument below)")
+        if "struct2ref" in args_to_add:
+            general.add_argument(
+                "-struct2ref",
+                required=True,
+                help="""path to registration to align anatomical inputs with reference
+                image. Use 'I' to denote identity transform.""",
+            )
 
-        if 'coords' in args_to_add:
-            general.add_argument('-coords', required=True, 
-                choices=['fsl', 'world'], default='world',
+        if "surf" in args_to_add:
+            general.add_argument(
+                "-surf",
+                type=str,
+                help="path to surface (see -coords argument below)",
+            )
+
+        if "coords" in args_to_add:
+            general.add_argument(
+                "-coords",
+                choices=["fsl", "world"],
+                default="world",
                 help="""coordinates in which surface is defined, either 'world' 
-                (mm coords) or 'fsl' (FSL convention, eg FIRST surfaces)""")
-            
-        if 'struct2ref' in args_to_add: 
-            general.add_argument('-struct2ref', required=True,
-                help="""path to registration to align surfaces with reference
-                image. Use 'I' to denote identity transform.""")
-    
-        if 'flirt' in args_to_add: 
-            general.add_argument('-flirt', action='store_true', required=False,
-                help="set if struct2ref transform was produced by FSL FLIRT")
+                (mm coords) or 'fsl' (FSL convention, eg FIRST surfaces)""",
+            )
 
-        if 'struct' in args_to_add: 
-            general.add_argument('-struct', required=False, 
-                help=("""if -struct2ref is FLIRT transform, or -firstdir has 
-                    been set, provide a path to the structural image used 
-                    to generate the surfaces"""))
+        if "flirt" in args_to_add:
+            general.add_argument(
+                "-flirt",
+                action="store_true",
+                help="flag to set if struct2ref transform was produced by FSL FLIRT",
+            )
 
-        if 'out' in args_to_add: 
-            general.add_argument('-out', required=True, 
-                help="path to save output at")            
+        if "struct" in args_to_add:
+            general.add_argument(
+                "-struct",
+                help=("""image from which anatomic inputs were derived"""),
+            )
 
+        if "projector" in args_to_add:
+            general.add_argument("-projector", help="path to projector", required=True)
 
+        if "out" in args_to_add:
+            general.add_argument("-out", required=True, help="path to save output at")
 
         fsgroup = self.add_argument_group("cortical surfaces")
-        if 'fsdir' in args_to_add: 
-            fsgroup.add_argument('-fsdir', required=False,
+        if "fsdir" in args_to_add:
+            fsgroup.add_argument(
+                "-fsdir",
                 help="path to FreeSurfer subject directory, from which /surf "
-                "will be loaded, or provide -LPS/LWS/RPS/RWS")
+                "will be loaded, or provide -LPS/LWS/RPS/RWS",
+            )
 
-        if 'LWS' in args_to_add: 
-            fsgroup.add_argument('-LWS', required=False,
-                help="alternative to -fsdir, path to left white surface")
+        if "LWS" in args_to_add:
+            fsgroup.add_argument(
+                "-LWS",
+                help="alternative to -fsdir, path to left white surface",
+            )
 
-        if 'LPS' in args_to_add: 
-            fsgroup.add_argument('-LPS', required=False,
-                help="alternative to -fsdir, path to left pial surface")
+        if "LPS" in args_to_add:
+            fsgroup.add_argument(
+                "-LPS",
+                help="alternative to -fsdir, path to left pial surface",
+            )
 
-        if 'RWS' in args_to_add: 
-            fsgroup.add_argument('-RWS', required=False,
-                help="alternative to -fsdir, path to right white surface")
+        if "LSS" in args_to_add:
+            fsgroup.add_argument(
+                "-LSS",
+                help="alternative to -fsdir, path to left spherical surface",
+            )
 
-        if 'RPS' in args_to_add: 
-            fsgroup.add_argument('-RPS', required=False,
-                help="alternative to -fsdir, path to right pial surface")
+        if "RWS" in args_to_add:
+            fsgroup.add_argument(
+                "-RWS",
+                help="alternative to -fsdir, path to right white surface",
+            )
 
+        if "RPS" in args_to_add:
+            fsgroup.add_argument(
+                "-RPS",
+                help="alternative to -fsdir, path to right pial surface",
+            )
+
+        if "RSS" in args_to_add:
+            fsgroup.add_argument(
+                "-RSS",
+                help="alternative to -fsdir, path to right spherical surface",
+            )
+
+        if "sides" in args_to_add:
+            fsgroup.add_argument(
+                "-sides",
+                choices=["L", "R"],
+                default=["L", "R"],
+                nargs="+",
+                help="cortical hemispheres to process, only works with -fsdir",
+            )
+
+        if "resample" in args_to_add:
+            fsgroup.add_argument(
+                "-resample",
+                type=int,
+                default=32492,
+                metavar="N",
+                help="resample cortical surfaces to N vertices (default 32492)",
+            )
 
         anatgroup = self.add_argument_group("subcortical surfaces and segmentations")
-        if 'fslanat' in args_to_add: 
-            anatgroup.add_argument('-fslanat', type=str, required=False, 
-                help="path to fslanat dir (replaces firstdir/fastdir)")
+        if "firstdir" in args_to_add:
+            anatgroup.add_argument(
+                "-firstdir",
+                type=str,
+                help=("""directory with FSL FIRST outputs"""),
+            )
 
-        if 'firstdir' in args_to_add:
-            anatgroup.add_argument('-firstdir', type=str, required=False, 
-                help=("""replaces -fslanat, path to FSL FIRST directory 
-                    (all .vtk surfaces will be loaded)"""))
-        
-        if 'fastdir' in args_to_add: 
-            anatgroup.add_argument('-fastdir', type=str, required=False,
-                help="""replaces -fslanat, path to directory with
-                    FAST outputs. Note that -struct2ref transform will 
-                    also be applied""")
-
+        if "fastdir" in args_to_add:
+            anatgroup.add_argument(
+                "-fastdir",
+                type=str,
+                help="""directory with FSL FAST outputs""",
+            )
 
         misc = self.add_argument_group("other arguments")
-        if 'super' in args_to_add: 
-            misc.add_argument('-super', nargs='+', required=False,
-                type=int, help="""voxel subdivision factor, a single value 
-                    or one for each dimension""")
+        if "supr" in args_to_add:
+            misc.add_argument(
+                "-super",
+                dest="supr",
+                nargs="+",
+                type=int,
+                metavar="N",
+                help="""voxel subdivision factor, a single value 
+                    or one for each dimension""",
+            )
 
-        if 'cores' in args_to_add: 
-            misc.add_argument('-cores', type=int, required=False, 
-                default=mp.cpu_count(), 
-                help="number of CPU cores to use (default is max available)")
+        if "cores" in args_to_add:
+            misc.add_argument(
+                "-cores",
+                type=int,
+                default=mp.cpu_count(),
+                metavar="N",
+                help="number of CPU cores to use (default is max available)",
+            )
 
-        if 'ones' in args_to_add: 
-            misc.add_argument('-ones', action='store_true', 
-                help="debug tool (whole voxel PV assignment)")
+        if "ones" in args_to_add:
+            misc.add_argument(
+                "-ones",
+                action="store_true",
+                help="debug tool (whole voxel PV assignment)",
+            )

@@ -1,56 +1,86 @@
 import sys
 import argparse
 from textwrap import dedent
+import inspect
+from pathlib import Path
 
-from toblerone import commandline
+import numpy as np
+
+from toblerone import scripts, Projector
 from toblerone._version import __version__
+from toblerone.classes import CommonParser, ImageSpace
 
-suffix = (
-f"""
+suffix = f"""
 version {__version__}
-Tom Kirk,
-Institute of Biomedical Engineering / Wellcome Centre for Integrative Neuroimaging,
-University of Oxford, 2018
-""")
+(C) Tom Kirk, Quantified Imaging, 2023
+"""
 
 
 def main():
-
     args = sys.argv
 
-    parser = argparse.ArgumentParser(prog='toblerone', 
-        formatter_class=argparse.RawDescriptionHelpFormatter, epilog=suffix,
-        usage='toblerone -command-name <options>',
-        description=dedent("TOBLERONE Surface-based analysis tools. Run any command with -h for help."))
-        
-    parser.add_argument('-estimate-complete', action='store_true',
-        help=("estimate PVs across the brain, for both cortical and "
-            "subcortical structures."))
+    parser = argparse.ArgumentParser(
+        prog="toblerone",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=suffix,
+        usage="toblerone -command-name <options>",
+        description=dedent(
+            "TOBLERONE Surface-based analysis tools. Run any command with -h for help."
+        ),
+    )
 
-    parser.add_argument('-estimate-cortex', action='store_true',
-        help=("estimate PVs for L/R cortical hemispheres."))
+    funcs = inspect.getmembers(scripts, inspect.isfunction)
+    for fname, _ in funcs:
+        if fname.startswith("_"):
+            continue
+        parser.add_argument(f"-{fname.replace('_', '-')}", action="store_true")
 
-    parser.add_argument('-estimate-structure', action='store_true',
-        help=("estimate PVs for a structure defined by a single surface."))
-
-    parser.add_argument('-convert-surface', action='store_true',
-        help=("convert a surface file (.white/.pial/.vtk/.surf.gii). Note that"
-            " FS surfaces will have the C_ras shift applied automatically.")) 
-
-    parser.add_argument('-prepare-projector', action='store_true',
-        help="prepare a projector for surface-based analysis of volumetric data.")
-
-    cmd_name = args[1:2]
-    if not cmd_name: 
+    if len(sys.argv) < 2:
         parser.print_help()
-        return 
+        return
+    else:
+        args = parser.parse_args(sys.argv[1:2])
 
-    parsed = parser.parse_args(cmd_name)
-    for attr in vars(parsed):
-        if hasattr(commandline, attr) and (getattr(parsed, attr) is True):
-            sys.argv[1:] = args[2:]
-            getattr(commandline, attr)()
+    for func_name, flag in vars(args).items():
+        if flag:
+            func = getattr(scripts, func_name)
+            break
+
+    arg_names = inspect.signature(func).parameters.keys()
+    parser = CommonParser([*arg_names, "out"])
+    func_args = parser.parse_args(sys.argv[2:])
+    kwargs = vars(func_args)
+
+    out = Path(kwargs.pop("out"))
+    result = func(**kwargs)
+
+    if "projector" in func_name:
+        if isinstance(result, Projector):
+            if not out.suffix:
+                out = out.with_suffix(".h5")
+            result.save(out)
+        else:
+            if not out.suffix:
+                out = out.with_suffix(".nii.gz")
+            result.to_filename(out)
+        return
+
+    spc = ImageSpace(kwargs["ref"])
+
+    if isinstance(result, dict):
+        out.mkdir(parents=True, exist_ok=True)
+        for k, v in result.items():
+            spc.save_image(v, out / f"{k}.nii.gz")
+        return
+
+    if isinstance(result, np.ndarray):
+        if not out.suffix:
+            out = out.with_suffix(".nii.gz")
+        spc.save_image(result, out)
+        return
+
+    raise RuntimeError("Did not capture command's result")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

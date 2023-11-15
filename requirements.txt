@@ -9,3 +9,4 @@ pyvista
 h5py
 vtk 
 trimesh
+rtree
