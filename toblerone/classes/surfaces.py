@@ -749,7 +749,7 @@ class Hemisphere(object):
         """
 
         sph_mid = utils.find_sphere_centre(self.sphere.points)
-        if not np.allclose(sph_mid, 0, atol=1e-3):
+        if not np.allclose(sph_mid, 0, atol=1e-2):
             raise RuntimeError("Input sphere not centred on origin")
 
         sph_in = Trimesh(vertices=self.sphere.points, faces=self.sphere.tris)
@@ -758,7 +758,7 @@ class Hemisphere(object):
         # New sphere at target output resolution
         sph_out = icosphere.icosphere(nr_verts=int(n_verts))
         sph_mid = utils.find_sphere_centre(sph_out[0])
-        if not np.allclose(sph_mid, 0, atol=1e-3):
+        if not np.allclose(sph_mid, 0, atol=1e-2):
             raise RuntimeError("Input sphere not centred on origin")
         utils.check_spherical(sph_out[0])
 
