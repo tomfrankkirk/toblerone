@@ -1,14 +1,13 @@
 """
 Setup script for toblerone
 """
-import os
-import subprocess
-import re
 import io
+import os
+import re
+import subprocess
 import sys
 
-from setuptools import setup
-from setuptools import find_packages
+from setuptools import find_packages, setup
 from setuptools.extension import Extension
 
 PACKAGE_NAME = "toblerone"
@@ -101,8 +100,8 @@ def get_version():
 def get_extensions():
     """Build Cython extensions"""
 
-    from Cython.Build import cythonize
     import numpy
+    from Cython.Build import cythonize
 
     extensions = []
     compile_args = []
@@ -130,6 +129,16 @@ def get_extensions():
 
 
 if __name__ == "__main__":
+    try:
+        import numpy
+    except:
+        raise RuntimeError("Please install numpy before Toblerone")
+
+    try:
+        import cython
+    except:
+        raise RuntimeError("Please install cython before Toblerone")
+
     from Cython.Distutils import build_ext
 
     setup(
