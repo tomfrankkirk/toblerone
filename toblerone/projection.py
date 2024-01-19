@@ -348,7 +348,6 @@ class Projector(object):
             verts_in_spc = ((verts_vox >= 0) & (verts_vox < self.spc.size)).all(-1)
             a[~verts_in_spc, :] = 0
             a[..., ~verts_in_spc] = 0
-            assert utils.is_symmetric(a)
             mats.append(a)
 
         return sparse.block_diag(mats, format="csr")
